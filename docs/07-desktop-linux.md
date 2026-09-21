@@ -27,7 +27,7 @@ or Chromium, the **system-Chromium `.deb`** is both the smallest and the safest.
 | Option | Artifact | Size | Chromium guaranteed | Effort | Status |
 |---|---|---|---|---|---|
 | **PWA install** | none (desktop entry) | 0 | user's browser | trivial | works today |
-| **System-Chromium `.deb`** | `fly-protocol_*.deb` | ~1 MB + `web/dist` | uses system Chromium | low | **implemented** |
+| **System-Chromium `.deb`** | `nysiris_*.deb` | ~1 MB + `web/dist` | uses system Chromium | low | **implemented** |
 | **Electron** | `.deb` + AppImage | ~150 MB installed | ✅ bundled | medium | scaffold provided |
 | **Tauri** | `.deb` + AppImage | ~5–15 MB | ❌ WebKitGTK; needs verification | medium | documented |
 | **Flatpak** | `.flatpak` | depends on runtime | ✅ if Electron/Chromium runtime | medium | documented |
@@ -38,12 +38,12 @@ or Chromium, the **system-Chromium `.deb`** is both the smallest and the safest.
 Architecture:
 
 ```
-/usr/bin/fly-protocol                wrapper
-/usr/lib/fly-protocol/
-    fly-protocol-launcher            std-only Rust: loopback static server + browser launcher
+/usr/bin/nysiris                wrapper
+/usr/lib/nysiris/
+    nysiris-launcher            std-only Rust: loopback static server + browser launcher
     web/                             built PWA (web/dist)
-/usr/share/applications/fly-protocol.desktop
-/usr/share/icons/hicolor/scalable/apps/fly-protocol.svg
+/usr/share/applications/nysiris.desktop
+/usr/share/icons/hicolor/scalable/apps/nysiris.svg
 ```
 
 The launcher:
@@ -62,25 +62,25 @@ The launcher:
 
 ```sh
 ./build.sh web                          # build web/dist (npm, network)
-./build.sh desktop                      # -> dist/fly-protocol_0.1.0_amd64.deb
+./build.sh desktop                      # -> dist/nysiris_0.1.0_amd64.deb
 ./build.sh desktop --app-version 1.2.3   # custom version
-sudo apt install ./dist/fly-protocol_0.1.0_amd64.deb
-fly-protocol                             # or launch from the menu
-sudo apt remove fly-protocol             # uninstall
+sudo apt install ./dist/nysiris_0.1.0_amd64.deb
+nysiris                             # or launch from the menu
+sudo apt remove nysiris             # uninstall
 ```
 
 ### Run without packaging
 
 ```sh
-cargo run -p fly-protocol-launcher -- --root web/dist
-cargo run -p fly-protocol-launcher -- --root web/dist --no-open --port 8737
+cargo run -p nysiris-launcher -- --root web/dist
+cargo run -p nysiris-launcher -- --root web/dist --no-open --port 8737
 ```
 
 ### Verify the package
 
 ```sh
-dpkg-deb --info dist/fly-protocol_0.1.0_amd64.deb
-dpkg-deb --contents dist/fly-protocol_0.1.0_amd64.deb
+dpkg-deb --info dist/nysiris_0.1.0_amd64.deb
+dpkg-deb --contents dist/nysiris_0.1.0_amd64.deb
 ```
 
 The launcher's parser, MIME mapping and traversal rejection are covered by unit
@@ -105,8 +105,8 @@ mkdir -p web && cp -r ../../web/dist/* web/
 npm run dist          # -> desktop/electron/dist/{*.deb,*.AppImage}
 ```
 
-Output: `fly-protocol-desktop_<version>_amd64.deb` (installs to
-`/opt/fly-protocol`) and `fly-protocol-<version>.AppImage` (~125 MB;
+Output: `nysiris-desktop_<version>_amd64.deb` (installs to
+`/opt/nysiris`) and `nysiris-<version>.AppImage` (~125 MB;
 self-contained, no install needed).
 
 > electron-builder 26 prints a `desktopName` warning for window association, but
@@ -163,7 +163,7 @@ For an internal repo, serve the `.deb` with a tiny `Packages` index:
 
 ```sh
 mkdir -p repo
-cp dist/fly-protocol_*.deb repo/
+cp dist/nysiris_*.deb repo/
 cd repo
 dpkg-scanpackages . /dev/null | gzip -9 > Packages.gz
 ```
@@ -200,7 +200,7 @@ The package bundled a non-production `web/dist`. Build the real app and rebuild:
 ```sh
 ./build.sh web
 ./build.sh desktop --app-version 0.1.1
-sudo apt install ./dist/fly-protocol_0.1.1_amd64.deb
+sudo apt install ./dist/nysiris_0.1.1_amd64.deb
 ```
 
 **Stuck at "bringing up mixnet tunnel" (no visible error).**
@@ -229,7 +229,7 @@ window stays empty. The launcher prevents it by running the app in a **dedicated
 Chrome profile** and passing `--disable-extensions`:
 
 ```
---user-data-dir=$XDG_DATA_HOME/fly-protocol/chrome-profile
+--user-data-dir=$XDG_DATA_HOME/nysiris/chrome-profile
 --no-first-run --no-default-browser-check --disable-extensions
 ```
 
@@ -239,8 +239,8 @@ initialized` / `window.web3 is deprecated` console spam). A dedicated profile
 removes both problems. To use your own profile instead:
 
 ```sh
-fly-protocol --profile ~/.config/google-chrome   # not recommended
-fly-protocol --allow-extensions                  # keep extensions in the app profile
+nysiris --profile ~/.config/google-chrome   # not recommended
+nysiris --allow-extensions                  # keep extensions in the app profile
 ```
 
 If you launch Chrome manually for testing, do the same:

@@ -2028,24 +2028,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fly-social"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "ed25519-dalek 3.0.0",
- "hex",
- "nym-bin-common",
- "nym-hidden-service",
- "nym-sdk",
- "portal-reputation",
- "rand 0.8.8",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5406,6 +5388,24 @@ dependencies = [
  "thiserror 2.0.20",
  "x25519-dalek",
  "zeroize",
+]
+
+[[package]]
+name = "nysiris-social"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "ed25519-dalek 3.0.0",
+ "hex",
+ "nym-bin-common",
+ "nym-hidden-service",
+ "nym-sdk",
+ "portal-reputation",
+ "rand 0.8.8",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

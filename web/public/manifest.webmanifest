@@ -1,6 +1,6 @@
 {
-  "name": "fly-protocol · Nym mixnet client",
-  "short_name": "fly-protocol",
+  "name": "nysiris · Nym mixnet client",
+  "short_name": "nysiris",
   "description": "Route requests through the Nym mixnet from any browser, including Android.",
   "start_url": "/",
   "scope": "/",

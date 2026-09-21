@@ -163,14 +163,14 @@ A native `.deb` that serves the PWA on loopback and opens it in a Chromium
 - `desktop/launcher/` — dependency-free Rust launcher; unit-tested (path
   traversal, MIME, cross-origin-isolation headers). Runs in `./build.sh check`.
 - `desktop/debian/` — `control`, `postinst`, `prerm`, `.desktop`, icon and a
-  `build-deb.sh` producing `dist/fly-protocol_<version>_<arch>.deb`.
+  `build-deb.sh` producing `dist/nysiris_<version>_<arch>.deb`.
 - `desktop/electron/` — Electron alternative (bundled Chromium) for users
   without a system Chromium.
 
 ```bash
 ./build.sh web
-./build.sh desktop          # -> dist/fly-protocol_0.1.0_amd64.deb
-sudo apt install ./dist/fly-protocol_0.1.0_amd64.deb
+./build.sh desktop          # -> dist/nysiris_0.1.0_amd64.deb
+sudo apt install ./dist/nysiris_0.1.0_amd64.deb
 ```
 
 **Verified**: `.deb` builds and its layout is correct; the launcher returns

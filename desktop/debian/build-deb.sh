@@ -5,7 +5,7 @@
 #   ./desktop/debian/build-deb.sh [VERSION]
 #
 # Requires `web/dist` to exist (build it with `./build.sh web`) and dpkg-deb.
-# Output: dist/fly-protocol_<version>_<arch>.deb
+# Output: dist/nysiris_<version>_<arch>.deb
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -15,9 +15,9 @@ source "$ROOT/scripts/lib.sh"
 VERSION="${1:-0.1.0}"
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
 DIST="$ROOT/web/dist"
-STAGE="$ROOT/desktop/build/fly-protocol_${VERSION}_${ARCH}"
+STAGE="$ROOT/desktop/build/nysiris_${VERSION}_${ARCH}"
 OUT="$ROOT/dist"
-BIN="$ROOT/target/release/fly-protocol-launcher"
+BIN="$ROOT/target/release/nysiris-launcher"
 
 have dpkg-deb || die "dpkg-deb not found; this packaging path targets Debian-based distros"
 
@@ -26,7 +26,7 @@ if [[ ! -f "$DIST/index.html" ]]; then
 fi
 
 log "building launcher (release)"
-(cd "$ROOT" && cargo build -p fly-protocol-launcher --release)
+(cd "$ROOT" && cargo build -p nysiris-launcher --release)
 [[ -x "$BIN" ]] || die "launcher binary missing at $BIN"
 
 log "staging package tree at ${STAGE#"$ROOT"/}"
@@ -34,21 +34,21 @@ rm -rf "$STAGE"
 install -d \
     "$STAGE/DEBIAN" \
     "$STAGE/usr/bin" \
-    "$STAGE/usr/lib/fly-protocol/web" \
+    "$STAGE/usr/lib/nysiris/web" \
     "$STAGE/usr/share/applications" \
     "$STAGE/usr/share/icons/hicolor/scalable/apps" \
-    "$STAGE/usr/share/doc/fly-protocol"
+    "$STAGE/usr/share/doc/nysiris"
 
-install -m 0755 "$BIN" "$STAGE/usr/lib/fly-protocol/fly-protocol-launcher"
-cp -r "$DIST/." "$STAGE/usr/lib/fly-protocol/web/"
+install -m 0755 "$BIN" "$STAGE/usr/lib/nysiris/nysiris-launcher"
+cp -r "$DIST/." "$STAGE/usr/lib/nysiris/web/"
 # Source maps account for ~half the build size and are not needed in a distro
 # package; developers can rebuild with `./build.sh web`.
-find "$STAGE/usr/lib/fly-protocol/web" -type f -name '*.map' -delete
-install -m 0755 "$ROOT/desktop/debian/fly-protocol" "$STAGE/usr/bin/fly-protocol"
-install -m 0644 "$ROOT/desktop/debian/fly-protocol.desktop" \
-    "$STAGE/usr/share/applications/fly-protocol.desktop"
-install -m 0644 "$ROOT/desktop/debian/fly-protocol.svg" \
-    "$STAGE/usr/share/icons/hicolor/scalable/apps/fly-protocol.svg"
+find "$STAGE/usr/lib/nysiris/web" -type f -name '*.map' -delete
+install -m 0755 "$ROOT/desktop/debian/nysiris" "$STAGE/usr/bin/nysiris"
+install -m 0644 "$ROOT/desktop/debian/nysiris.desktop" \
+    "$STAGE/usr/share/applications/nysiris.desktop"
+install -m 0644 "$ROOT/desktop/debian/nysiris.svg" \
+    "$STAGE/usr/share/icons/hicolor/scalable/apps/nysiris.svg"
 install -m 0755 "$ROOT/desktop/debian/postinst" "$STAGE/DEBIAN/postinst"
 install -m 0755 "$ROOT/desktop/debian/prerm" "$STAGE/DEBIAN/prerm"
 
@@ -57,7 +57,7 @@ sed -e "s/@VERSION@/$VERSION/" -e "s/@ARCH@/$ARCH/" -e "s/@SIZE@/$SIZE_KB/" \
     "$ROOT/desktop/debian/control.in" > "$STAGE/DEBIAN/control"
 
 mkdir -p "$OUT"
-DEB="$OUT/fly-protocol_${VERSION}_${ARCH}.deb"
+DEB="$OUT/nysiris_${VERSION}_${ARCH}.deb"
 log "building $DEB"
 dpkg-deb --build --root-owner-group "$STAGE" "$DEB" >/dev/null
 

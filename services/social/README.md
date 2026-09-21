@@ -1,4 +1,4 @@
-# fly-social provider
+# nysiris-social provider
 
 Metadata-minimal microblog + encrypted-DM dead-drop hidden service.
 Full design: [`docs/09-social.md`](../../docs/09-social.md).
@@ -11,7 +11,7 @@ SP_DATA_DIR=./sp-storage SOCIAL_DB=./social.sqlite cargo run --release
 ```
 
 Prints its Nym address on startup (also written to `./nym-address.txt`).
-Paste it into the app's **fly-social** section or top URI bar.
+Paste it into the app's community section or top URI bar.
 
 ## API
 

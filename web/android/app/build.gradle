@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "app.example.fly"
+    namespace "app.example.nysiris"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.example.fly"
+        applicationId "app.example.nysiris"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

@@ -1,11 +1,11 @@
-fly-protocol for Windows
+nysiris for Windows
 =======================
 
-1. Unzip anywhere (e.g. Downloads\fly-protocol).
-2. Double-click Fly.bat.
+1. Unzip anywhere (e.g. Downloads\nysiris).
+2. Double-click Nysiris.bat.
 3. Edge (or Chrome) opens the app in its own window. Your personal browser
    profile is untouched: the app uses a dedicated profile under
-   %LOCALAPPDATA%\fly-protocol.
+   %LOCALAPPDATA%\nysiris.
 
 Notes
 -----
@@ -14,6 +14,6 @@ Notes
 - First launch may trigger a Windows Firewall prompt for loopback-only
   traffic; SmartScreen may warn because the binary is unsigned. The zip's
   SHA256SUMS.txt (next to the download) verifies the download itself.
-- Command line: `fly-protocol-launcher.exe --help`. Pass extra flags after
-  Fly.bat, e.g. `Fly.bat --port 8901`. `--no-open` serves only.
+- Command line: `nysiris-launcher.exe --help`. Pass extra flags after
+  Nysiris.bat, e.g. `Nysiris.bat --port 8901`. `--no-open` serves only.
 - Built from source? See docs/12-windows.md (MSYS2) in the repository.

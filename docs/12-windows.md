@@ -2,13 +2,13 @@
 
 The Windows package is the same two pieces as the Linux `.deb`: the
 dependency-free Rust launcher (`desktop/launcher`, serves the PWA on
-loopback) plus the built web app — zipped with a `Fly.bat` entry point
+loopback) plus the built web app — zipped with a `Nysiris.bat` entry point
 instead of a `.deb`, because there is no system package manager to target.
 
 ```text
-dist/fly-protocol_<version>_windows-x86_64.zip
-├── fly-protocol-launcher.exe
-├── Fly.bat            # double-click entry point (forwards extra args)
+dist/nysiris_<version>_windows-x86_64.zip
+├── nysiris-launcher.exe
+├── Nysiris.bat            # double-click entry point (forwards extra args)
 ├── README.txt
 └── web/               # built PWA, served on 127.0.0.1
 ```
@@ -59,7 +59,7 @@ for, in order:
 
 Edge ships with Windows 10/11, so a stock machine already qualifies.
 Firefox has no `--app` mode and opens a plain window instead. The app
-profile lives under `%LOCALAPPDATA%\fly-protocol\chrome-profile`, separate
+profile lives under `%LOCALAPPDATA%\nysiris\chrome-profile`, separate
 from the personal browser profile.
 
 ## First-launch notes
@@ -69,7 +69,7 @@ from the personal browser profile.
   launch; loopback-only serving needs no exception.
 - SmartScreen warns because release binaries are unsigned. Verify the
   download against `SHA256SUMS.txt` on the GitHub release page.
-- `Fly.bat --port 8901` pins the loopback port; `--no-open` serves only
+- `Nysiris.bat --port 8901` pins the loopback port; `--no-open` serves only
   (open the printed URL yourself); `--help` lists everything.
 
 ## Releases

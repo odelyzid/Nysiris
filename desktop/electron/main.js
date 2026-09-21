@@ -1,4 +1,4 @@
-// Electron shell for the fly-protocol PWA.
+// Electron shell for the nysiris PWA.
 //
 // ALTERNATIVE to the system-Chromium .deb. Use this when you want a
 // self-contained package that does not depend on the user having Chromium
@@ -72,7 +72,7 @@ async function main() {
   const window = new BrowserWindow({
     width: 1100,
     height: 800,
-    title: 'fly-protocol',
+    title: 'nysiris',
     backgroundColor: '#0b0d12',
     webPreferences: {
       contextIsolation: true,

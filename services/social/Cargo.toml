@@ -1,5 +1,5 @@
 [package]
-name = "fly-social"
+name = "nysiris-social"
 version = "0.1.0"
 edition = "2021"
 publish = false

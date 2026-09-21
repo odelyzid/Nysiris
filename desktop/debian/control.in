@@ -1,15 +1,15 @@
-Package: fly-protocol
+Package: nysiris
 Version: @VERSION@
 Section: net
 Priority: optional
 Architecture: @ARCH@
 Installed-Size: @SIZE@
-Maintainer: fly-protocol <noreply@example.com>
+Maintainer: nysiris <noreply@example.com>
 Depends: libc6
 Recommends: chromium | chromium-browser | google-chrome-stable | brave-browser
-Homepage: https://github.com/tribewarez/fly-protocol
+Homepage: https://github.com/tribewarez/nysiris
 Description: Nym mixnet browser client
- A desktop shell for the fly-protocol PWA. It serves the bundled web app on
+ A desktop shell for the nysiris PWA. It serves the bundled web app on
  loopback and opens it in a Chromium-based browser's app window, routing
  requests through the Nym mixnet (Sphinx packets over the 5-hop path).
  .

@@ -19,7 +19,7 @@ export function Onboarding({
   if (step === 'done') return null;
   return (
     <section className="fly-card" aria-label="Getting started">
-      <h2>Welcome to Fly</h2>
+      <h2>Welcome to Nysiris</h2>
       <p>Browse and chat privately. One tap connects you over the private network.</p>
       <div className="fly-steps" aria-hidden={step !== 'welcome'}>
         <span>1 · Welcome — nothing to set up yet.</span>

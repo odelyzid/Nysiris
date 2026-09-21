@@ -1,4 +1,4 @@
-//! fly-protocol desktop launcher (Linux).
+//! nysiris desktop launcher (Linux).
 //!
 //! Serves the built PWA from `web/dist` over **loopback HTTP** and opens it in
 //! a Chromium-based browser's `--app` window. Loopback is a secure context, and
@@ -79,7 +79,7 @@ fn main() {
         .map(|a| a.port())
         .unwrap_or(config.port);
     let url = format!("http://127.0.0.1:{port}/");
-    println!("fly-protocol serving {root:?}");
+    println!("nysiris serving {root:?}");
     println!("listening on {url}");
 
     if config.open {
@@ -110,7 +110,7 @@ fn main() {
 }
 
 const USAGE: &str = "\
-Usage: fly-protocol-launcher [--root DIR] [--port N] [--browser CMD] [--no-open]
+Usage: nysiris-launcher [--root DIR] [--port N] [--browser CMD] [--no-open]
 
   --root DIR          directory containing the built web app (default: ./web/dist)
   --port N            loopback port to bind (default: 0 = choose a free port)
@@ -121,7 +121,7 @@ Usage: fly-protocol-launcher [--root DIR] [--port N] [--browser CMD] [--no-open]
   --help              show this help
 
 The app runs in its own Chrome profile under
-$XDG_DATA_HOME/fly-protocol/chrome-profile so your personal extensions do not
+$XDG_DATA_HOME/nysiris/chrome-profile so your personal extensions do not
 interfere with it.";
 
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
@@ -481,21 +481,19 @@ fn windows_install_candidates() -> Vec<PathBuf> {
     windows_install_candidates_from(pf.as_deref(), pf_x86.as_deref())
 }
 
-/// Dedicated app profile: `%LOCALAPPDATA%\fly-protocol\chrome-profile` on
+/// Dedicated app profile: `%LOCALAPPDATA%\nysiris\chrome-profile` on
 /// Windows; `$XDG_DATA_HOME/...` (or `$HOME/.local/share/...`) elsewhere.
 fn default_profile_dir() -> PathBuf {
     #[cfg(windows)]
     if let Some(local) = env::var_os("LOCALAPPDATA").filter(|p| !p.is_empty()) {
-        return PathBuf::from(local)
-            .join("fly-protocol")
-            .join("chrome-profile");
+        return PathBuf::from(local).join("nysiris").join("chrome-profile");
     }
     let base = env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
-        .unwrap_or_else(|| PathBuf::from(".fly-protocol"));
-    base.join("fly-protocol").join("chrome-profile")
+        .unwrap_or_else(|| PathBuf::from(".nysiris"));
+    base.join("nysiris").join("chrome-profile")
 }
 
 #[cfg(unix)]

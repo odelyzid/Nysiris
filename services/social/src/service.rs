@@ -1,4 +1,4 @@
-//! Hidden-service routes for fly-social.
+//! Hidden-service routes for nysiris-social.
 //!
 //! Transport envelope: [`nym_hidden_service`] `Request`/`Response` JSON.
 //! Service API bodies are JSON; every write carries an ed25519 signature
@@ -133,7 +133,7 @@ fn json_body<T: serde::Serialize>(value: &T) -> Vec<u8> {
 /// Advertises `pow_bits` so clients prove exactly the required difficulty.
 fn descriptor_json(pow_bits: u32) -> serde_json::Value {
     serde_json::json!({
-        "service": "fly-social",
+        "service": "nysiris-social",
         "version": "0.1.0",
         "pow_bits": pow_bits,
         "routes": [
@@ -152,12 +152,12 @@ fn descriptor_json(pow_bits: u32) -> serde_json::Value {
 const DESCRIPTOR_HTML: &str = "<!doctype html><html><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
 <meta name=\"color-scheme\" content=\"light dark\">\
-<title>fly-social</title>\
+<title>nysiris-social</title>\
 <style>body{font-family:system-ui,-apple-system,\"Segoe UI\",sans-serif;\
 max-width:44rem;margin:2rem auto;padding:0 1rem;line-height:1.6}\
 h1,h2{line-height:1.2}code{background:rgba(127,127,127,.15);\
 padding:.1em .35em;border-radius:.3em}li{margin:.25em 0}</style></head><body>\
-<h1>fly-social</h1>\
+<h1>nysiris-social</h1>\
 <p>Metadata-minimal microblog + encrypted DMs, reachable only over the Nym mixnet.</p>\
 <h2>Timeline</h2>\
 <ul>\
@@ -622,7 +622,7 @@ mod tests {
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
         assert_eq!(rep.status, 200);
         let body: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
-        assert_eq!(body["service"], "fly-social");
+        assert_eq!(body["service"], "nysiris-social");
 
         // Browsers send Accept: text/html and get a renderable page.
         let mut headers = HashMap::new();
@@ -631,7 +631,7 @@ mod tests {
         let rep = Response::from_json(&dispatch(&svc, req.to_json().as_bytes())).unwrap();
         assert_eq!(rep.status, 200);
         let text = String::from_utf8(rep.body().unwrap()).unwrap();
-        assert!(text.contains("<h1>fly-social</h1>"));
+        assert!(text.contains("<h1>nysiris-social</h1>"));
         // Sections mirror the client's community tabs (Timeline / Private
         // messages); the route list is the contract both sides share.
         assert!(text.contains("<h2>Timeline</h2>"));

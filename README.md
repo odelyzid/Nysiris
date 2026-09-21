@@ -1,4 +1,4 @@
-# fly-protocol
+# nysiris
 
 Design and implementation for **routing traffic through the Nym mixnet with
 Sphinx packets**: a cross-platform browser client (web / PWA / Android) and
@@ -29,7 +29,7 @@ several ways to host a service on the mixnet.
    V1/V2/V3, P1/P2), tagging, timing, SURB hoarding/reuse, exit trust.
 6. [`docs/08-hidden-services.md`](docs/08-hidden-services.md) — hidden-service
    abstraction: `nym://` URIs, envelopes, server dispatch, petnames, chunking.
-7. [`docs/09-social.md`](docs/09-social.md) — fly-social: metadata-minimal
+7. [`docs/09-social.md`](docs/09-social.md) — nysiris-social: metadata-minimal
    microblog + E2E DMs, SQLite security, signature/E2E specs, operations.
 8. [`docs/07-desktop-linux.md`](docs/07-desktop-linux.md) — Linux Mint / Debian
    desktop packaging (`.deb`, Electron, Tauri, Flatpak) and engine compatibility.
@@ -84,7 +84,7 @@ and `desktop/electron/package.json`.
 ./build.sh bump major        # 0.1.6 -> 1.0.0
 ./build.sh bump 1.2.3        # set an explicit version
 
-./build.sh desktop                       # -> dist/fly-protocol_<version>_amd64.deb
+./build.sh desktop                       # -> dist/nysiris_<version>_amd64.deb
 ./build.sh desktop --electron            # -> Electron .deb + AppImage
 ./build.sh web && ./build.sh android     # PWA / Android
 ./build.sh check                         # verify
@@ -131,11 +131,11 @@ touching the network path.
 | `services/echo-provider/` | Pure-mixnet service provider (`nym-sdk` 1.21.x messaging) | Written against documented API; build in place |
 | `services/acceptance/` | Live-network delivery + SURB reply harness | **Passed on mainnet**: delivery ≈7.6 s, SURB reply ≈7.1 s |
 | `services/hybrid-bridge/` | Nym↔HTTP bridge + Caddy + Docker Compose, using `bridge-guard` | `docker compose config` + guard tests |
-| `services/social/` | fly-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`) | 9 tests + `web/src/social/` timeline UI |
+| `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`) | 13 tests + `web/src/social/` timeline UI |
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
 | `services/portal-provider/` | Portal object/log store (data + verification only) | 4 tests |
 | `services/gateway/` | `nym-node` entry-gateway config, systemd, bonding notes | Templates + operator steps |
-| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, fly-social timeline, leak guard, runtime enforcement | 45 `node --test` tests + `npm run build` |
+| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 111 `node --test` tests + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
 | `desktop/launcher/` | std-only Linux launcher: loopback static server + Chromium app window | 5 tests |
 | `desktop/debian/` | `.deb` packaging (control, postinst, `.desktop`, icon) | Built + inspected; `./build.sh desktop` |

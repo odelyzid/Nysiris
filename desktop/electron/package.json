@@ -1,11 +1,11 @@
 {
-  "name": "fly-protocol-desktop",
+  "name": "nysiris-desktop",
   "private": true,
   "version": "0.1.18",
-  "description": "Electron shell for the fly-protocol Nym mixnet client (alternative to the system-Chromium .deb).",
-  "homepage": "https://github.com/tribewarez/fly-protocol",
+  "description": "Electron shell for the nysiris Nym mixnet client (alternative to the system-Chromium .deb).",
+  "homepage": "https://github.com/tribewarez/nysiris",
   "author": {
-    "name": "fly-protocol",
+    "name": "nysiris",
     "email": "noreply@example.com"
   },
   "license": "Apache-2.0",
@@ -19,8 +19,8 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "app.example.fly",
-    "productName": "fly-protocol",
+    "appId": "app.example.nysiris",
+    "productName": "nysiris",
     "files": [
       "main.js",
       "web/**/*"
@@ -31,7 +31,7 @@
         "AppImage"
       ],
       "category": "Network",
-      "maintainer": "fly-protocol <noreply@example.com>",
+      "maintainer": "nysiris <noreply@example.com>",
       "icon": "build/icon.png"
     }
   }

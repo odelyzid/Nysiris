@@ -1,5 +1,5 @@
 /**
- * Tabs for the Portal community section (fly-social).
+ * Tabs for the Portal community section (nysiris).
  *
  * Pure logic (no browser globals required): storage is injected so this is
  * unit-testable with `node --test web/test`. The component passes

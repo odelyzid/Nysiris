@@ -8,7 +8,7 @@ exclude = ["services/echo-provider", "services/hybrid-bridge", "services/accepta
 [workspace.package]
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/tribewarez/fly-protocol"
+repository = "https://github.com/tribewarez/nysiris"
 
 [profile.release]
 opt-level = 3

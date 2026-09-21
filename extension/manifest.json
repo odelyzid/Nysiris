@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "fly-protocol mixnet client",
+  "name": "nysiris mixnet client",
   "version": "0.1.0",
   "description": "Desktop scaffold: route allow-listed hosts through the Nym mixnet.",
   "permissions": ["storage", "declarativeNetRequest", "offscreen"],
@@ -11,7 +11,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "fly-protocol"
+    "default_title": "nysiris"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; worker-src 'self' blob:"

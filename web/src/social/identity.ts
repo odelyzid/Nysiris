@@ -1,5 +1,5 @@
 /**
- * Client identity for fly-social: an ed25519 keypair whose public key IS the
+ * Client identity for nysiris: an ed25519 keypair whose public key IS the
  * username. Byte-exact mirror of `services/social/src/sig.rs` — the provider
  * verifies these signatures, so any deviation breaks posting.
  *

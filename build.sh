@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# fly-protocol build entry point.
+# nysiris build entry point.
 #
 #   ./build.sh rust              # compile + test the Rust workspace
 #   ./build.sh rust --release    # optimized build
@@ -48,7 +48,7 @@ COMMAND=""
 
 usage() {
   cat <<'EOF'
-fly-protocol build entry point.
+nysiris build entry point.
 
   ./build.sh rust              # compile + test the Rust workspace
   ./build.sh rust --release    # optimized build

@@ -40,7 +40,7 @@ done
 
 case "$SERVICE" in
   portal) DIR="portal-provider"; BIN="portal-provider"; DB_VAR="PORTAL_DB"; DB_DEFAULT="./portal.sqlite" ;;
-  social) DIR="social"; BIN="fly-social"; DB_VAR="SOCIAL_DB"; DB_DEFAULT="./social.sqlite" ;;
+  social) DIR="social"; BIN="nysiris-social"; DB_VAR="SOCIAL_DB"; DB_DEFAULT="./social.sqlite" ;;
   echo) DIR="echo-provider"; BIN="echo-provider"; DB_VAR=""; DB_DEFAULT="" ;;
 esac
 

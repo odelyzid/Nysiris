@@ -1,6 +1,6 @@
-# Windows package: launcher + bundled PWA + Fly.bat, zipped for download.
+# Windows package: launcher + bundled PWA + Nysiris.bat, zipped for download.
 # MSYS2/MinGW or MSVC both work; see docs/12-windows.md for setup.
-# Output: dist/fly-protocol_<version>_windows-<arch>.zip
+# Output: dist/nysiris_<version>_windows-<arch>.zip
 # shellcheck shell=bash
 cmd_windows() {
   have cargo || die "cargo not found; install Rust via https://rustup.rs (on MSYS2: pacman -S mingw-w64-x86_64-toolchain)"
@@ -36,24 +36,24 @@ cmd_windows() {
   fi
 
   log "building launcher for $target (release)"
-  (cd "$ROOT" && cargo build -p fly-protocol-launcher --release --target "$target")
-  local exe="$ROOT/target/$target/release/fly-protocol-launcher.exe"
+  (cd "$ROOT" && cargo build -p nysiris-launcher --release --target "$target")
+  local exe="$ROOT/target/$target/release/nysiris-launcher.exe"
   [[ -x "$exe" ]] || die "launcher binary missing at $exe"
 
-  local stage_name="fly-protocol_${version}_windows-${arch}"
+  local stage_name="nysiris_${version}_windows-${arch}"
   local stage="$ROOT/dist/windows/$stage_name"
   log "staging package tree at ${stage#"$ROOT"/}"
   rm -rf "$stage"
   mkdir -p "$stage/web"
-  cp "$exe" "$stage/fly-protocol-launcher.exe"
+  cp "$exe" "$stage/nysiris-launcher.exe"
   cp -r "$ROOT/web/dist/." "$stage/web/"
   # Source maps account for ~half the build size and are not needed in a
   # download; developers can rebuild with `./build.sh web`.
   find "$stage/web" -type f -name '*.map' -delete
-  cp "$ROOT/desktop/windows/Fly.bat" "$stage/Fly.bat"
+  cp "$ROOT/desktop/windows/Nysiris.bat" "$stage/Nysiris.bat"
   cp "$ROOT/desktop/windows/README.txt" "$stage/README.txt"
 
-  local zip="$ROOT/dist/fly-protocol_${version}_windows-${arch}.zip"
+  local zip="$ROOT/dist/nysiris_${version}_windows-${arch}.zip"
   if have powershell.exe; then
     log "zipping with Compress-Archive"
     (cd "$ROOT/dist/windows" && rm -f "$zip" && powershell.exe -NoProfile -NonInteractive -Command "Compress-Archive -Path '$stage_name' -DestinationPath '$(basename "$zip")' -Force")

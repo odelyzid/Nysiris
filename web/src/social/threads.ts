@@ -1,5 +1,5 @@
 /**
- * Client-side thread assembly for fly-social replies.
+ * Client-side thread assembly for nysiris replies.
  *
  * The provider stores each post's `in_reply_to` parent id opaquely and never
  * assembles threads — every structure here is built in the browser from the

@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=fly-protocol
+Name=nysiris
 GenericName=Nym Mixnet Client
 Comment=Browse and message through the Nym mixnet
-Exec=fly-protocol
-TryExec=fly-protocol
-Icon=fly-protocol
+Exec=nysiris
+TryExec=nysiris
+Icon=nysiris
 Terminal=false
 Categories=Network;WebBrowser;Security;
 Keywords=nym;mixnet;privacy;anonymous;sphinx;

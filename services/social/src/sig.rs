@@ -1,4 +1,4 @@
-//! Signature scheme for fly-social (byte-exact, cross-implementation).
+//! Signature scheme for nysiris-social (byte-exact, cross-implementation).
 //!
 //! Identity = ed25519 keypair. The 32-byte public key IS the username. Every
 //! write is signed; the provider verifies before storing, and any client can

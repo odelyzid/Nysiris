@@ -1,4 +1,4 @@
-# fly-protocol web client
+# nysiris web client
 
 Cross-platform Nym mixnet client: runs in desktop browsers, Android browsers,
 a Bubblewrap Trusted Web Activity, and a Capacitor Android shell.

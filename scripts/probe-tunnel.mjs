@@ -1,8 +1,8 @@
-// Diagnostic: drive a running fly-protocol app over Chrome DevTools Protocol,
+// Diagnostic: drive a running nysiris app over Chrome DevTools Protocol,
 // click "Connect", and report console output + tunnel status over time. Use it
 // when the tunnel hangs with no visible error.
 //
-//   1. serve the app:      cargo run -p fly-protocol-launcher -- --root web/dist --no-open --port 8760
+//   1. serve the app:      cargo run -p nysiris-launcher -- --root web/dist --no-open --port 8760
 //   2. start Chrome with:  google-chrome --headless=new --disable-gpu --no-sandbox \
 //                            --remote-debugging-port=9222 --user-data-dir=/tmp/fp-probe \
 //                            http://127.0.0.1:8760/ &

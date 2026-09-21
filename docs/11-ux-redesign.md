@@ -155,7 +155,7 @@ Advanced. Petnames are the primary label everywhere.
 
 ## 7. Flows (text screenshots)
 
-**First run:** Home shows "Welcome to Fly — browse and chat privately."
+**First run:** Home shows "Welcome to Nysiris — browse and chat privately."
 → [Connect privately] → "Connecting… finding the fastest private path."
 → "You're protected ✓" + [Open a private link] field.
 

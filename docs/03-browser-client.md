@@ -241,7 +241,7 @@ Use when you need plugins (secure storage, foreground service, share).
 ```bash
 npm i @capacitor/core @capacitor/android
 npm i -D @capacitor/cli
-npx cap init "fly-protocol" app.example.fly --web-dir=dist
+npx cap init "nysiris" app.example.nysiris --web-dir=dist
 npm run build && npx cap add android && npx cap sync
 ```
 
@@ -251,8 +251,8 @@ npm run build && npx cap add android && npx cap sync
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.example.fly',
-  appName: 'fly-protocol',
+  appId: 'app.example.nysiris',
+  appName: 'nysiris',
   webDir: 'dist',
   android: {
     allowMixedContent: false,          // never allow cleartext

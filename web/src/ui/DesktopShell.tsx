@@ -48,7 +48,7 @@ export function TopBar({
 }) {
   return (
     <div className="fly-topbar" role="banner">
-      <span className="fly-wordmark">fly-protocol</span>
+      <span className="fly-wordmark">nysiris</span>
       <nav aria-label="Primary" className="fly-topbar-nav">
         {VIEW_ORDER.map((id) => (
           <button

@@ -1,4 +1,4 @@
-# Shared helpers for the fly-protocol build scripts.
+# Shared helpers for the nysiris build scripts.
 # Sourced by build.sh; not meant to be run directly.
 # shellcheck shell=bash
 

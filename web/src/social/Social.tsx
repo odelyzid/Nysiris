@@ -1,8 +1,8 @@
 /**
- * fly-social community UI: identity, tabbed timeline / private messages /
+ * nysiris community UI: identity, tabbed timeline / private messages /
  * about views, composer, profiles, sealed DMs.
  *
- * Talks to a fly-social provider exclusively through `fetchNym` (one shared
+ * Talks to a nysiris-social provider exclusively through `fetchNym` (one shared
  * client, requests serialized — the SDK cannot correlate concurrent calls).
  * Polls the feed and the DM dead-drop on chained, non-overlapping timeouts;
  * DM dead-drop; the server keeps no follows, likes, or read receipts. The

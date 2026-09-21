@@ -140,7 +140,7 @@ sequenceDiagram
 ## 1.4 Repository layout (this project)
 
 ```
-fly-protocol/
+nysiris/
 ├── Cargo.toml                     workspace
 ├── crates/
 │   └── sphinx-core/               reference Sphinx (builds, tested, not for prod)

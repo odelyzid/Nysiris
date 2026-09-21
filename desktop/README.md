@@ -9,20 +9,20 @@ targets.
 
 ```sh
 ./build.sh web          # produce web/dist (needs npm + network)
-./build.sh desktop      # -> dist/fly-protocol_0.1.0_amd64.deb
-sudo apt install ./dist/fly-protocol_0.1.0_amd64.deb
-fly-protocol            # or launch from the application menu
+./build.sh desktop      # -> dist/nysiris_0.1.0_amd64.deb
+sudo apt install ./dist/nysiris_0.1.0_amd64.deb
+nysiris            # or launch from the application menu
 ```
 
 What the package contains:
 
 | Path | Purpose |
 |---|---|
-| `/usr/bin/fly-protocol` | wrapper that runs the launcher against the bundled web root |
-| `/usr/lib/fly-protocol/fly-protocol-launcher` | dependency-free std-only static server + browser launcher |
-| `/usr/lib/fly-protocol/web/` | the built PWA |
-| `/usr/share/applications/fly-protocol.desktop` | menu entry |
-| `/usr/share/icons/hicolor/scalable/apps/fly-protocol.svg` | icon |
+| `/usr/bin/nysiris` | wrapper that runs the launcher against the bundled web root |
+| `/usr/lib/nysiris/nysiris-launcher` | dependency-free std-only static server + browser launcher |
+| `/usr/lib/nysiris/web/` | the built PWA |
+| `/usr/share/applications/nysiris.desktop` | menu entry |
+| `/usr/share/icons/hicolor/scalable/apps/nysiris.svg` | icon |
 
 The launcher binds **127.0.0.1 only**, sets `COOP`/`COEP` for cross-origin
 isolation, refuses path traversal, and opens a Chromium `--app` window. It
@@ -33,13 +33,13 @@ back to `xdg-open`.
 ## Running without packaging
 
 ```sh
-cargo run -p fly-protocol-launcher -- --root web/dist
+cargo run -p nysiris-launcher -- --root web/dist
 # serve only, no browser window (useful for tests):
-cargo run -p fly-protocol-launcher -- --root web/dist --no-open --port 8737
+cargo run -p nysiris-launcher -- --root web/dist --no-open --port 8737
 ```
 
 The launcher runs the app in a **dedicated Chrome profile**
-(`$XDG_DATA_HOME/fly-protocol/chrome-profile`) with `--disable-extensions`. That
+(`$XDG_DATA_HOME/nysiris/chrome-profile`) with `--disable-extensions`. That
 matters: browser extensions (wallets, content blockers) can block the app's own
 JavaScript (`ERR_BLOCKED_BY_CLIENT`, a silent blank window) and inject
 `window.ethereum`/`window.web3`. Use `--profile DIR` to override and

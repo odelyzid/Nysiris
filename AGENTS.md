@@ -4,7 +4,7 @@ Guidance for AI coding agents working in this repository.
 
 ## What this is
 
-`fly-protocol` routes traffic through the **Nym mixnet** using the **Sphinx
+`nysiris` routes traffic through the **Nym mixnet** using the **Sphinx
 packet format**: a React + Vite browser PWA (`web/`), community/DM services
 over the mixnet (`services/`), a Linux desktop shell (`desktop/`), and a
 reference Sphinx implementation (`crates/sphinx-core`). Live-network delivery
@@ -43,8 +43,14 @@ reference Sphinx implementation (`crates/sphinx-core`). Live-network delivery
   crate, just systemd + example config). Excluded from the workspace because
   of the heavy `nym-sdk` toolchain — never add them to `workspace.members`.
 - `web/`: React PWA (`src/`), `test/` (node unit tests), `android/`,
-  `extension/` (MV3, desktop-only). `docs/` is numbered `01–11` by
+  `extension/` (MV3, desktop-only). `docs/` is numbered `01–12` by
   deliverable. `scripts/cmd-*.sh` implement `./build.sh` subcommands.
+- Naming: the product is **Nysiris** (`nysiris-*` packages, binaries,
+  install paths). These historical identifiers are frozen for compat — do
+  not "fix" them: `fly-*` CSS classes, `fly.*` localStorage keys (identity
+  and contacts live there; renaming loses user data), and the
+  `fly-social-v1/*` / `fly-portal-v1/*` signature domains (renaming
+  invalidates existing signed posts, invites, and DMs).
 
 ## Verify
 

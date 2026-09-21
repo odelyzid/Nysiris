@@ -1,4 +1,4 @@
-//! fly-social provider: metadata-minimal microblog + DM dead-drop hidden service.
+//! nysiris-social provider: metadata-minimal microblog + DM dead-drop hidden service.
 //!
 //! ```sh
 //! SP_DATA_DIR=./sp-storage SOCIAL_DB=./social.sqlite cargo run --release
@@ -68,7 +68,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = builder.build()?.connect_to_mixnet().await?;
 
     let address = *client.nym_address();
-    println!("\nfly-social Nym address:\n{address}\n");
+    println!("\nnysiris-social Nym address:\n{address}\n");
     let _ = std::fs::write("nym-address.txt", address.to_string());
 
     loop {

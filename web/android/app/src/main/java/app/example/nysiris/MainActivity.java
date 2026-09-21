@@ -1,4 +1,4 @@
-package app.example.fly;
+package app.example.nysiris;
 
 import com.getcapacitor.BridgeActivity;
 

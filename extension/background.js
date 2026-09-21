@@ -41,7 +41,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 void (async () => {
   const { routedHosts } = await getConfig();
-  console.info('[fly-protocol] routed hosts:', routedHosts.join(', '));
+  console.info('[nysiris] routed hosts:', routedHosts.join(', '));
   // TODO: ensure the offscreen document that owns the tunnel is alive:
   //   await chrome.offscreen.createDocument({ url: 'offscreen.html', ... });
 })();

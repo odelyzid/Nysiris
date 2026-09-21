@@ -568,7 +568,7 @@ export function App() {
         />
         <div className="fly-main">
           <header className="fly-classic-header">
-            <h1 style={{ margin: '8px 0 0', fontSize: 22 }}>Fly</h1>
+            <h1 style={{ margin: '8px 0 0', fontSize: 22 }}>Nysiris</h1>
             <p className="fly-muted" style={{ margin: '4px 0 8px' }}>
               Browse and chat over the private network.
             </p>

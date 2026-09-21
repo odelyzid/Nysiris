@@ -1,4 +1,4 @@
-# 9. fly-social: Metadata-Minimal Microblog + Encrypted DMs
+# 9. nysiris-social: Metadata-Minimal Microblog + Encrypted DMs
 
 > A complete hidden-service application built on `08-hidden-services.md`:
 > `services/social/` (Rust provider) + `web/src/social/` (timeline UI).
@@ -158,7 +158,7 @@ cp -r ./sp-storage ./social.sqlite /secure/backup/
 chmod 600 /secure/backup/social.sqlite
 ```
 
-Browser: open the app, find **fly-social**, paste the provider's address, and
+Browser: open the app, find **Community**, paste the provider's address, and
 the timeline loads. Identity keys live in the browser's localStorage —
 app-scoped, not hardware-backed; import/export the private key hex to move
 devices. Poll interval is 30 s for feed + DMs.
