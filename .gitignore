@@ -1,0 +1,41 @@
+# Rust
+/target
+**/target
+
+# Node / web
+web/node_modules
+web/dist
+web/.vite
+
+# Android / Gradle
+web/android/.gradle
+web/android/app/build
+web/android/build
+android/.gradle
+*.apk
+*.aab
+*.keystore
+
+# Desktop / packaging
+dist/
+desktop/build/
+desktop/electron/web/
+desktop/electron/dist/
+desktop/electron/node_modules/
+
+# TWA
+twa-manifest.json
+*.idsig
+
+# Tooling
+.DS_Store
+*.log
+.env
+
+# Service runtime state (keys, sqlite data, printed addresses).
+# Created by scripts/run-provider.sh on first start; never commit.
+services/*/sp-storage/
+services/*/*.sqlite
+services/*/*.sqlite-shm
+services/*/*.sqlite-wal
+services/*/nym-address.txt

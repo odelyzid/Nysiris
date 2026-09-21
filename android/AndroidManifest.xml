@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ILLUSTRATIVE Android manifest for the Capacitor shell.
+
+  `npx cap add android` generates the real file at
+  android/app/src/main/AndroidManifest.xml. Merge the three settings that
+  matter for a mixnet client:
+
+    1. INTERNET permission (required).
+    2. android:usesCleartextTraffic="false"  -> never allow plaintext HTTP.
+    3. android:networkSecurityConfig="@xml/network_security_config"
+
+  If you add a long-lived tunnel, add a foreground service with a visible
+  notification; Android will otherwise suspend it in the background.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Add only if you run a persistent foreground tunnel:
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    -->
+
+    <application
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:label="@string/app_name"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Verified App Links, if services deep-link into the app:
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="your.app" />
+            </intent-filter>
+            -->
+        </activity>
+    </application>
+</manifest>

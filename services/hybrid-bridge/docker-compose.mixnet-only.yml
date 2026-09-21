@@ -1,0 +1,76 @@
+# Hybrid B-private: real HTTP web service behind the mixnet with ZERO clearnet.
+#
+#   mixnet clients ──▶ bridge (outbound WSS only) ──▶ app (internal network only)
+#   clearnet users ──▶ NOTHING (no Caddy, no published ports)
+#
+# Differences from docker-compose.yml:
+#  - no `caddy` service at all
+#  - NO `ports:` anywhere (nothing published to host / LAN / internet)
+#  - single `internal: true` network (containers cannot even route outbound
+#    except via the bridge's own gateway WSS; Docker blocks external egress
+#    on internal networks — bridge needs egress, so see note below)
+#  - app filesystem read-only, no new privileges
+#
+# NOTE on `internal: true`: a fully internal network blocks the bridge's
+# outbound WSS to its Nym gateway. Two supported layouts:
+#  1. DEFAULT (this file): isolated backend network + bridge on BOTH networks
+#     (backend isolated, bridge has egress). No inbound ports anywhere.
+#  2. PARANOID: run everything behind a host firewall with default-deny inbound
+#     (see README section "No-clearnet firewall").
+#
+# Usage:
+#   docker compose -f docker-compose.mixnet-only.yml up --build
+#   docker compose -f docker-compose.mixnet-only.yml logs bridge  # Nym address
+services:
+  app:
+    image: nginx:alpine
+    volumes:
+      - ./public:/usr/share/nginx/html:ro
+      - ./nginx.private.conf:/etc/nginx/conf.d/default.conf:ro
+    expose:
+      - "80"
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    # NO ports: not reachable from host, LAN, or internet.
+
+  bridge:
+    build:
+      context: ../..
+      dockerfile: services/hybrid-bridge/Dockerfile
+    environment:
+      SP_DATA_DIR: /data
+      BACKEND_URL: http://app:80
+      # SP_GATEWAY: "<gateway-identity-key>"  # pin for stable address
+    volumes:
+      - bridge-data:/data
+    networks:
+      - backend
+      - egress
+    depends_on:
+      - app
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    # NO ports: the bridge only dials OUT to its Nym gateway over WSS.
+    # Nothing can dial IN — there is no listener.
+
+networks:
+  # app lives here. No external route. Only the bridge can reach it.
+  backend:
+    internal: true
+  # bridge egress to Nym gateways / nym-api. Outbound only; no published ports.
+  egress:
+
+volumes:
+  bridge-data:

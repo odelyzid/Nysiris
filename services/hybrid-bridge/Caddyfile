@@ -1,0 +1,13 @@
+# Clearnet front door. The mixnet front door is the `bridge` service.
+#
+# For local testing use `:80` (auto). Replace with your domain for real TLS.
+:80 {
+	encode zstd gzip
+	reverse_proxy app:80
+}
+
+# Production:
+# example.com {
+#     encode zstd gzip
+#     reverse_proxy app:80
+# }

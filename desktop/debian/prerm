@@ -1,0 +1,4 @@
+#!/bin/sh
+# Nothing persistent is created outside the package tree, so removal is a no-op.
+set -e
+exit 0

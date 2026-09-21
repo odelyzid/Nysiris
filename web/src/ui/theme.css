@@ -1,0 +1,501 @@
+/* Calm privacy-app theme: generous spacing, AA contrast, mobile-first.
+   Respects prefers-color-scheme and prefers-reduced-motion. Big touch
+   targets for the PWA / TWA / Capacitor paths. */
+
+:root {
+  --fly-bg: #f7f5f2;
+  --fly-surface: #ffffff;
+  --fly-ink: #1f2937;
+  --fly-muted: #6b7280;
+  --fly-line: #e5e7eb;
+  --fly-accent: #0f766e;
+  --fly-accent-ink: #ffffff;
+  --fly-good: #0a7a4a;
+  --fly-warn: #b45309;
+  --fly-bad: #b91c1c;
+  --fly-radius: 12px;
+  --fly-gap: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fly-bg: #111827;
+    --fly-surface: #1f2937;
+    --fly-ink: #f3f4f6;
+    --fly-muted: #9ca3af;
+    --fly-line: #374151;
+    --fly-accent: #2dd4bf;
+    --fly-accent-ink: #042f2e;
+  }
+}
+
+.fly-shell {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 16px 16px 48px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--fly-bg);
+  color: var(--fly-ink);
+  min-height: 100vh;
+}
+
+.fly-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 10px 4px;
+  background: var(--fly-bg);
+  border-bottom: 1px solid var(--fly-line);
+  flex-wrap: wrap;
+}
+
+.fly-nav button[aria-current="page"] {
+  font-weight: 700;
+}
+
+.fly-nav-btn {
+  font-size: 15px;
+  padding: 10px 14px;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fly-ink);
+  cursor: pointer;
+}
+
+.fly-nav-btn[aria-current="page"] {
+  background: var(--fly-surface);
+  border-color: var(--fly-line);
+}
+
+.fly-card {
+  background: var(--fly-surface);
+  border: 1px solid var(--fly-line);
+  border-radius: var(--fly-radius);
+  padding: 20px;
+  margin: 16px 0;
+}
+
+.fly-card h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.fly-card p {
+  color: var(--fly-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.fly-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.fly-input {
+  flex: 1;
+  min-width: 200px;
+  font-size: 16px;
+  padding: 12px;
+  min-height: 44px;
+  border: 1px solid var(--fly-line);
+  border-radius: 8px;
+  background: var(--fly-surface);
+  color: var(--fly-ink);
+}
+
+.fly-btn {
+  font-size: 15px;
+  padding: 12px 18px;
+  min-height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--fly-line);
+  background: var(--fly-surface);
+  color: var(--fly-ink);
+  cursor: pointer;
+}
+
+.fly-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fly-btn-primary {
+  background: var(--fly-accent);
+  border-color: var(--fly-accent);
+  color: var(--fly-accent-ink);
+  font-weight: 700;
+}
+
+.fly-status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  padding: 8px 14px;
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--fly-line);
+  background: var(--fly-surface);
+  color: var(--fly-ink);
+  cursor: pointer;
+}
+
+.fly-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.fly-chat {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 720px) {
+  .fly-chat {
+    grid-template-columns: 240px 1fr;
+    align-items: start;
+  }
+}
+
+.fly-conv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.fly-conv-list button {
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  min-height: 44px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fly-ink);
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.fly-conv-list button[aria-current="true"] {
+  background: var(--fly-surface);
+  border-color: var(--fly-line);
+}
+
+.fly-tabbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.fly-tab {
+  font-size: 14px;
+  padding: 8px 14px;
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fly-muted);
+  cursor: pointer;
+}
+
+.fly-tab[aria-selected="true"] {
+  font-weight: 700;
+  background: var(--fly-surface);
+  border-color: var(--fly-line);
+  color: var(--fly-ink);
+}
+
+.fly-qr {
+  max-width: 220px;
+  border: 1px solid var(--fly-line);
+  border-radius: 8px;
+}
+
+.fly-error {
+  border: 1px solid var(--fly-line);
+  border-left: 4px solid var(--fly-bad);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: var(--fly-surface);
+}
+
+.fly-muted {
+  color: var(--fly-muted);
+  font-size: 14px;
+}
+
+.fly-steps {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  font-size: 15px;
+}
+
+/* Desktop three-zone shell (roster + conversation + context), AIM/Jabber-style.
+   Narrow screens are unaffected: the new chrome is display:none below
+   1024px, where the classic header + nav take over again. */
+.fly-topbar,
+.fly-roster,
+.fly-context {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  /* Full-viewport app grid: the shell owns the window height, the top bar
+     is a fixed row, and each zone scrolls independently. */
+  .fly-shell {
+    max-width: none;
+    padding: 0 20px;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .fly-classic-header,
+  .fly-nav {
+    display: none;
+  }
+
+  /* -- top bar: wordmark, views, status, URI bar, panel toggles -- */
+  .fly-topbar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 4px;
+    background: var(--fly-bg);
+    border-bottom: 1px solid var(--fly-line);
+  }
+
+  .fly-wordmark {
+    font-weight: 800;
+    font-size: 17px;
+    white-space: nowrap;
+  }
+
+  .fly-topbar-nav {
+    display: flex;
+    gap: 2px;
+  }
+
+  .fly-topbar .fly-nav-btn {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+
+  .fly-topbar .fly-status {
+    margin-left: 0;
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .fly-topbar-spacer {
+    flex: 1;
+  }
+
+  .fly-topbar .fly-input {
+    flex: none;
+    width: 260px;
+    min-width: 0;
+    min-height: 36px;
+    padding: 8px 10px;
+    font-size: 14px;
+  }
+
+  .fly-topbar .fly-btn {
+    min-height: 36px;
+    padding: 8px 14px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  /* -- three zones: stretched to the full shell height, each scrolling -- */
+  .fly-desktop {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 264px minmax(0, 1fr) 288px;
+  }
+
+  .fly-desktop[data-context="closed"] {
+    grid-template-columns: 264px minmax(0, 1fr);
+  }
+
+  .fly-main {
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 20px 32px;
+  }
+
+  .fly-main > main {
+    max-width: 800px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  /* Slightly denser cards on wide screens: less whitespace, more signal. */
+  .fly-main .fly-card {
+    padding: 16px;
+    margin: 12px 0;
+  }
+
+  /* -- roster: dense buddy-list column -- */
+  .fly-roster {
+    display: block;
+    border-right: 1px solid var(--fly-line);
+    padding: 12px 12px 24px 0;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .fly-roster h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--fly-muted);
+    margin: 14px 0 6px;
+  }
+
+  .fly-roster section:first-child h3 {
+    margin-top: 0;
+  }
+
+  .fly-roster ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .fly-roster li button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--fly-ink);
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .fly-roster li button:hover {
+    background: var(--fly-surface);
+  }
+
+  .fly-roster li button[aria-current="true"] {
+    background: var(--fly-surface);
+    border-color: var(--fly-line);
+  }
+
+  .fly-roster .fly-sub {
+    display: block;
+    font-size: 12px;
+    color: var(--fly-muted);
+  }
+
+  .fly-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  .fly-badge {
+    margin-left: auto;
+    flex: none;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--fly-accent);
+    color: var(--fly-accent-ink);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
+  }
+
+  .fly-roster-self {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--fly-line);
+  }
+
+  /* -- context: collapsible info column -- */
+  .fly-context {
+    display: block;
+    border-left: 1px solid var(--fly-line);
+    padding: 12px 0 24px 12px;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .fly-context-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .fly-context-head h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--fly-muted);
+    margin: 0;
+  }
+
+  .fly-context-head .fly-btn {
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: 13px;
+  }
+
+  .fly-info {
+    display: grid;
+    gap: 10px;
+    margin: 10px 0 0;
+    font-size: 14px;
+  }
+
+  .fly-info dt {
+    font-size: 12px;
+    color: var(--fly-muted);
+  }
+
+  .fly-info dd {
+    margin: 2px 0 0;
+    word-break: break-all;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

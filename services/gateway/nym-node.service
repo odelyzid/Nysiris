@@ -1,0 +1,20 @@
+[Unit]
+Description=Nym Node (entry-gateway)
+Documentation=https://nym.com/docs/operators/nodes/nym-node/setup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Create a dedicated user: sudo useradd --system --home /var/lib/nym --shell /usr/sbin/nologin nym
+User=nym
+Group=nym
+LimitNOFILE=65536
+WorkingDirectory=/var/lib/nym
+# The T&Cs flag must be present on every run; it is not stored in config.toml.
+ExecStart=/usr/local/bin/nym-node run --id my-gateway --mode entry-gateway --accept-operator-terms-and-conditions
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

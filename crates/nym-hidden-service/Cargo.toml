@@ -1,0 +1,22 @@
+[package]
+name = "nym-hidden-service"
+version = "0.1.0"
+# Explicit (not workspace-inherited) so the crate also builds standalone
+# inside service Docker images, where the workspace root is not copied.
+edition = "2021"
+license = "Apache-2.0"
+description = "Hidden-service abstraction over Nym mixnet messaging: nym:// URIs, HTTP-like request/response envelopes, local petnames, chunking, and a server dispatch harness (docs/08-hidden-services.md)."
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+bs58 = "0.5"
+hex = "0.4"
+ed25519-dalek = "3"
+# Open-proxy guards: every served request is validated before dispatch.
+bridge-guard = { path = "../bridge-guard" }
+
+[dev-dependencies]
+ed25519-dalek = "3"

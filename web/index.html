@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d12" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>fly-protocol · Nym mixnet client</title>
+
+    <!--
+      CSP for a Nym browser client.
+
+      * worker-src 'self' blob:  -> mix-tunnel starts its worker from an object URL.
+      * script-src 'wasm-unsafe-eval' -> REQUIRED: the Nym client compiles
+                                    WebAssembly. Chrome/Firefox refuse WASM
+                                    compilation under a bare script-src 'self'
+                                    and the tunnel silently hangs. This grants
+                                    WASM compilation only, not eval().
+      * connect-src wss:         -> gateway hostnames are chosen at runtime from
+                                    the topology, so we cannot enumerate them.
+      * https://validator.nymtech.net -> plain-HTTPS topology bootstrap that runs
+                                    before any mixnet traffic exists.
+      * https://api.ipify.org    -> the "prove tunnel" demo makes one clearnet and
+                                    one mixnet request to this host and compares
+                                    the source IP. If you change the proof host,
+                                    add it here too (clearnet fetches are subject
+                                    to connect-src; mixnet fetches are not, because
+                                    they travel over the gateway WSS).
+      * 'unsafe-inline' for style is for the minimal inline styles in this demo;
+        remove it if you use a CSS build.
+
+      NOTE: if the server also sends a CSP header, the two policies intersect and
+      the narrower one wins. Any server-sent script-src MUST also include
+      'wasm-unsafe-eval' or the client will not start.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' wss: https://validator.nymtech.net https://api.ipify.org; img-src 'self' data:; base-uri 'self'"
+    />
+    <!--
+      NOTE: `frame-ancestors` cannot be set via <meta> and is therefore omitted
+      here. The desktop launcher sends `X-Frame-Options: DENY` as a header
+      instead; a web deployment should set the header at the server.
+    -->
+  </head>
+  <body style="background-color: #1b1b1b">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+[package]
+name = "echo-provider"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Pure-mixnet Nym service provider (messaging API)."
+
+# Standalone: excluded from the root workspace so the heavy nym-sdk build does
+# not affect `cargo test -p sphinx-core`.
+[dependencies]
+nym-sdk = "1.21"
+nym-bin-common = { version = "1.22.0", features = ["basic_tracing"] }
+tokio = { version = "1", features = ["full"] }

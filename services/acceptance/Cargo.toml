@@ -1,0 +1,12 @@
+[package]
+name = "acceptance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Live-network acceptance test: send to self, receive, SURB reply, receive."
+
+# Standalone: depends on the Nym SDK and is excluded from the fast workspace.
+[dependencies]
+nym-sdk = "1.21"
+nym-bin-common = { version = "1.22.0", features = ["basic_tracing"] }
+tokio = { version = "1", features = ["full"] }

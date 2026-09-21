@@ -1,0 +1,38 @@
+{
+  "name": "fly-protocol-desktop",
+  "private": true,
+  "version": "0.1.18",
+  "description": "Electron shell for the fly-protocol Nym mixnet client (alternative to the system-Chromium .deb).",
+  "homepage": "https://github.com/tribewarez/fly-protocol",
+  "author": {
+    "name": "fly-protocol",
+    "email": "noreply@example.com"
+  },
+  "license": "Apache-2.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --linux deb AppImage"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "app.example.fly",
+    "productName": "fly-protocol",
+    "files": [
+      "main.js",
+      "web/**/*"
+    ],
+    "linux": {
+      "target": [
+        "deb",
+        "AppImage"
+      ],
+      "category": "Network",
+      "maintainer": "fly-protocol <noreply@example.com>",
+      "icon": "build/icon.png"
+    }
+  }
+}

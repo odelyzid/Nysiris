@@ -1,0 +1,18 @@
+Package: fly-protocol
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: @ARCH@
+Installed-Size: @SIZE@
+Maintainer: fly-protocol <noreply@example.com>
+Depends: libc6
+Recommends: chromium | chromium-browser | google-chrome-stable | brave-browser
+Homepage: https://github.com/tribewarez/fly-protocol
+Description: Nym mixnet browser client
+ A desktop shell for the fly-protocol PWA. It serves the bundled web app on
+ loopback and opens it in a Chromium-based browser's app window, routing
+ requests through the Nym mixnet (Sphinx packets over the 5-hop path).
+ .
+ Only 127.0.0.1 is bound, and the file server refuses path traversal. The
+ mixnet client is the same audited Nym WASM used by the browser build; this
+ package does not bundle a browser, it uses the system one.

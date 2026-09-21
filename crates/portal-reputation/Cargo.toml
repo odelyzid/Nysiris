@@ -1,0 +1,15 @@
+[package]
+name = "portal-reputation"
+version = "0.1.0"
+# Explicit (not workspace-inherited) so the crate also builds standalone
+# inside service Docker images, where the workspace root is not copied.
+edition = "2021"
+license = "Apache-2.0"
+description = "Spam/Sybil resistance primitives: client-side proof-of-work, local reputation scores, provider rate limits (docs/10-portal.md)."
+publish = false
+
+[dependencies]
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"

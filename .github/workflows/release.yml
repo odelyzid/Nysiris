@@ -1,0 +1,84 @@
+name: Release
+
+# Cut a release by tagging: `./build.sh bump <version> && git push origin v<version>`
+# (VERSION file is the single source of truth; build.sh exports it as APP_VERSION.)
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Checks (must pass)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: ./build.sh check
+
+  linux-deb:
+    name: Linux .deb
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: ./build.sh desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: dist/*.deb
+
+  windows-zip:
+    name: Windows zip (MSYS2)
+    needs: check
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-nodejs
+            git
+            zip
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - run: ./build.sh windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: dist/*.zip
+
+  publish:
+    name: Publish GitHub release
+    needs: [linux-deb, windows-zip]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - run: sha256sum *.deb *.zip > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.deb
+            *.zip
+            SHA256SUMS.txt
+          fail_on_unmatched_files: true

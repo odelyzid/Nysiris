@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Lint, test, and verify docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      # fmt + clippy (-D warnings) + Rust tests + web unit tests + JSON + doc links.
+      - name: Run checks
+        run: ./build.sh check
+
+  web-build:
+    name: Browser build (best effort)
+    runs-on: ubuntu-latest
+    # The @nymproject packages are large and versioned independently of this
+    # repo; keep this advisory so a package-registry issue does not mask the
+    # deterministic Rust/doc checks above.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install and build
+        run: ./build.sh web
+
+  android:
+    name: Android toolchain probe
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # Expects a bubblewrap twa-manifest.json or a Capacitor web/android project;
+      # reports availability without failing the pipeline when absent.
+      - name: Probe Android build
+        run: ./build.sh android

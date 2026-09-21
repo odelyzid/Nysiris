@@ -1,0 +1,24 @@
+[package]
+name = "fly-social"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Metadata-minimal microblog + DM dead-drop hidden service (docs/09-social.md)."
+
+# Standalone: excluded from the root workspace (heavy nym-sdk toolchain).
+[dependencies]
+nym-sdk = "1.21"
+nym-bin-common = { version = "1.22.0", features = ["basic_tracing"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+hex = "0.4"
+ed25519-dalek = "3"
+rand = "0.8"
+portal-reputation = { path = "../../crates/portal-reputation" }
+# rusqlite 0.32 uses libsqlite3-sys 0.30, the same line nym-sdk pulls in via
+# sqlx — only one crate may link the native sqlite3 library, so the versions
+# must unify. Do NOT upgrade past 0.32 without checking sqlx's sys version.
+rusqlite = { version = "0.32", features = ["bundled"] }
+nym-hidden-service = { path = "../../crates/nym-hidden-service" }

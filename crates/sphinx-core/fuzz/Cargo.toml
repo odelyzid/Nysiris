@@ -1,0 +1,19 @@
+[package]
+name = "sphinx-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+sphinx-core = { path = ".." }
+
+[[bin]]
+name = "parse_packet"
+path = "fuzz_targets/parse_packet.rs"
+test = false
+doc = false
+bench = false

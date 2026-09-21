@@ -1,0 +1,35 @@
+[package]
+name = "sphinx-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Reference implementation of the Nym Sphinx packet format. Educational / test-vector use only."
+publish = false
+
+[dependencies]
+# Curve25519 Diffie-Hellman + per-hop blinding.
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+# HKDF-SHA256 for shared-secret expansion.
+hkdf = "0.12"
+hmac = "0.12"
+sha2 = "0.10"
+# AES-128-CTR keystream generator for the Sphinx header (matches nymsphinx's crypto module).
+aes = "0.8"
+ctr = "0.9"
+# Lioness wide-block cipher: BLAKE2b + ChaCha (matches nymsphinx's payload encryption).
+chacha = "0.3"
+blake2 = "0.8"
+lioness = "0.1"
+rand = "0.8"
+zeroize = { version = "1", features = ["zeroize_derive"] }
+thiserror = "2"
+# Base58 for Nym address <-> bytes conversion.
+bs58 = "0.5"
+
+[dev-dependencies]
+hex = "0.4"
+
+# `getrandom` (via rand) needs the JS backend when targeting wasm32-unknown-unknown.
+# Scoped to that target so native builds are unaffected.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }

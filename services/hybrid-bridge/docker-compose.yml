@@ -1,0 +1,46 @@
+# Hybrid hosting: clearnet via Caddy + mixnet via the Nym bridge.
+#
+#   clearnet users  -> caddy :443 -> app
+#   mixnet clients  -> bridge     -> app   (no inbound ports on the bridge)
+#
+# Replace `example.com` and your backend as needed. `docker compose up --build`.
+services:
+  app:
+    image: nginx:alpine
+    volumes:
+      - ./public:/usr/share/nginx/html:ro
+    expose:
+      - "80"
+
+  bridge:
+    build:
+      context: ../..
+      dockerfile: services/hybrid-bridge/Dockerfile
+    environment:
+      SP_DATA_DIR: /data
+      BACKEND_URL: http://app:80
+      # SP_GATEWAY: "<gateway-identity-key>"   # optional: pin for stable address
+    volumes:
+      - bridge-data:/data
+    depends_on:
+      - app
+    restart: unless-stopped
+    # Deliberately no `ports:` — the bridge only dials out to its gateway.
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  bridge-data:
+  caddy-data:
+  caddy-config:

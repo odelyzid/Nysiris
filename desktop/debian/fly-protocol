@@ -1,0 +1,8 @@
+#!/bin/sh
+# Launch the fly-protocol Nym mixnet client.
+#
+# Serves the bundled PWA on loopback and opens it in a Chromium app window.
+# Extra arguments are forwarded to the launcher (see --help).
+exec /usr/lib/fly-protocol/fly-protocol-launcher \
+    --root /usr/lib/fly-protocol/web \
+    "$@"

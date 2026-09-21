@@ -1,0 +1,15 @@
+[package]
+name = "bridge-guard"
+version = "0.1.0"
+# Explicit (not workspace-inherited) so the crate also builds standalone inside
+# the hybrid-bridge Docker image, where the workspace root is not copied.
+edition = "2021"
+license = "Apache-2.0"
+description = "Open-proxy guards for the Nym mixnet <-> HTTP bridge (docs/05-security.md 5.10)."
+publish = false
+
+# Intentionally dependency-free: the guards compile and test in the fast
+# `cargo test --workspace` loop, without the heavy nym-sdk toolchain.
+[dependencies]
+
+[dev-dependencies]

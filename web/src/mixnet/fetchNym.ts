@@ -1,0 +1,183 @@
+/**
+ * `fetchNym()` — fetch from a Nym hidden service the way `fetch` works for the
+ * clearnet: one call, one response.
+ *
+ * ```ts
+ * const res = await fetchNym(recipient, { method: 'GET', path: '/' });
+ * res.status;            // 200
+ * res.headers;           // { 'content-type': 'text/html' }
+ * new TextDecoder().decode(res.body);  // Uint8Array -> text
+ * ```
+ *
+ * How it works: the request is sent as a hidden-service envelope over the
+ * pure-mixnet messaging path (`rawSend`), and the first valid response
+ * envelope that arrives afterwards is the reply (the bridge answers each
+ * request with exactly one SURB reply).
+ *
+ * Requests share one persistent `NymAddressClient` and are **serialized by a
+ * mutex**: the browser SDK (1.4.1) has no sender tags, so correlation by
+ * anything stronger is unavailable, and booting a fresh WASM client +
+ * gateway handshake per request (as earlier revisions did) piles up
+ * overlapping clients on every poll until replies time out. The client is
+ * kept across calls and only rebooted after a boot failure or an explicit
+ * `stopFetchNymClient()`.
+ *
+ * Security: the envelope is validated before sending (`hiddenService.mjs`),
+ * bodies are capped at 64 KiB, and the wait has a deadline.
+ */
+import { NymAddressClient } from './messaging';
+import { decodeResponse, encodeRequest } from './hiddenService.mjs';
+
+const NYM_API_URL = 'https://validator.nymtech.net/api';
+
+export interface FetchNymRequest {
+  method?: string;
+  path: string;
+  headers?: Record<string, string>;
+  /** Raw body bytes; encoded to base64 inside the envelope. */
+  body?: Uint8Array;
+}
+
+export interface FetchNymResponse {
+  status: number;
+  headers: Record<string, string>;
+  /** Raw body bytes (base64-decoded from the envelope). */
+  body: Uint8Array;
+  error: string | null;
+}
+
+export interface FetchNymOptions {
+  nymApiUrl?: string;
+  /** How long to wait for the SURB reply. Default 90 s (mixnet latency). */
+  timeoutMs?: number;
+}
+
+export function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  // eslint-disable-next-line no-undef
+  return typeof btoa === 'function' ? btoa(binary) : Buffer.from(binary, 'binary').toString('base64');
+}
+
+export function fromBase64(b64: string): Uint8Array {
+  if (!b64) return new Uint8Array(0);
+  // eslint-disable-next-line no-undef
+  const binary = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+/** Persistent client shared by all `fetchNym` calls (boot promise). */
+let sharedClient: Promise<NymAddressClient> | null = null;
+let sharedApiUrl = '';
+
+/**
+ * Resolver for the request currently awaiting its SURB reply. At most one
+ * exists at any time: calls are serialized by `mutex` below, so the first
+ * valid envelope is always the current request's reply.
+ */
+let currentWaiter: ((text: string) => void) | null = null;
+
+/** Start the shared client once; a failed boot is forgotten so the next call retries. */
+function ensureClient(nymApiUrl: string): Promise<NymAddressClient> {
+  if (!sharedClient || sharedApiUrl !== nymApiUrl) {
+    sharedApiUrl = nymApiUrl;
+    const boot = (async () => {
+      const client = new NymAddressClient();
+      await client.start(
+        nymApiUrl,
+        (msg) => {
+          // Anything else (echoes of our own cover, unrelated chatter) is ignored.
+          try {
+            decodeResponse(msg.text);
+          } catch {
+            return;
+          }
+          currentWaiter?.(msg.text);
+        },
+        () => {},
+      );
+      return client;
+    })();
+    sharedClient = boot;
+    boot.catch(() => {
+      if (sharedClient === boot) sharedClient = null;
+    });
+  }
+  return sharedClient;
+}
+
+/** Serializes requests: the SDK cannot correlate concurrent calls. */
+let mutex: Promise<void> = Promise.resolve();
+
+export async function fetchNym(
+  recipient: string,
+  request: FetchNymRequest,
+  options?: FetchNymOptions,
+): Promise<FetchNymResponse> {
+  const task = mutex.then(() => runOnce(recipient, request, options));
+  // The chain must survive individual failures so later calls still run.
+  mutex = task.then(
+    () => undefined,
+    () => undefined,
+  );
+  return task;
+}
+
+async function runOnce(
+  recipient: string,
+  request: FetchNymRequest,
+  options?: FetchNymOptions,
+): Promise<FetchNymResponse> {
+  const envelope = encodeRequest({
+    method: request.method ?? 'GET',
+    path: request.path,
+    headers: request.headers ?? {},
+    bodyBase64: request.body ? toBase64(request.body) : '',
+  });
+
+  const timeoutMs = options?.timeoutMs ?? 90_000;
+  const client = await ensureClient(options?.nymApiUrl ?? NYM_API_URL);
+
+  const reply = await new Promise<string>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      currentWaiter = null;
+      reject(new Error(`fetchNym timed out after ${timeoutMs} ms waiting for the SURB reply`));
+    }, timeoutMs);
+    currentWaiter = (text: string) => {
+      window.clearTimeout(timer);
+      currentWaiter = null;
+      resolve(text);
+    };
+    client.send(recipient, envelope).catch((err: unknown) => {
+      window.clearTimeout(timer);
+      currentWaiter = null;
+      reject(err);
+    });
+  });
+
+  const parsed = decodeResponse(reply);
+  return {
+    status: parsed.status,
+    headers: parsed.headers,
+    body: fromBase64(parsed.bodyBase64),
+    error: parsed.error,
+  };
+}
+
+/**
+ * Shut down the shared client (e.g. on app unmount). The next `fetchNym`
+ * call boots a fresh one. An in-flight request is left to time out.
+ */
+export async function stopFetchNymClient(): Promise<void> {
+  const boot = sharedClient;
+  sharedClient = null;
+  currentWaiter = null;
+  if (boot) {
+    const client = await boot.catch(() => null);
+    await client?.stop().catch(() => {});
+  }
+}

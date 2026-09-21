@@ -1,0 +1,34 @@
+# nym-node entry-gateway configuration (ABRIDGED TEMPLATE).
+#
+# This is a reduced, illustrative view of
+#   ~/.nym/nym-nodes/<ID>/config/config.toml
+# Field names and sections change between releases. Always generate the real
+# file with `nym-node run --init-only ...` and edit that, rather than copying
+# this verbatim. See the Nym operators guide for the authoritative schema.
+
+[host]
+# Must be the node's real, static, publicly routable IP(s).
+public_ips = ["203.0.113.10"]
+hostname = "gateway.example.com"
+location = "CH"
+
+[mixnet]
+bind_address = "0.0.0.0:1789"
+
+[entry]
+# Client WebSocket API.
+bind_address = "0.0.0.0:9000"
+# If a reverse proxy terminates TLS and forwards to :9000, announce 443 so
+# clients dial wss://gateway.example.com:443.
+# announce_ws_port = 443
+
+[http]
+# Keep the management API off the public internet.
+bind_address = "127.0.0.1:8080"
+
+[verloc]
+bind_address = "0.0.0.0:1790"
+
+# [wireguard]
+# enabled = true
+# bind_address = "0.0.0.0:51822"

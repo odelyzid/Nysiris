@@ -1,0 +1,17 @@
+[package]
+name = "hybrid-bridge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Nym mixnet <-> local HTTP bridge for hybrid clearnet+mixnet hosting."
+
+[dependencies]
+nym-sdk = "1.21"
+nym-bin-common = { version = "1.22.0", features = ["basic_tracing"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+# Open-proxy guards, shared with the fast workspace test loop.
+bridge-guard = { path = "../../crates/bridge-guard" }

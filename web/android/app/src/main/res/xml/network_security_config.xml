@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deny all cleartext traffic. Even if application code accidentally issues a
+  plaintext request, Android refuses it. WSS is TLS and therefore unaffected.
+
+  Referenced from AndroidManifest.xml via
+  android:networkSecurityConfig="@xml/network_security_config".
+  See android/network_security_config.xml for the reference copy.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

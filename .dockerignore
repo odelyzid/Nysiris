@@ -1,0 +1,18 @@
+# Build context is the REPO ROOT (see docker-compose* build.context).
+# Only these paths are used:
+#   services/hybrid-bridge/Cargo.toml + src  (the bridge)
+#   crates/bridge-guard                        (path dependency)
+# Everything else is excluded to keep the build context small.
+.git/
+**/target/
+**/node_modules/
+web/dist/
+dist/
+services/acceptance/
+desktop/
+extension/
+android/
+crates/sphinx-core/
+services/echo-provider/
+services/gateway/
+*.log

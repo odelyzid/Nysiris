@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>fly-protocol</title>
+    <style>
+      body { font: 13px system-ui, sans-serif; width: 300px; padding: 12px; }
+      label { display: block; margin-top: 8px; }
+      input[type='text'] { width: 100%; box-sizing: border-box; }
+      #status { margin-top: 10px; color: #555; }
+    </style>
+  </head>
+  <body>
+    <h3 style="margin: 0 0 6px">fly-protocol</h3>
+    <p id="status">Tunnel state: unknown (desktop only)</p>
+
+    <label>
+      Routed hosts (comma-separated)
+      <input id="hosts" type="text" placeholder="example.com, api.example.com" />
+    </label>
+    <label>
+      <input id="failClosed" type="checkbox" /> Fail closed on direct requests
+    </label>
+    <button id="save" style="margin-top: 10px">Save</button>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
