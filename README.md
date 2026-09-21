@@ -1,5 +1,11 @@
 # Nysiris
 
+> ⚠️ **Experimental / pre-audit.** This repository is under active development
+> and has **not** had an independent security audit. The Sphinx core in
+> `crates/` is a reference implementation, never production crypto. Do not
+> rely on it for high-stakes anonymity yet — see the [threat model](#threat-model-short-version)
+> and [`docs/05-security.md`](docs/05-security.md) for what is and isn't protected.
+
 Private browsing and chat over the Nym mixnet — a cross-platform browser
 client (web / PWA / Android / desktop) plus ways to host a service on the
 mixnet. Formerly `fly-protocol`; renamed, nothing else moved.
@@ -11,7 +17,7 @@ mixnet. Formerly `fly-protocol`; renamed, nothing else moved.
 > indicators, desktop packaging, and security analysis complete, with the
 > documented controls enforced in code and tests.
 > * Reference Sphinx core + enforcement controls: **61 Rust tests pass**.
-> * Browser PWA + social logic: **111 `node --test` tests pass**.
+> * Browser PWA + social logic: **123 `node --test` tests pass**.
 > * Service hosting: runnable providers + hybrid compose + gateway assets.
 > * Build system: `./build.sh` for Rust / web / Android / services / desktop /
 >   Windows / check, plus CI.
@@ -85,7 +91,7 @@ Releases are cut from tags: `./build.sh bump <version>`, commit `VERSION`,
 publishes them with checksums (`.github/workflows/release.yml`).
 ```
 
-`./build.sh check` runs **61 Rust tests** and **111 web unit tests** with zero
+`./build.sh check` runs **61 Rust tests** and **123 web unit tests** with zero
 clippy warnings, validates the JSON manifests, and checks every relative link in
 the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 
@@ -157,7 +163,7 @@ touching the network path.
 | `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`) | 13 tests + `web/src/social/` timeline UI |
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
 | `services/gateway/` | `nym-node` entry-gateway config, systemd, bonding notes | Templates + operator steps |
-| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 111 `node --test` tests + `npm run build` |
+| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 123 `node --test` tests + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
 | `desktop/launcher/` | std-only Linux launcher: loopback static server + Chromium app window | 5 tests |
 | `desktop/debian/` | `.deb` packaging (control, postinst, `.desktop`, icon) | Built + inspected; `./build.sh desktop` |

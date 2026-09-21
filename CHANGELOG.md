@@ -5,6 +5,32 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 
 ## [Unreleased]
 
+### Added
+
+- **Experimental / pre-audit disclaimer** in `README.md`: no independent
+  audit yet, reference crypto only.
+- Keystore-backed social identity on Android: `NysirisKeystore` Capacitor
+  plugin (AES-256-GCM keys in the hardware-backed Android Keystore,
+  ciphertext-only in SharedPreferences) with a dependency-free JS contract
+  (`web/src/social/keystore.mjs`), secure load/persist/migrate helpers in
+  `identity.ts`, and `web/test/keystore.test.mjs`.
+- Exit-rotation reconnect jitter (±10 around the 50-request bound,
+  `fetch.ts`) so rotation timing is not itself a signal (§5.2.3).
+- Adversarial chaos harness for the browser enforcement controls
+  (`web/test/chaos-enforcement.test.mjs`): replay storms, SURB hoarding
+  bursts, interleaved duplicates, clock skew, budget floods, and a
+  randomised model-checked sequence.
+- Service drift guards: `scripts/check-service-pins.mjs` (runs in
+  `./build.sh check`; fails on `nym-sdk` req/lock divergence) and a Monday
+  nightly `./build.sh services` workflow.
+- Fixed `android:allowBackup` contradiction (generated manifest said `true`,
+  docs and reference manifest said `false`): backups disabled so WebView /
+  app data never lands in cloud backup.
+- On-device keystore smoke test (`KeystoreCryptoDeviceTest`, 2/2 green on
+  an API-34 emulator): real Android Keystore round-trip, ciphertext-only
+  storage assertion, tamper rejection; plus host-JVM framing tests
+  (`KeystoreCryptoTest`, 5/5).
+
 ## [0.1.18] — 2026-09-21
 
 ### Changed

@@ -40,6 +40,7 @@ cmd_check() {
 
     section "Manifests + docs"
     node "$ROOT/scripts/check-json.mjs"
+    node "$ROOT/scripts/check-service-pins.mjs"
     node "$ROOT/scripts/check-docs.mjs"
     ok "manifests and doc links valid"
   else

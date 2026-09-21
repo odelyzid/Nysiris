@@ -13,8 +13,8 @@
 import { ensureTunnel } from './tunnel';
 import { ExitPolicy, ExitRotation } from './enforcement.mjs';
 
-/** Bounded reuse (50 requests) balances P2 linkability against reconnect cost. */
-const exitPolicy = new ExitPolicy({ policy: ExitRotation.Every, maxRequests: 50 });
+/** Bounded reuse (50 requests, ±10 jitter) balances P2 linkability against reconnect cost. */
+const exitPolicy = new ExitPolicy({ policy: ExitRotation.Every, maxRequests: 50, jitter: 10 });
 
 export async function mixnetFetch(input: string, init?: RequestInit): Promise<Response> {
   await ensureTunnel();

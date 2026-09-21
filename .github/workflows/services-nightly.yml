@@ -1,0 +1,31 @@
+name: Services (nightly drift check)
+
+# The services/* crates are excluded from the Cargo workspace (heavy nym-sdk
+# toolchain) and ./build.sh check only validates their manifests, so upstream
+# drift would otherwise surface at deploy time. This builds + tests them
+# against the pinned lockfiles on a schedule; failures file no release, they
+# just notify.
+on:
+  schedule:
+    - cron: '0 4 * * 1' # Mondays 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  services:
+    name: Build + test service crates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-services-${{ hashFiles('services/*/Cargo.lock') }}
+
+      - name: Build and test services
+        run: ./build.sh services

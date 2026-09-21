@@ -105,3 +105,34 @@ test('documented defaults are stable', () => {
   assert.equal(DEFAULT_SURB_MAX_AGE_MS, 25 * 60 * 60 * 1000);
   assert.equal(DEFAULT_MAX_TRACKED_REPLIES, 4096);
 });
+
+test('ExitPolicy jitter randomises the reconnect threshold deterministically', () => {
+  // random() = 0 -> lowest end of the window.
+  const low = new ExitPolicy({ policy: ExitRotation.Every, maxRequests: 50, jitter: 10, random: () => 0 });
+  assert.equal(low.threshold, 40);
+  // random() ~ 1 -> highest end of the window.
+  const high = new ExitPolicy({
+    policy: ExitRotation.Every,
+    maxRequests: 50,
+    jitter: 10,
+    random: () => 0.9999,
+  });
+  assert.equal(high.threshold, 60);
+  // No jitter: exact legacy behaviour.
+  const exact = new ExitPolicy({ policy: ExitRotation.Every, maxRequests: 2 });
+  assert.equal(exact.threshold, 2);
+  // Threshold is stable across requests (drawn once, not per call).
+  const stable = new ExitPolicy({
+    policy: ExitRotation.Every,
+    maxRequests: 50,
+    jitter: 10,
+    random: () => 0.5,
+  });
+  const first = stable.threshold;
+  stable.recordRequest();
+  assert.equal(stable.shouldRecommendReconnect(), stable.count >= first);
+  // reset() starts a fresh window and redraws the threshold.
+  stable.reset();
+  assert.equal(stable.count, 0);
+  assert.equal(stable.shouldRecommendReconnect(), false);
+});

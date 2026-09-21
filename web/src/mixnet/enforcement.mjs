@@ -188,15 +188,32 @@ export const ExitRotation = Object.freeze({
  * one exit (IPR) at setup, so true per-request rotation requires a page reload.
  * This class therefore does not silently pretend to rotate; it counts requests
  * and tells the UI when a reconnect is recommended.
+ *
+ * The reconnect threshold carries ±`jitter` randomisation (§5.2.3): a fixed,
+ * publicly-known request count would let a destination predict exactly when a
+ * client rotates exits, which is itself a timing signal. The threshold is drawn
+ * once per instance (and on `reset()`), from an injectable `random` source so
+ * tests stay deterministic.
  */
 export class ExitPolicy {
   /**
-   * @param {{ policy?: string, maxRequests?: number }} [options]
+   * @param {{ policy?: string, maxRequests?: number, jitter?: number, random?: () => number }} [options]
    */
   constructor(options = {}) {
     this.policy = options.policy ?? ExitRotation.Every;
     this.maxRequests = options.maxRequests ?? 50;
+    this.jitter = options.jitter ?? 0;
+    this.random = options.random ?? Math.random;
     this.count = 0;
+    this.threshold = this.drawThreshold();
+  }
+
+  drawThreshold() {
+    if (this.policy === ExitRotation.PerRequest) return 1;
+    if (!(this.jitter > 0)) return this.maxRequests;
+    const span = 2 * this.jitter + 1;
+    const offset = Math.floor(this.random() * span) - this.jitter;
+    return Math.max(1, this.maxRequests + offset);
   }
 
   recordRequest() {
@@ -206,8 +223,13 @@ export class ExitPolicy {
   /** True when the UI should recommend reconnecting to obtain a fresh exit. */
   shouldRecommendReconnect() {
     if (this.policy === ExitRotation.Pinned) return false;
-    if (this.policy === ExitRotation.PerRequest) return this.count >= 1;
-    return this.count >= this.maxRequests;
+    return this.count >= this.threshold;
+  }
+
+  /** Start a fresh exit window (call after a reconnect). */
+  reset() {
+    this.count = 0;
+    this.threshold = this.drawThreshold();
   }
 
   /** Why reconnection is needed, for the UI. */

@@ -1,7 +1,7 @@
 {
   "name": "nysiris-desktop",
   "private": true,
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Electron shell for the nysiris Nym mixnet client (alternative to the system-Chromium .deb).",
   "homepage": "https://github.com/tribewarez/nysiris",
   "author": {
