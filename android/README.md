@@ -65,6 +65,24 @@ Then copy `network_security_config.xml` to
 * **Release.** Sign with an upload key, target a recent `compileSdk`, and test
   on both a physical device and an emulator image with Google Play services.
 
+## Release build (tagged releases)
+
+`./build.sh android --release` stamps `versionName`/`versionCode` from the
+`VERSION` file (`versionCode = major*1000000 + minor*1000 + patch`), runs
+`assembleRelease` + `bundleRelease`, and stages versioned artifacts:
+
+```text
+dist/nysiris_<version>_android.apk
+dist/nysiris_<version>_android.aab
+```
+
+Without `--release` it builds a debug APK only (no `dist/` staging).
+The release APK/AAB is **unsigned** unless you configure signing. For a
+Play Store upload, create an upload key and add a `signingConfigs.release`
+block (or pass the keystore via `ANDROID_KEYSTORE_*` env vars in CI), then
+publish `assetlinks.json` / bump `versionCode` monotonically — the script
+derives it from `VERSION`, so `./build.sh bump` is all you need.
+
 ## What this cannot do
 
 * Route other apps' traffic. That requires **NymVPN** (dVPN) or a device-level

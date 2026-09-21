@@ -64,9 +64,32 @@ jobs:
           name: windows-zip
           path: dist/*.zip
 
+  android:
+    name: Android APK/AAB
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      # Capacitor shell around the same web build. Unsigned release output
+      # (app-release-unsigned.apk / .aab); sign with an upload key for Play
+      # (see android/README.md). Staged as dist/nysiris_*_android.*.
+      - run: ./build.sh android --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*android*
+
   publish:
     name: Publish GitHub release
-    needs: [linux-deb, windows-zip]
+    needs: [linux-deb, windows-zip, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -74,11 +97,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-      - run: sha256sum *.deb *.zip > SHA256SUMS.txt
+      - run: sha256sum *.deb *.zip *.apk *.aab > SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             *.deb
             *.zip
+            *.apk
+            *.aab
             SHA256SUMS.txt
           fail_on_unmatched_files: true

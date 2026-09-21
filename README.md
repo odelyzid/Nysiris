@@ -1,13 +1,16 @@
-# nysiris
+# Nysiris
 
-Design and implementation for **routing traffic through the Nym mixnet with
-Sphinx packets**: a cross-platform browser client (web / PWA / Android) and
-several ways to host a service on the mixnet.
+Private browsing and chat over the Nym mixnet — a cross-platform browser
+client (web / PWA / Android / desktop) plus ways to host a service on the
+mixnet. Formerly `fly-protocol`; renamed, nothing else moved.
+
+[![CI](https://github.com/odelyzid/Nysiris/actions/workflows/ci.yml/badge.svg)](https://github.com/odelyzid/Nysiris/actions)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 > **Status:** foundations, hosting, browser client, social/DMs, trust
 > indicators, desktop packaging, and security analysis complete, with the
 > documented controls enforced in code and tests.
-> * Reference Sphinx core + enforcement controls: **60 Rust tests pass**.
+> * Reference Sphinx core + enforcement controls: **61 Rust tests pass**.
 > * Browser PWA + social logic: **111 `node --test` tests pass**.
 > * Service hosting: runnable providers + hybrid compose + gateway assets.
 > * Build system: `./build.sh` for Rust / web / Android / services / desktop /
@@ -15,10 +18,30 @@ several ways to host a service on the mixnet.
 > * The `services/*` builds depend on Nym's own packages and are not compiled by
 >   the fast `./build.sh check` loop.
 
+## What works vs what is experimental
+
+| Area | State |
+|---|---|
+| PWA: tunnel, leak guard, Nym-address messaging, `fetchNym` | Works (mainnet-verified delivery + SURB reply) |
+| Community timeline, threads, E2E DMs, trust dots, petnames, invites | Works against a `nysiris-social` provider you run |
+| Providers, hybrid bridge, portal store | Works; you operate them (see `services/`) |
+| Linux `.deb`, Windows zip | Works; built by CI on every release tag |
+| Android (TWA/Capacitor), MV3 extension | Scaffolds — installable, not yet hardened |
+| `sphinx-core` crypto | Reference/educational only — never use in production |
+
+## Threat model (short version)
+
+Mixing + cover traffic hide **who talks to whom and when** from network
+observers (L1/L3), and services never learn client addresses (SURB replies).
+It does **not** protect against a compromised endpoint, a malicious service
+you choose to use, or timing correlation when cover traffic is thin. Full
+analysis: [`docs/05-security.md`](docs/05-security.md).
+
 ## Read in this order
 
 1. [`docs/01-architecture.md`](docs/01-architecture.md) — system overview, two
-   traffic modes, trust boundaries, browser/WASM constraints.2. [`docs/02-addressing-and-routing.md`](docs/02-addressing-and-routing.md) —
+   traffic modes, trust boundaries, browser/WASM constraints.
+2. [`docs/02-addressing-and-routing.md`](docs/02-addressing-and-routing.md) —
    how "DNS" is replaced by cryptographic identities, the exact Sphinx
    construction (`alpha`, `beta`, `gamma`, `delta`), SURBs, diagrams.
 3. [`docs/04-hosting-services.md`](docs/04-hosting-services.md) — pure mixnet
@@ -133,7 +156,6 @@ touching the network path.
 | `services/hybrid-bridge/` | Nym↔HTTP bridge + Caddy + Docker Compose, using `bridge-guard` | `docker compose config` + guard tests |
 | `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`) | 13 tests + `web/src/social/` timeline UI |
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
-| `services/portal-provider/` | Portal object/log store (data + verification only) | 4 tests |
 | `services/gateway/` | `nym-node` entry-gateway config, systemd, bonding notes | Templates + operator steps |
 | `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 111 `node --test` tests + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
@@ -177,9 +199,25 @@ crates/sphinx-core/      reference Sphinx + enforcement controls (workspace)
 crates/bridge-guard/     open-proxy guards (workspace)
 crates/nym-hidden-service/  hidden-service abstraction: URIs, envelopes, dispatch, petnames (workspace)
 docs/                    architecture, addressing/routing, hosting, client, security, desktop, hidden-services, roadmap
-services/                echo-provider, hybrid-bridge, gateway (standalone crates)
+services/                echo-provider, hybrid-bridge, portal-provider, social, acceptance (standalone) + gateway ops
 web/                     React PWA client (TypeScript)
 android/                 Android packaging manifest + guidance
-desktop/                 Linux desktop: launcher, .deb packaging, Electron alternative
+desktop/                 launcher, .deb + Windows packaging, Electron alternative
 extension/               MV3 desktop scaffold
 ```
+
+## Screenshots
+
+No staged screenshots yet — the UI is best seen running: `./build.sh web`,
+serve `web/dist`, or install a release package. The onboarding, protection
+status, portal/community, and private-link cards are the tour. Contributions
+of honest screenshots (no real addresses, contacts, or messages pictured)
+are welcome.
+
+## Community & license
+
+- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md) (start with `AGENTS.md`).
+- Security reports: [`SECURITY.md`](SECURITY.md) — private advisories only.
+- Conduct: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+- Changes: [`CHANGELOG.md`](CHANGELOG.md).
+- License: [Apache-2.0](LICENSE) © 2026 odelyzid (tribewarez).

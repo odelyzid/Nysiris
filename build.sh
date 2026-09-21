@@ -6,7 +6,7 @@
 #   ./build.sh rust --release    # optimized build
 #   ./build.sh rust --target aarch64-unknown-linux-gnu
 #   ./build.sh web               # install deps + build the browser PWA
-#   ./build.sh android           # TWA (Bubblewrap) or Capacitor APK/AAB
+#   ./build.sh android           # TWA (Bubblewrap) or Capacitor APK/AAB (--release for signed-release staging)
 #   ./build.sh services [name]  # build + test the standalone Nym service crates
 #                            # (optional: just one, e.g. `services social`)
 #   ./build.sh check             # fmt + clippy + tests + web tests + docs
