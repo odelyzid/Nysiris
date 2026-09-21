@@ -8,9 +8,13 @@
 //! all fixed-size except the body, which is always last):
 //!
 //! ```text
-//! post:    b"fly-social-v1/post"    || author(32) || day_be64 || parent(16) || body
+//! post:    b"fly-social-v1/post"    || author(32) || day_be64 || parent(16) || body || attachments
 //! profile: b"fly-social-v1/profile" || author(32) || name || 0x00 || bio
 //! ```
+//!
+//! `attachments` is the canonical encoding from `crate::attach`
+//! (empty when absent), so attachment-free posts sign byte-identically to
+//! the pre-attachment layout and old signatures keep verifying.
 //!
 //! `parent` is the 16-byte id of the post being replied to, or all zeros for
 //! a top-level post. Fixed-size, so the no-length-prefix scheme is preserved
@@ -37,8 +41,15 @@ pub fn current_day() -> u64 {
         .unwrap_or(0)
 }
 
-pub fn post_message(author: &[u8; 32], day: u64, body: &[u8], parent: Option<&[u8; 16]>) -> Vec<u8> {
-    let mut m = Vec::with_capacity(POST_DOMAIN.len() + 32 + 8 + 16 + body.len());
+pub fn post_message(
+    author: &[u8; 32],
+    day: u64,
+    body: &[u8],
+    parent: Option<&[u8; 16]>,
+    attachments: &[crate::attach::AttachmentRef],
+) -> Vec<u8> {
+    let atts = crate::attach::canonical_attachments(attachments);
+    let mut m = Vec::with_capacity(POST_DOMAIN.len() + 32 + 8 + 16 + body.len() + atts.len());
     m.extend_from_slice(POST_DOMAIN);
     m.extend_from_slice(author);
     m.extend_from_slice(&day.to_be_bytes());
@@ -46,6 +57,7 @@ pub fn post_message(author: &[u8; 32], day: u64, body: &[u8], parent: Option<&[u
     // replies to nothing, under the same domain.
     m.extend_from_slice(parent.unwrap_or(&[0u8; 16]));
     m.extend_from_slice(body);
+    m.extend_from_slice(&atts);
     m
 }
 
@@ -107,15 +119,15 @@ mod tests {
     fn sign_verify_round_trip_with_fixed_vector() {
         let secret = [7u8; 32];
         let author = SigningKey::from_bytes(&secret).verifying_key().to_bytes();
-        let msg = post_message(&author, 20400, b"hello mixnet", None);
+        let msg = post_message(&author, 20400, b"hello mixnet", None, &[]);
         let (_, sig) = sign_with(&secret, &msg);
         verify(&author, &msg, &sig).unwrap();
 
         // Tampered body fails.
-        let bad = post_message(&author, 20400, b"hello mixneT", None);
+        let bad = post_message(&author, 20400, b"hello mixneT", None, &[]);
         assert!(verify(&author, &bad, &sig).is_err());
         // Wrong day fails (replay into another day bucket fails).
-        let other_day = post_message(&author, 20401, b"hello mixnet", None);
+        let other_day = post_message(&author, 20400 + 1, b"hello mixnet", None, &[]);
         assert!(verify(&author, &other_day, &sig).is_err());
     }
 
@@ -124,15 +136,40 @@ mod tests {
         let secret = [7u8; 32];
         let author = SigningKey::from_bytes(&secret).verifying_key().to_bytes();
         let parent = [9u8; 16];
-        let msg = post_message(&author, 20400, b"a reply", Some(&parent));
+        let msg = post_message(&author, 20400, b"a reply", Some(&parent), &[]);
         let (_, sig) = sign_with(&secret, &msg);
         verify(&author, &msg, &sig).unwrap();
         // Same bytes as a top-level post do NOT verify under the reply sig…
-        let top = post_message(&author, 20400, b"a reply", None);
+        let top = post_message(&author, 20400, b"a reply", None, &[]);
         assert!(verify(&author, &top, &sig).is_err());
         // …and vice versa: the parent can't be stripped or swapped.
-        let other = post_message(&author, 20400, b"a reply", Some(&[1u8; 16]));
+        let other = post_message(&author, 20400, b"a reply", Some(&[1u8; 16]), &[]);
         assert!(verify(&author, &other, &sig).is_err());
+    }
+
+    #[test]
+    fn attachments_are_bound_into_the_signature() {
+        use crate::attach::AttachmentRef;
+        let secret = [7u8; 32];
+        let author = SigningKey::from_bytes(&secret).verifying_key().to_bytes();
+        let atts = vec![AttachmentRef {
+            id: "ab".repeat(32),
+            name: "photo.png".into(),
+            mime: "image/png".into(),
+            size: 1234,
+            key: "cd".repeat(32),
+        }];
+        let msg = post_message(&author, 20400, b"with files", None, &atts);
+        let (_, sig) = sign_with(&secret, &msg);
+        verify(&author, &msg, &sig).unwrap();
+        // Stripping the attachments breaks the signature…
+        let stripped = post_message(&author, 20400, b"with files", None, &[]);
+        assert!(verify(&author, &stripped, &sig).is_err());
+        // …as does swapping one (e.g. pointing the ref at another blob).
+        let mut swapped = atts.clone();
+        swapped[0].id = "ff".repeat(32);
+        let swapped_msg = post_message(&author, 20400, b"with files", None, &swapped);
+        assert!(verify(&author, &swapped_msg, &sig).is_err());
     }
 
     #[test]

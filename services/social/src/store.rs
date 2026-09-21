@@ -39,6 +39,8 @@ pub struct Post {
     pub body: String,
     /// Hex of the parent post id, or `None` for a top-level post.
     pub in_reply_to_hex: Option<String>,
+    /// Validated attachments JSON array from the signed envelope, or `None`.
+    pub attachments_json: Option<String>,
     pub sig_hex: String,
 }
 
@@ -105,7 +107,25 @@ impl Store {
                    ct      BLOB NOT NULL,
                    created INTEGER NOT NULL
                  );
-                 CREATE INDEX IF NOT EXISTS idx_dms_recip ON dms(recip);",
+                 CREATE INDEX IF NOT EXISTS idx_dms_recip ON dms(recip);
+                 -- Encrypted attachment blobs, content-addressed by
+                 -- SHA256(ciphertext). Pure data: the service never sees
+                 -- keys or plaintext, only opaque bytes under their hash.
+                 CREATE TABLE IF NOT EXISTS blobs(
+                   id      BLOB PRIMARY KEY,
+                   bytes   BLOB NOT NULL,
+                   created INTEGER NOT NULL
+                 );
+                 -- Staging area for chunked uploads: one row per part until
+                 -- all `of` parts arrive and assemble into `blobs`.
+                 CREATE TABLE IF NOT EXISTS blob_parts(
+                   id      BLOB NOT NULL,
+                   part    INTEGER NOT NULL,
+                   of      INTEGER NOT NULL,
+                   bytes   BLOB NOT NULL,
+                   created INTEGER NOT NULL,
+                   PRIMARY KEY(id, part)
+                 );",
             )
             .map_err(|e| e.to_string())?;
         // Threaded-replies migration for databases created before the
@@ -124,7 +144,22 @@ impl Store {
         }
         self.conn
             .execute_batch("CREATE INDEX IF NOT EXISTS idx_posts_parent ON posts(in_reply_to);")
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        // Attachments migration: same guarded pattern. Attachments ride as
+        // the validated JSON array from the signed envelope (NULL = none),
+        // served back verbatim; clients re-verify the signature on read.
+        match self
+            .conn
+            .execute("ALTER TABLE posts ADD COLUMN attachments TEXT", [])
+        {
+            Ok(_) => {}
+            Err(e) => {
+                if !e.to_string().contains("duplicate column name") {
+                    return Err(e.to_string());
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn now_unix() -> u64 {
@@ -188,6 +223,7 @@ impl Store {
         day: u64,
         body: &str,
         in_reply_to: Option<&[u8; 16]>,
+        attachments_json: Option<&str>,
         sig: &[u8],
         rng_id: [u8; 16],
     ) -> Result<i64, String> {
@@ -197,8 +233,8 @@ impl Store {
         let parent: Option<&[u8]> = in_reply_to.map(|p| p.as_slice());
         self.conn
             .execute(
-                "INSERT INTO posts(id,author,day,body,in_reply_to,sig) VALUES(?,?,?,?,?,?)",
-                params![rng_id.as_slice(), author.as_slice(), day as i64, body, parent, sig],
+                "INSERT INTO posts(id,author,day,body,in_reply_to,attachments,sig) VALUES(?,?,?,?,?,?,?)",
+                params![rng_id.as_slice(), author.as_slice(), day as i64, body, parent, attachments_json, sig],
             )
             .map_err(|e| e.to_string())?;
         Ok(self.conn.last_insert_rowid())
@@ -211,14 +247,14 @@ impl Store {
         let limit = limit.clamp(1, 50) as i64;
         let mut stmt = self
             .conn
-            .prepare("SELECT seq,id,author,day,body,in_reply_to,sig FROM posts WHERE seq>? ORDER BY seq ASC LIMIT ?")
+            .prepare("SELECT seq,id,author,day,body,in_reply_to,attachments,sig FROM posts WHERE seq>? ORDER BY seq ASC LIMIT ?")
             .map_err(|e| e.to_string())?;
         let posts = stmt
             .query_map(params![since_seq, limit], |row| {
                 let id: Vec<u8> = row.get(1)?;
                 let author: Vec<u8> = row.get(2)?;
                 let parent: Option<Vec<u8>> = row.get(5)?;
-                let sig: Vec<u8> = row.get(6)?;
+                let sig: Vec<u8> = row.get(7)?;
                 Ok(Post {
                     seq: row.get(0)?,
                     id_hex: hex::encode(id),
@@ -226,6 +262,7 @@ impl Store {
                     day: row.get::<_, i64>(3)? as u64,
                     body: row.get(4)?,
                     in_reply_to_hex: parent.map(hex::encode),
+                    attachments_json: row.get(6)?,
                     sig_hex: hex::encode(sig),
                 })
             })
@@ -241,13 +278,13 @@ impl Store {
     pub fn get_post_by_id(&self, id: &[u8]) -> Result<Option<Post>, String> {
         self.conn
             .query_row(
-                "SELECT seq,id,author,day,body,in_reply_to,sig FROM posts WHERE id=?",
+                "SELECT seq,id,author,day,body,in_reply_to,attachments,sig FROM posts WHERE id=?",
                 params![id],
                 |row| {
                     let pid: Vec<u8> = row.get(1)?;
                     let author: Vec<u8> = row.get(2)?;
                     let parent: Option<Vec<u8>> = row.get(5)?;
-                    let sig: Vec<u8> = row.get(6)?;
+                    let sig: Vec<u8> = row.get(7)?;
                     Ok(Post {
                         seq: row.get(0)?,
                         id_hex: hex::encode(pid),
@@ -255,6 +292,7 @@ impl Store {
                         day: row.get::<_, i64>(3)? as u64,
                         body: row.get(4)?,
                         in_reply_to_hex: parent.map(hex::encode),
+                        attachments_json: row.get(6)?,
                         sig_hex: hex::encode(sig),
                     })
                 },
@@ -267,6 +305,142 @@ impl Store {
         self.conn
             .query_row("SELECT COALESCE(MAX(seq),0) FROM posts", [], |r| r.get(0))
             .map_err(|e| e.to_string())
+    }
+
+    // ---- Encrypted attachment blobs (pure data, content-addressed) ----
+
+    /// Store a ciphertext blob under its SHA256 id. Idempotent: re-uploads
+    /// of the same bytes are a no-op. Size-capped so one client cannot fill
+    /// the disk; blobs never expire (posts referencing them persist).
+    pub fn put_blob(&self, id: &[u8; 32], bytes: &[u8]) -> Result<(), String> {
+        if bytes.len() > crate::attach::MAX_ATTACHMENT_BYTES {
+            return Err(format!(
+                "blob too large (max {} bytes)",
+                crate::attach::MAX_ATTACHMENT_BYTES
+            ));
+        }
+        self.conn
+            .execute(
+                "INSERT INTO blobs(id,bytes,created) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING",
+                params![id.as_slice(), bytes, Self::now_unix() as i64],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_blob(&self, id: &[u8; 32]) -> Result<Option<Vec<u8>>, String> {
+        self.conn
+            .query_row(
+                "SELECT bytes FROM blobs WHERE id=?",
+                params![id.as_slice()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Stage one upload chunk. Returns `(complete, have)`: when every part
+    /// has arrived the blob is assembled, hash-verified, and promoted to
+    /// `blobs`. Retried parts overwrite; a mismatched `of` is rejected.
+    pub fn stage_blob_part(
+        &self,
+        id: &[u8; 32],
+        part: usize,
+        of: usize,
+        chunk: &[u8],
+    ) -> Result<(bool, usize), String> {
+        if of == 0 || of > crate::attach::MAX_BLOB_PARTS || part >= of {
+            return Err("bad part coordinates".into());
+        }
+        if chunk.len() > crate::attach::MAX_BLOB_PART_BYTES {
+            return Err(format!(
+                "chunk too large (max {} bytes)",
+                crate::attach::MAX_BLOB_PART_BYTES
+            ));
+        }
+        self.prune_blob_parts()?;
+        let existing: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT DISTINCT of FROM blob_parts WHERE id=?",
+                params![id.as_slice()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if let Some(prev) = existing {
+            if prev as usize != of {
+                return Err("part count mismatch for this upload".into());
+            }
+        }
+        self.conn
+            .execute(
+                "INSERT INTO blob_parts(id,part,of,bytes,created) VALUES(?,?,?,?,?)
+                 ON CONFLICT(id,part) DO UPDATE SET bytes=excluded.bytes, created=excluded.created",
+                params![
+                    id.as_slice(),
+                    part as i64,
+                    of as i64,
+                    chunk,
+                    Self::now_unix() as i64
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        let have: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM blob_parts WHERE id=?",
+                params![id.as_slice()],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if have as usize != of {
+            return Ok((false, have as usize));
+        }
+        let mut stmt = self
+            .conn
+            .prepare("SELECT bytes FROM blob_parts WHERE id=? ORDER BY part ASC")
+            .map_err(|e| e.to_string())?;
+        let parts = stmt
+            .query_map(params![id.as_slice()], |row| row.get::<_, Vec<u8>>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        let total: usize = parts.iter().map(|p| p.len()).sum();
+        if total > crate::attach::MAX_ATTACHMENT_BYTES {
+            self.clear_blob_parts(id)?;
+            return Err(format!(
+                "blob too large (max {} bytes)",
+                crate::attach::MAX_ATTACHMENT_BYTES
+            ));
+        }
+        let mut joined = Vec::with_capacity(total);
+        for p in &parts {
+            joined.extend_from_slice(p);
+        }
+        if portal_reputation::pow::payload_hash(&joined) != *id {
+            self.clear_blob_parts(id)?;
+            return Err("blob parts do not hash to the claimed id".into());
+        }
+        self.put_blob(id, &joined)?;
+        self.clear_blob_parts(id)?;
+        Ok((true, of))
+    }
+
+    fn clear_blob_parts(&self, id: &[u8; 32]) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM blob_parts WHERE id=?", params![id.as_slice()])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn prune_blob_parts(&self) -> Result<(), String> {
+        let cutoff =
+            Self::now_unix().saturating_sub(crate::attach::BLOB_STAGING_TTL_SECS) as i64;
+        self.conn
+            .execute("DELETE FROM blob_parts WHERE created<?", params![cutoff])
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     // ---- DMs (opaque dead-drop, destructive read) ----
@@ -355,14 +529,14 @@ mod tests {
     #[test]
     fn replies_store_parent_and_resolve_by_id() {
         let s = Store::open_in_memory().unwrap();
-        s.insert_post(&[1u8; 32], 20400, "root", None, &[2u8; 64], [7u8; 16])
+        s.insert_post(&[1u8; 32], 20400, "root", None, None, &[2u8; 64], [7u8; 16])
             .unwrap();
         let root_id = hex::decode(s.get_post_by_id(&[7u8; 16]).unwrap().unwrap().id_hex).unwrap();
         assert_eq!(root_id, [7u8; 16]);
         let mut parent16 = [0u8; 16];
         parent16.copy_from_slice(&root_id);
         // Reply stores its parent; top-level rows read back None.
-        s.insert_post(&[2u8; 32], 20400, "reply", Some(&parent16), &[3u8; 64], [8u8; 16])
+        s.insert_post(&[2u8; 32], 20400, "reply", Some(&parent16), None, &[3u8; 64], [8u8; 16])
             .unwrap();
         let (posts, _) = s.feed(0, 10).unwrap();
         assert_eq!(posts.len(), 2);
@@ -379,7 +553,7 @@ mod tests {
     fn feed_paginates_by_cursor() {
         let s = Store::open_in_memory().unwrap();
         for i in 0..5 {
-            s.insert_post(&[1u8; 32], 20400, &format!("post {i}"), None, &[2u8; 64], [i as u8; 16])
+            s.insert_post(&[1u8; 32], 20400, &format!("post {i}"), None, None, &[2u8; 64], [i as u8; 16])
                 .unwrap();
         }
         let (page1, next) = s.feed(0, 2).unwrap();
@@ -412,5 +586,35 @@ mod tests {
         s.store_dm(&[9u8; 32], &[6u8; 32], &[2u8; 24], b"x").unwrap();
         assert!(s.fetch_dms(&recip).unwrap().is_empty());
         assert_eq!(s.fetch_dms(&[9u8; 32]).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn blobs_round_trip_and_reject_oversize() {
+        let s = Store::open_in_memory().unwrap();
+        let id = [5u8; 32];
+        assert!(s.get_blob(&id).unwrap().is_none());
+        s.put_blob(&id, b"ciphertext-blob").unwrap();
+        assert_eq!(s.get_blob(&id).unwrap().unwrap(), b"ciphertext-blob");
+        // Idempotent re-upload.
+        s.put_blob(&id, b"ciphertext-blob").unwrap();
+        assert_eq!(s.get_blob(&id).unwrap().unwrap(), b"ciphertext-blob");
+        // Over the 256 KiB cap.
+        let big = vec![0u8; crate::attach::MAX_ATTACHMENT_BYTES + 1];
+        assert!(s.put_blob(&[6u8; 32], &big).is_err());
+    }
+
+    #[test]
+    fn attachments_persist_and_serve_verbatim() {
+        let s = Store::open_in_memory().unwrap();
+        let atts = r#"[{"id":"ab","name":"a.png","mime":"image/png","size":1,"key":"cd"}]"#;
+        s.insert_post(&[1u8; 32], 20400, "with files", None, Some(atts), &[2u8; 64], [7u8; 16])
+            .unwrap();
+        s.insert_post(&[1u8; 32], 20400, "plain", None, None, &[2u8; 64], [8u8; 16])
+            .unwrap();
+        let (posts, _) = s.feed(0, 10).unwrap();
+        assert_eq!(posts[0].attachments_json.as_deref(), Some(atts));
+        assert_eq!(posts[1].attachments_json, None);
+        let one = s.get_post_by_id(&[7u8; 16]).unwrap().unwrap();
+        assert_eq!(one.attachments_json.as_deref(), Some(atts));
     }
 }

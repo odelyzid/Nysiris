@@ -63,9 +63,17 @@ export function TopBar({
         ))}
       </nav>
       <StatusPill status={status} detail={statusDetail} onRetry={onRetry} busy={busy} />
+      {busy && (
+        <span
+          className="fly-ie-spinner"
+          role="status"
+          aria-label="Loading"
+          title="Loading…"
+        />
+      )}
       <span className="fly-topbar-spacer" />
       <input
-        className="fly-input"
+        className="fly-input uri-input"
         placeholder="Private link or address"
         value={uri}
         onChange={(e) => onUriChange(e.target.value)}

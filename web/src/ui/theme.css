@@ -1,4 +1,5 @@
-/* Calm privacy-app theme: generous spacing, AA contrast, mobile-first.
+/* Pixel-bevel privacy-app theme: square corners, raised-bevel buttons and
+   sunken-bevel inputs, orange accent, AA contrast, mobile-first.
    Respects prefers-color-scheme and prefers-reduced-motion. Big touch
    targets for the PWA / TWA / Capacitor paths. */
 
@@ -8,24 +9,26 @@
   --fly-ink: #1f2937;
   --fly-muted: #6b7280;
   --fly-line: #e5e7eb;
-  --fly-accent: #0f766e;
+  --fly-accent: #c2410c;
   --fly-accent-ink: #ffffff;
+  --fly-accent-edge: #7c2d12;
   --fly-good: #0a7a4a;
   --fly-warn: #b45309;
   --fly-bad: #b91c1c;
-  --fly-radius: 12px;
+  --fly-radius: 0;
   --fly-gap: 16px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --fly-bg: #111827;
-    --fly-surface: #1f2937;
-    --fly-ink: #f3f4f6;
-    --fly-muted: #9ca3af;
-    --fly-line: #374151;
-    --fly-accent: #2dd4bf;
-    --fly-accent-ink: #042f2e;
+      --fly-bg: #000000;
+      --fly-surface: #000000;
+      --fly-ink: #f3f4f6;
+      --fly-muted: #9ca3af;
+      --fly-line: #7c5406;
+      --fly-accent: #ff7300;
+      --fly-accent-ink: #0e0e0e;
+      --fly-accent-edge: #9a3412;
   }
 }
 
@@ -61,7 +64,7 @@
   padding: 10px 14px;
   min-height: 44px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 0;
   background: transparent;
   color: var(--fly-ink);
   cursor: pointer;
@@ -103,9 +106,10 @@
   min-width: 200px;
   font-size: 16px;
   padding: 12px;
-  min-height: 44px;
-  border: 1px solid var(--fly-line);
-  border-radius: 8px;
+  border: 2px solid var(--fly-line);
+  border-radius: 0;
+  /* Sunken pixel bevel: light catches the top/left inner edge. */
+  box-shadow: inset 2px 2px 0 0 rgba(0, 0, 0, 0.14);
   background: var(--fly-surface);
   color: var(--fly-ink);
 }
@@ -114,11 +118,26 @@
   font-size: 15px;
   padding: 12px 18px;
   min-height: 44px;
-  border-radius: 8px;
-  border: 1px solid var(--fly-line);
+  border-radius: 0;
+  border: 2px solid var(--fly-line);
+  /* Raised pixel bevel: highlight top/left, shadow bottom/right. */
+  box-shadow:
+    inset 2px 2px 0 0 rgba(255, 255, 255, 0.55),
+    inset -2px -2px 0 0 rgba(0, 0, 0, 0.18);
   background: var(--fly-surface);
   color: var(--fly-ink);
   cursor: pointer;
+}
+
+.fly-btn:active:not(:disabled) {
+  /* Pressed: bevel inverts. */
+  box-shadow: inset 2px 2px 0 0 rgba(0, 0, 0, 0.22);
+}
+
+.fly-input:focus-visible,
+.fly-btn:focus-visible {
+  outline: 2px solid var(--fly-accent);
+  outline-offset: 1px;
 }
 
 .fly-btn:disabled {
@@ -128,9 +147,12 @@
 
 .fly-btn-primary {
   background: var(--fly-accent);
-  border-color: var(--fly-accent);
+  border-color: var(--fly-accent-edge);
   color: var(--fly-accent-ink);
   font-weight: 700;
+  box-shadow:
+    inset 2px 2px 0 0 rgba(255, 255, 255, 0.35),
+    inset -2px -2px 0 0 rgba(0, 0, 0, 0.28);
 }
 
 .fly-status {
@@ -141,18 +163,38 @@
   font-size: 14px;
   padding: 8px 14px;
   min-height: 44px;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid var(--fly-line);
   background: var(--fly-surface);
   color: var(--fly-ink);
   cursor: pointer;
 }
-
 .fly-status-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
+}
+
+/* Internet-Explorer-style loading throbber: a segmented ring spinning
+   between the status badge and the URI bar while the app is busy. The
+   global prefers-reduced-motion rule below freezes it for sensitive users. */
+.fly-ie-spinner {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  align-self: center;
+  border-radius: 50%;
+  border: 3px solid var(--fly-line);
+  border-top-color: var(--fly-accent);
+  border-right-color: var(--fly-accent);
+  animation: fly-ie-spin 0.8s linear infinite;
+}
+
+@keyframes fly-ie-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .fly-chat {
@@ -180,7 +222,7 @@
   text-align: left;
   padding: 12px;
   min-height: 44px;
-  border-radius: 8px;
+  border-radius: 0;
   border: 1px solid transparent;
   background: transparent;
   color: var(--fly-ink);
@@ -198,13 +240,15 @@
   gap: 4px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+  border-bottom: 2px solid var(--fly-line);
+  padding-bottom: 8px;
 }
 
 .fly-tab {
   font-size: 14px;
   padding: 8px 14px;
   min-height: 44px;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid transparent;
   background: transparent;
   color: var(--fly-muted);
@@ -215,19 +259,22 @@
   font-weight: 700;
   background: var(--fly-surface);
   border-color: var(--fly-line);
+  border-bottom: 3px solid var(--fly-accent);
   color: var(--fly-ink);
+  margin-bottom: -11px;
+  padding-bottom: 10px;
 }
 
 .fly-qr {
   max-width: 220px;
   border: 1px solid var(--fly-line);
-  border-radius: 8px;
+  border-radius: 0;
 }
 
 .fly-error {
   border: 1px solid var(--fly-line);
   border-left: 4px solid var(--fly-bad);
-  border-radius: 8px;
+  border-radius: 0;
   padding: 12px 16px;
   margin: 12px 0;
   background: var(--fly-surface);
@@ -236,6 +283,154 @@
 .fly-muted {
   color: var(--fly-muted);
   font-size: 14px;
+}
+
+/* -------------------------------------------------- community polish */
+
+/* Identity bar: one calm row (short ID + primary invite action); everything
+   else lives behind the "…" disclosure below it. */
+.fly-identity-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--fly-line);
+  background: var(--fly-surface);
+}
+
+.fly-identity-id {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--fly-muted);
+  margin-right: auto;
+}
+
+.fly-identity-panel {
+  border: 1px solid var(--fly-line);
+  background: var(--fly-surface);
+  padding: 12px;
+  margin-bottom: 8px;
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.fly-identity-panel summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--fly-muted);
+}
+
+.fly-identity-tip {
+  font-size: 11px;
+  color: var(--fly-muted);
+  margin: 4px 0 0;
+}
+
+/* Timeline: even rhythm, one separator per post. */
+.fly-timeline-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 13px;
+}
+
+.fly-timeline-list > li {
+  padding: 12px 4px;
+  border-top: 1px solid var(--fly-line);
+}
+
+.fly-timeline-list > li:first-child {
+  border-top: none;
+}
+
+/* Empty states: one calm card, glyph + line + single call to action. */
+.fly-empty {
+  border: 1px solid var(--fly-line);
+  background: var(--fly-surface);
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fly-muted);
+}
+
+.fly-empty-glyph {
+  font-size: 28px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.fly-empty strong {
+  display: block;
+  font-size: 15px;
+  color: var(--fly-ink);
+  margin-bottom: 4px;
+}
+
+.fly-empty p {
+  margin: 0 0 12px;
+}
+
+/* DM composer: chat-like stacking (To line, growing message, action row). */
+.fly-dm-composer {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 12px;
+  border: 1px solid var(--fly-line);
+  background: var(--fly-surface);
+}
+
+.fly-dm-to {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.fly-dm-to .fly-input {
+  min-width: 0;
+}
+
+.fly-dm-message {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 56px;
+  max-height: 160px;
+  resize: vertical;
+}
+
+.fly-dm-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.fly-note {
+  font-size: 12px;
+  color: var(--fly-muted);
+  border-left: 3px solid var(--fly-good);
+  padding: 8px 12px;
+  margin: 0 0 8px;
+  background: var(--fly-surface);
+}
+
+/* Quiet action: looks like a link, keeps its button semantics. */
+.fly-btn-quiet {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--fly-muted);
+  font-size: 12px;
+  min-height: 32px;
+  padding: 4px 8px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .fly-steps {
@@ -265,6 +460,10 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .uri-input{
+    width: 55%;
   }
 
   .fly-classic-header,
@@ -313,9 +512,7 @@
 
   .fly-topbar .fly-input {
     flex: none;
-    width: 260px;
     min-width: 0;
-    min-height: 36px;
     padding: 8px 10px;
     font-size: 14px;
   }
@@ -347,7 +544,7 @@
   }
 
   .fly-main > main {
-    max-width: 800px;
+    max-width: 1600px;
     width: 100%;
     margin: 0 auto;
   }
@@ -394,7 +591,7 @@
     gap: 8px;
     text-align: left;
     padding: 7px 8px;
-    border-radius: 6px;
+    border-radius: 0;
     border: 1px solid transparent;
     background: transparent;
     color: var(--fly-ink);
@@ -430,7 +627,7 @@
     min-width: 20px;
     height: 20px;
     padding: 0 6px;
-    border-radius: 999px;
+    border-radius: 0;
     background: var(--fly-accent);
     color: var(--fly-accent-ink);
     font-size: 12px;
@@ -490,6 +687,9 @@
   .fly-info dd {
     margin: 2px 0 0;
     word-break: break-all;
+  }
+  .fly-input{
+    min-height: 16px;
   }
 }
 

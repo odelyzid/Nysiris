@@ -653,7 +653,11 @@ export function App() {
             )}
           </section>
 
-          <section className="fly-card" aria-label="Open a private link">
+          <section
+            className="fly-card"
+            aria-label="Open a private link"
+            style={socialService ? { display: 'none' } : undefined}
+          >
             <h2>Open a private link</h2>
             <p>Paste a link someone shared with you. It opens privately on this device.</p>
             <div className="fly-row">
@@ -768,7 +772,7 @@ export function App() {
                         style={{
                           background: 'var(--fly-bg)',
                           border: '1px solid var(--fly-line)',
-                          borderRadius: 8,
+                          borderRadius: 0,
                           padding: '8px 12px',
                         }}
                       >
@@ -807,7 +811,11 @@ export function App() {
 
       {view === 'portal' && (
         <main>
-          <section className="fly-card" aria-label="Open a private link">
+          <section
+            className="fly-card"
+            aria-label="Open a private link"
+            style={socialService ? { display: 'none' } : undefined}
+          >
             <h2>Portal</h2>
             <p>Open a private site or community. The address bar below is bound to what you see.</p>
             <div className="fly-row">
@@ -863,7 +871,7 @@ export function App() {
               sandbox=""
               title="private-site"
               srcDoc={pageHtml}
-              style={{ width: '100%', height: 480, border: '1px solid var(--fly-line)', borderRadius: 12, background: '#fff', marginBottom: 12 }}
+              style={{ width: '100%', height: 480, border: '1px solid var(--fly-line)', borderRadius: 0, background: '#fff', marginBottom: 12 }}
             />
           )}
 

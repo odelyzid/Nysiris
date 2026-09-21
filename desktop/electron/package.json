@@ -1,14 +1,15 @@
 {
   "name": "nysiris-desktop",
   "private": true,
-  "version": "0.1.19",
+  "version": "0.1.24",
   "description": "Electron shell for the nysiris Nym mixnet client (alternative to the system-Chromium .deb).",
-  "homepage": "https://github.com/tribewarez/nysiris",
+  "homepage": "https://github.com/odelyzid/nysiris",
   "author": {
     "name": "nysiris",
-    "email": "noreply@example.com"
+    "email": "build444@tribewarez.com"
   },
   "license": "Apache-2.0",
+  "desktopName": "nysiris",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -19,7 +20,7 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "app.example.nysiris",
+    "appId": "app.tribewarez.oz.nysiris",
     "productName": "nysiris",
     "files": [
       "main.js",
@@ -31,8 +32,9 @@
         "AppImage"
       ],
       "category": "Network",
-      "maintainer": "nysiris <noreply@example.com>",
-      "icon": "build/icon.png"
+      "maintainer": "nysiris <build444@tribewarez.com>",
+      "icon": "build/icon.png",
+      "syncDesktopName": true
     }
   }
 }

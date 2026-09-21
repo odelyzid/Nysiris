@@ -14,19 +14,20 @@
  * envelope that arrives afterwards is the reply (the bridge answers each
  * request with exactly one SURB reply).
  *
- * Requests share one persistent `NymAddressClient` and are **serialized by a
- * mutex**: the browser SDK (1.4.1) has no sender tags, so correlation by
- * anything stronger is unavailable, and booting a fresh WASM client +
- * gateway handshake per request (as earlier revisions did) piles up
- * overlapping clients on every poll until replies time out. The client is
- * kept across calls and only rebooted after a boot failure or an explicit
- * `stopFetchNymClient()`.
+ * Requests share one persistent `NymAddressClient`. Plain `fetchNym` calls
+ * are **serialized by a mutex**: the browser SDK (1.4.1) has no sender tags,
+ * so correlation by anything stronger is unavailable, and booting a fresh
+ * WASM client + gateway handshake per request (as earlier revisions did)
+ * piles up overlapping clients on every poll until replies time out. The
+ * client is kept across calls and only rebooted after a boot failure or an
+ * explicit `stopFetchNymClient()`. `fetchNymParallel` lifts the mutex for
+ * callers whose provider echoes correlation tags (see `Request::tag`).
  *
  * Security: the envelope is validated before sending (`hiddenService.mjs`),
  * bodies are capped at 64 KiB, and the wait has a deadline.
  */
 import { NymAddressClient } from './messaging';
-import { decodeResponse, encodeRequest } from './hiddenService.mjs';
+import { decodeResponse, dispatchReply, encodeRequest } from './hiddenService.mjs';
 
 const NYM_API_URL = 'https://validator.nymtech.net/api';
 
@@ -81,6 +82,20 @@ let sharedApiUrl = '';
  */
 let currentWaiter: ((text: string) => void) | null = null;
 
+/** Waiters for in-flight parallel requests, keyed by correlation tag. */
+const parallelWaiters = new Map<string, (text: string) => void>();
+
+/** Recipients whose provider never echoed a tag (pre-tag deployments). */
+const parallelBroken = new Set<string>();
+
+let tagCounter = 0;
+
+/** Unique correlation nonce for one parallel request. */
+function nextTag(): string {
+  tagCounter += 1;
+  return `p${Date.now().toString(36)}-${tagCounter}-${Math.floor(Math.random() * 0xffffff).toString(36)}`;
+}
+
 /** Start the shared client once; a failed boot is forgotten so the next call retries. */
 function ensureClient(nymApiUrl: string): Promise<NymAddressClient> {
   if (!sharedClient || sharedApiUrl !== nymApiUrl) {
@@ -91,12 +106,7 @@ function ensureClient(nymApiUrl: string): Promise<NymAddressClient> {
         nymApiUrl,
         (msg) => {
           // Anything else (echoes of our own cover, unrelated chatter) is ignored.
-          try {
-            decodeResponse(msg.text);
-          } catch {
-            return;
-          }
-          currentWaiter?.(msg.text);
+          dispatchReply(msg.text, parallelWaiters, currentWaiter);
         },
         () => {},
       );
@@ -169,6 +179,98 @@ async function runOnce(
 }
 
 /**
+ * Parallel requests over the shared client, matched by echoed correlation
+ * tags (see `Request::tag`). The provider must echo tags — current
+ * `nysiris-social` does (via `dispatch`); a provider that never echoes
+ * lands the recipient in `parallelBroken` and later calls transparently
+ * fall back to the serialized path.
+ *
+ * Order of `results` matches order of `requests`.
+ */
+export async function fetchNymParallel(
+  recipient: string,
+  requests: FetchNymRequest[],
+  options?: FetchNymOptions & { concurrency?: number },
+): Promise<FetchNymResponse[]> {
+  if (requests.length < 2 || parallelBroken.has(recipient)) {
+    const out: FetchNymResponse[] = [];
+    for (const r of requests) out.push(await fetchNym(recipient, r, options));
+    return out;
+  }
+  const client = await ensureClient(options?.nymApiUrl ?? NYM_API_URL);
+  const timeoutMs = options?.timeoutMs ?? 90_000;
+  const limit = Math.min(Math.max(options?.concurrency ?? 3, 1), 8);
+  const results = new Array<FetchNymResponse>(requests.length);
+  let next = 0;
+  let failed: unknown = null;
+  async function worker(): Promise<void> {
+    for (;;) {
+      if (failed !== null) return;
+      const i = next;
+      next += 1;
+      if (i >= requests.length) return;
+      try {
+        results[i] = await runTagged(client, recipient, requests[i], timeoutMs);
+      } catch (err) {
+        failed = err;
+        return;
+      }
+    }
+  }
+  const workers = Math.min(limit, requests.length);
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+  if (failed !== null) {
+    parallelBroken.add(recipient);
+    throw failed;
+  }
+  return results;
+}
+
+/** One tagged request: waiter registered before send, always cleaned up. */
+function runTagged(
+  client: NymAddressClient,
+  recipient: string,
+  request: FetchNymRequest,
+  timeoutMs: number,
+): Promise<FetchNymResponse> {
+  const tag = nextTag();
+  const envelope = encodeRequest({
+    method: request.method ?? 'GET',
+    path: request.path,
+    headers: request.headers ?? {},
+    bodyBase64: request.body ? toBase64(request.body) : '',
+    tag,
+  });
+  return new Promise<FetchNymResponse>((resolve, reject) => {
+    const done = () => parallelWaiters.delete(tag);
+    const timer = window.setTimeout(() => {
+      done();
+      reject(new Error(`fetchNym timed out after ${timeoutMs} ms waiting for the SURB reply`));
+    }, timeoutMs);
+    parallelWaiters.set(tag, (text: string) => {
+      window.clearTimeout(timer);
+      done();
+      try {
+        const parsed = decodeResponse(text);
+        resolve({
+          status: parsed.status,
+          headers: parsed.headers,
+          body: fromBase64(parsed.bodyBase64),
+          error: parsed.error,
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+    client.send(recipient, envelope).catch((err: unknown) => {
+      window.clearTimeout(timer);
+      done();
+      reject(err);
+    });
+  });
+}
+
+/**
  * Shut down the shared client (e.g. on app unmount). The next `fetchNym`
  * call boots a fresh one. An in-flight request is left to time out.
  */
@@ -176,6 +278,7 @@ export async function stopFetchNymClient(): Promise<void> {
   const boot = sharedClient;
   sharedClient = null;
   currentWaiter = null;
+  parallelWaiters.clear();
   if (boot) {
     const client = await boot.catch(() => null);
     await client?.stop().catch(() => {});

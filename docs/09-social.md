@@ -145,6 +145,55 @@ Limits: posts ≤ 1400 bytes, names ≤ 40 chars, bios ≤ 280, DM ciphertext �
 bytes — every request fits ~one Sphinx packet. Unsigned, stale-day, oversized,
 or malformed writes get 400s; unknown routes 404.
 
+## 9.5b Encrypted attachments (content-addressed blobs)
+
+Posts and DMs can carry up to 3 attachments (images, text, PDF — 256 KiB
+ciphertext each). Files are encrypted **in the browser** (XChaCha20-Poly1305,
+random 32-byte file key, blob = `nonce(24) || ct`) and stored under their
+content address `id = SHA256(blob)`; the envelope carries only metadata:
+
+```text
+AttachmentRef: {id, name, mime, size, key}
+post:    ... || body || attachments → signed, key in the clear (posts are public)
+dm-inner (v2): ... || body || attachments → sealed, keys end-to-end confidential
+```
+
+Key transport is the whole point: timeline posts are public, so the file key
+rides in the post metadata — the blob stays confidential against the provider
+and network observers, any reader can decrypt. DMs seal the entire inner
+envelope to the recipient, so attachment keys never leave the E2E channel.
+The provider stores opaque bytes under their hash and verifies
+`id == SHA256(bytes)` on assembly; it never sees keys or plaintext
+("Browser = Application, Service = Data").
+
+Request envelopes are capped at 64 KiB, so uploads are chunked — one envelope
+per 44 KiB part, each with PoW bound to `id || index || bytes`:
+
+```text
+POST /blob/part?id=<hex64>&part=<i>&of=<n>  {bytes_b64, pow?}  → {id, complete, have, of}
+GET  /blob/<hex64>                           {id, bytes_b64} (404 when absent)
+```
+
+Parts stage in `blob_parts` (retried parts overwrite, mismatched `of`
+rejected, staged rows older than 1 h pruned); when all `of` parts arrive they
+join, hash-verify, and promote to `blobs`. Parts upload **in parallel**
+(concurrency 3): every request carries a correlation `tag` that the provider
+echoes in its response (`dispatch` does this for all hidden services), so the
+client matches replies without sender tags — which the browser SDK does not
+expose. A provider that never echoes (pre-tag deployment) makes the batch
+time out once, after which the client transparently falls back to sequential
+upload for that service. A 256 KiB file needs 6 parts — slow over the mixnet,
+by design: attachments are occasional payloads, not a file-sync protocol. PoW is per part (sender-anonymous, like DMs) and rate
+budget per blob id; blobs never expire while posts referencing them persist.
+
+Client rules (`web/src/social/attachments.mjs` + `attachments.ts`, mirrored
+in `services/social/src/attach.rs`): validate MIME + size *before*
+encryption, sanitize filenames (≤80 chars, no separators/controls), sign the
+canonical refs into the post/DM (stripping or swapping a ref breaks the
+signature), fail closed on malformed refs, and never send a post/DM when a
+blob upload fails — no dangling references. Images render blurred until
+clicked; missing blobs render "Attachment unavailable", never an error.
+
 ## 9.6 Run it
 
 ```bash

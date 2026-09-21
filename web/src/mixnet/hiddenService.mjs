@@ -33,7 +33,9 @@ export function checkPath(path) {
 
 /**
  * Encode a request envelope. `bodyBase64` must already be base64 (may be '').
- * @param {{ method?: string, path: string, headers?: Record<string,string>, bodyBase64?: string }} req
+ * `tag` is an opaque correlation nonce the service echoes in its response so
+ * concurrent callers can match replies (see `fetchNym.ts`).
+ * @param {{ method?: string, path: string, headers?: Record<string,string>, bodyBase64?: string, tag?: string }} req
  * @returns {string} JSON envelope
  */
 export function encodeRequest(req) {
@@ -51,13 +53,19 @@ export function encodeRequest(req) {
     throw new Error('request body exceeds the 64 KiB cap');
   }
   const out = { method, path, headers: { ...headers }, body_base64: bodyBase64 };
+  if (req?.tag !== undefined && req?.tag !== null) {
+    if (typeof req.tag !== 'string' || req.tag.length === 0 || req.tag.length > 64) {
+      throw new Error('tag must be a 1-64 char string');
+    }
+    out.tag = req.tag;
+  }
   return JSON.stringify(out);
 }
 
 /**
  * Decode and validate a response envelope.
  * @param {string} json
- * @returns {{ status: number, headers: Record<string,string>, bodyBase64: string, error: string | null }}
+ * @returns {{ status: number, headers: Record<string,string>, bodyBase64: string, error: string | null, tag: string | null }}
  */
 export function decodeResponse(json) {
   let obj;
@@ -80,12 +88,41 @@ export function decodeResponse(json) {
   if (obj.error !== undefined && obj.error !== null && typeof obj.error !== 'string') {
     throw new Error('response error must be a string or null');
   }
+  if (obj.tag !== undefined && obj.tag !== null && typeof obj.tag !== 'string') {
+    throw new Error('response tag must be a string or null');
+  }
   return {
     status,
     headers: { ...(obj.headers ?? {}) },
     bodyBase64: obj.body_base64,
     error: obj.error ?? null,
+    tag: obj.tag ?? null,
   };
+}
+
+/**
+ * Route one inbound message to its waiter. Tagged replies only ever resolve
+ * a registered parallel waiter (stale or foreign tags are dropped, never
+ * misrouted); untagged replies go to the single serial waiter; garbage is
+ * dropped silently. Used by `fetchNym.ts`; kept here so `node --test`
+ * covers it without the messaging stack.
+ * @param {string} text raw inbound message text
+ * @param {Map<string, (t: string) => void>} parallel waiters by tag
+ * @param {((t: string) => void) | null} serial single serial waiter
+ */
+export function dispatchReply(text, parallel, serial) {
+  let tag;
+  try {
+    tag = decodeResponse(text).tag;
+  } catch {
+    return;
+  }
+  if (tag !== null) {
+    const waiter = parallel.get(tag);
+    if (waiter) waiter(text);
+    return;
+  }
+  if (serial) serial(text);
 }
 
 /**

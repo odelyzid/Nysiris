@@ -9,6 +9,7 @@
  *
  * Pure logic (no browser globals): unit-testable with `node --test web/test`.
  */
+import type { AttachmentRef } from './attachmentCrypto';
 
 export interface DmRecord {
   /** Sender/recipient ed pubkey hex (lowercase), or 'unknown' for legacy plaintext DMs. */
@@ -22,6 +23,8 @@ export interface DmRecord {
   ts: number;
   /** Inner-envelope id; `local:<rand>` for legacy records without one. */
   msgId: string;
+  /** Attachment refs (file keys included — the envelope was sealed). */
+  attachments?: AttachmentRef[];
 }
 
 export interface Conversation {

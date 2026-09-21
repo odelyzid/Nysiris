@@ -24,6 +24,16 @@ function keypair() {
   return { privHex, pubHex: hex };
 }
 
+function goodAttRef() {
+  return {
+    id: 'ab'.repeat(32),
+    name: 'a.png',
+    mime: 'image/png',
+    size: 10,
+    key: 'cd'.repeat(32),
+  };
+}
+
 test('inner envelope round-trips through the sealed box with attribution', { skip: !dm }, () => {
   const alice = keypair();
   const bob = keypair();
@@ -72,7 +82,8 @@ test('malformed inner envelopes are rejected', { skip: !dm }, () => {
   const cases = [
     ['not json', 'not JSON'],
     [[], 'must be an object'],
-    [{ ...good, v: 2 }, 'unsupported DM inner version'],
+    [{ ...good, v: 3 }, 'unsupported DM inner version'],
+    [{ ...good, v: 0 }, 'unsupported DM inner version'],
     [{ ...good, from: 'xyz' }, 'bad sender'],
     [{ ...good, ts: -1 }, 'bad timestamp'],
     [{ ...good, msgId: 'short' }, 'bad id'],
@@ -80,10 +91,30 @@ test('malformed inner envelopes are rejected', { skip: !dm }, () => {
     [{ ...good, bodyB64: '!!!' }, 'not base64'],
     [{ ...good, sig: 'zz' }, 'bad signature'],
     [{ ...good, sig: undefined }, 'bad signature'],
+    [{ ...good, atts: 'nope' }, 'bad attachments'],
+    [{ ...good, atts: [{ ...goodAttRef(), mime: 'text/html' }] }, 'bad attachments'],
   ];
   for (const [input, pattern] of cases) {
     assert.throws(() => dm.unpackDmInner(typeof input === 'string' ? input : JSON.stringify(input)), new RegExp(pattern));
   }
+});
+
+test('v2 inner envelope carries attachments under the signature', { skip: !dm }, () => {
+  const alice = keypair();
+  const atts = [goodAttRef()];
+  const packed = dm.packDmInner(alice.privHex, enc.encode('with files'), atts);
+  const inner = dm.unpackDmInner(packed.json);
+  assert.deepEqual(inner.atts, atts);
+
+  // Stripping the refs breaks the signature…
+  const stripped = { ...JSON.parse(packed.json) };
+  delete stripped.atts;
+  assert.throws(() => dm.unpackDmInner(JSON.stringify(stripped)), /signature invalid/);
+
+  // …as does swapping one.
+  const swapped = { ...JSON.parse(packed.json) };
+  swapped.atts = [{ ...goodAttRef(), id: 'ff'.repeat(32) }];
+  assert.throws(() => dm.unpackDmInner(JSON.stringify(swapped)), /signature invalid/);
 });
 
 test('message ids are unique per pack', { skip: !dm }, () => {

@@ -12,6 +12,7 @@
 mod service;
 mod sig;
 mod store;
+mod attach;
 
 use std::path::PathBuf;
 use std::process::ExitCode;

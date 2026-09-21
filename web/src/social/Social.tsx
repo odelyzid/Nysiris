@@ -32,6 +32,14 @@ import {
 } from './identity';
 import { encodeInviteCompact } from '../mixnet/hiddenService.mjs';
 import { MAX_DM_CIPHERTEXT_BYTES, openDm, packDmInner, sealDm, unpackDmInner } from './dm';
+import {
+  AttachmentList,
+  AttachmentPicker,
+  parseAttachmentRefs,
+  uploadBlobs,
+  type AttachmentRef,
+  type PreparedAttachment,
+} from './attachmentUi';
 import type { DmRecord } from './conversations';
 import {
   addDmRecord,
@@ -89,6 +97,8 @@ interface Post {
   body: string;
   /** Parent post id (hex) for replies; null for top-level posts. */
   in_reply_to: string | null;
+  /** Attachment metadata (validated + signature-bound on read). */
+  attachments?: AttachmentRef[];
   sig: string;
 }
 
@@ -132,6 +142,9 @@ export function Social({
   // and the provider deletes each message on read).
   const [dmTo, setDmTo] = useState('');
   const [dmDraft, setDmDraft] = useState('');
+  // Staged attachments: encrypted in-browser on pick, uploaded on send.
+  const [postFiles, setPostFiles] = useState<PreparedAttachment[]>([]);
+  const [dmFiles, setDmFiles] = useState<PreparedAttachment[]>([]);
   // Local DM history: the dead-drop deletes on read, so every decrypted
   // record is cached on this device and grouped into 1:1 conversations.
   const [dms, setDms] = useState<DmRecord[]>(() => loadDmCache(localStorage));
@@ -190,6 +203,9 @@ export function Social({
   const [idQrUrl, setIdQrUrl] = useState<string | null>(null);
   const [showSecret, setShowSecret] = useState(false);
   const [secretCopied, setSecretCopied] = useState(false);
+  // Progressive disclosure: the identity bar shows the short ID + invite
+  // action; everything else lives behind this toggle.
+  const [showIdentity, setShowIdentity] = useState(false);
 
   // Composer focus target for the empty-state "be the first" call to action.
   const composerRef = useRef<HTMLInputElement | null>(null);
@@ -277,16 +293,26 @@ export function Social({
   /**
    * Verify one feed item's signature before it renders: forged posts never
    * show, and the observation feeds local reputation (first-hand only). The
-   * parent id is part of the signed bytes for replies.
+   * parent id and attachment refs are part of the signed bytes; malformed
+   * attachments drop the post fail-closed.
    */
   const checkPost = useCallback((p: Post): boolean => {
     const parent = normalizeParent(p.in_reply_to);
+    let atts: AttachmentRef[] = [];
+    try {
+      atts = parseAttachmentRefs(p.attachments);
+    } catch {
+      recordRep(p.author, 'invalidSignature');
+      append(`post with bad attachments dropped (seq ${p.seq})`);
+      return false;
+    }
     const ok = verifyPostSignature(
       p.author,
       p.day,
       new TextEncoder().encode(p.body),
       p.sig,
       parent,
+      atts,
     );
     recordRep(p.author, ok ? 'valid' : 'invalidSignature');
     if (!ok) append(`forged post dropped (seq ${p.seq})`);
@@ -543,6 +569,8 @@ export function Social({
     setPosts([]);
     setCursor(0);
     setDms([]);
+    setPostFiles([]);
+    setDmFiles([]);
     setFeedError(null);
     setLastSyncedAt(null);
     setReplyTo(null);
@@ -702,6 +730,7 @@ export function Social({
             at,
             ts: inner.ts,
             msgId: inner.msgId,
+            attachments: inner.atts,
           });
         } catch {
           // Legacy sender (pre-envelope): no attribution possible.
@@ -764,8 +793,23 @@ export function Social({
         // Replying keeps the parent's id stable for the whole send: capture
         // it up front so a thread switch mid-send can't retarget the post.
         const parent = replyTo ? normalizeParent(replyTo.id) : null;
-        const sig = signPost(id.privHex, id.pubHex, day, body, parent);
-        const pow = await powFor(service, id.pubHex, postPowPayload(body, parent));
+        // Blobs upload first (chunked, content-addressed): the post only
+        // carries refs, so a failed upload aborts the send — never a
+        // dangling attachment.
+        const refs: AttachmentRef[] = postFiles.map(
+          ({ id, name, mime, size, key }) => ({ id, name, mime, size, key }),
+        );
+        if (!(await uploadBlobs(service, postFiles, powFor, append))) return;
+        const sig = signPost(id.privHex, id.pubHex, day, body, parent, refs);
+        const pow = await powFor(
+          service,
+          id.pubHex,
+          postPowPayload(
+            body,
+            parent,
+            refs.map((r) => r.id),
+          ),
+        );
         const res = await fetchNym(service, {
           method: 'POST',
           path: '/post',
@@ -776,6 +820,7 @@ export function Social({
               day,
               body: new TextDecoder().decode(body),
               ...(parent ? { in_reply_to: parent } : {}),
+              ...(refs.length > 0 ? { attachments: refs } : {}),
               sig,
               ...(pow ? { pow } : {}),
             }),
@@ -786,6 +831,7 @@ export function Social({
           append(parent ? 'reply posted' : 'posted');
           setDraft('');
           setReplyTo(null);
+          setPostFiles([]);
           // The new post carries a higher seq than the cursor, so the next
           // forward poll picks it up — no need to re-walk from genesis.
           await refreshFeed();
@@ -796,7 +842,7 @@ export function Social({
     } finally {
       setBusy(false);
     }
-  }, [service, draft, replyTo, authed, refreshFeed, append, powFor]);
+  }, [service, draft, postFiles, replyTo, authed, refreshFeed, append, powFor]);
 
   const onSaveProfile = useCallback(async () => {
     if (!service) return;
@@ -858,13 +904,22 @@ export function Social({
     setBusy(true);
     try {
       await authed(async (id) => {
+        // Attachments pack inside the sealed box: refs (with file keys)
+        // stay confidential end-to-end. Blobs upload first so a failed
+        // upload aborts the send — never a dangling ref.
+        const refs: AttachmentRef[] = dmFiles.map(
+          ({ id: aid, name, mime, size, key }) => ({ id: aid, name, mime, size, key }),
+        );
+        if (!(await uploadBlobs(service, dmFiles, powFor, append))) return;
         // Signed inside the sealed box: the recipient can attribute the
         // message, the provider cannot.
-        const packed = packDmInner(id.privHex, new TextEncoder().encode(dmDraft));
+        const packed = packDmInner(id.privHex, new TextEncoder().encode(dmDraft), refs);
         const sealed = sealDm(recipient, new TextEncoder().encode(packed.json));
         const ctBytes = Uint8Array.from(atob(sealed.ciphertextB64), (c) => c.charCodeAt(0));
         if (ctBytes.length > MAX_DM_CIPHERTEXT_BYTES) {
-          append(`dm too large sealed (${ctBytes.length}B > ${MAX_DM_CIPHERTEXT_BYTES}B); shorten it`);
+          append(
+            `dm too large sealed (${ctBytes.length}B > ${MAX_DM_CIPHERTEXT_BYTES}B); shorten the text or drop attachments`,
+          );
           return;
         }
         const pow = await powFor(service, recipient, ctBytes);
@@ -886,6 +941,7 @@ export function Social({
         else {
           append('DM sent (sealed)');
           setDmDraft('');
+          setDmFiles([]);
           const at = Date.now();
           setDms((prev) => {
             const next = addDmRecord(prev, {
@@ -895,6 +951,7 @@ export function Social({
               at,
               ts: at,
               msgId: packed.msgId,
+              attachments: refs,
             });
             saveDmCache(next, localStorage);
             return next;
@@ -907,7 +964,7 @@ export function Social({
     } finally {
       setBusy(false);
     }
-  }, [service, dmTo, dmDraft, append, powFor, authed]);
+  }, [service, dmTo, dmDraft, dmFiles, append, powFor, authed]);
 
   // Shared post body for the timeline list and the thread view: trust dot,
   // display name (petname > profile > short hex), inline naming, and
@@ -1045,6 +1102,9 @@ export function Social({
             </button>
           )}
           <div style={{ wordBreak: 'break-word' }}>{p.body}</div>
+          {p.attachments && p.attachments.length > 0 && (
+            <AttachmentList service={service} refs={p.attachments} />
+          )}
           {caution && (
             <div style={{ fontSize: 11, color: '#b26b00', marginTop: 4 }} role="note">
               ⚠ {caution}.
@@ -1073,23 +1133,17 @@ export function Social({
     [posts],
   );
 
-  return (
-    <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-      <h2 style={{ marginTop: 0, fontSize: 18 }}>Community</h2>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-        <input
-          style={{ flex: 1 }}
-          className="fly-input"
-          placeholder="Private community — set automatically when you open a private link"
-          value={service}
-          onChange={(e) => onServiceChange(e.target.value)}
-          spellCheck={false}
-        />
-        <button onClick={() => { void refreshFeed(); }} disabled={busy || !service} className='fly-btn fly-btn-primary'>
-          Refresh
-        </button>
-      </div>
+  // The Community section only exists while a portal is open: opening a
+  // private link (Open) binds `service`, closing it unbinds. All hooks run
+  // above, so this early return is safe.
+  if (!service) return null;
 
+  return (
+    <section style={{ border: '1px solid var(--fly-line)', borderRadius: 0, padding: 12, marginBottom: 12, background: 'var(--fly-surface)' }}>
+      <h2 style={{ marginTop: 0, fontSize: 18 }}>Community</h2>
+      <button onClick={() => { void refreshFeed(); }} disabled={busy || !service} className='fly-btn'>
+          Refresh
+      </button>
       <div style={{ fontSize: 13, marginBottom: 8 }}>
         {!identity ? (
           <div className="fly-row" style={{ alignItems: 'center' }}>
@@ -1108,43 +1162,11 @@ export function Social({
             </button>
           </div>
         ) : (
-          <span style={{ wordBreak: 'break-all' }}>
-            Your private ID: <code>{identity.pubHex.slice(0, 12)}…</code>{' '}
-            <button
-              style={{ fontSize: 11 }}
-              className='fly-btn fly-btn-primary'
-              onClick={() => {
-                void copyText(identity.pubHex).then((ok) => {
-                  setIdCopied(ok);
-                  append(ok ? 'ID copied' : 'copy unavailable — see technical details');
-                  if (!ok) setShowSecret(false);
-                });
-              }}
-            >
-              {idCopied ? 'Copied' : 'Copy my ID'}
-            </button>{' '}
-            <button style={{ fontSize: 11 }} onClick={() => setShowIdQr((v) => !v)} aria-expanded={showIdQr} className='fly-btn fly-btn-primary'>
-              {showIdQr ? 'Hide QR' : 'Show QR'}
-            </button>{' '}
-            <details style={{ display: 'inline' }}>
-              <summary style={{ display: 'inline', cursor: 'pointer', fontSize: 11 }}>
-                Show technical details
-              </summary>{' '}
-              <code style={{ fontSize: 11 }}>{identity.pubHex}</code>
-            </details>{' '}
-            <button
-              style={{ fontSize: 11 }}
-              className='fly-btn fly-btn-primary'
-              onClick={() => {
-                const id = createIdentity();
-                setIdentity(id);
-                setIdCopied(false);
-                setShowIdQr(false);
-                append('new identity generated');
-              }}
-            >
-              New ID
-            </button>{' '}
+          <>
+          <div className="fly-identity-bar">
+            <span className="fly-identity-id" title={identity.pubHex}>
+              🪪 {identity.pubHex.slice(0, 12)}…
+            </span>
             {(() => {
               const trustedVoices = Object.entries(trustMap)
                 .filter(([, v]) => v === 'trusted')
@@ -1199,10 +1221,59 @@ export function Social({
                 </>
               );
             })()}
-          </span>
-        )}
+            <button
+              className="fly-btn"
+              style={{ fontSize: 11 }}
+              aria-expanded={showIdentity}
+              aria-label="Identity options"
+              title="Identity options: ID, QR, move, backup"
+              onClick={() => setShowIdentity((v) => !v)}
+            >
+              ···
+            </button>
+          </div>
+          {showIdentity && (
+          <div className="fly-identity-panel">
+            <div>
+              Full ID: <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{identity.pubHex}</code>{' '}
+            <button
+              style={{ fontSize: 11 }}
+              className='fly-btn'
+              onClick={() => {
+                void copyText(identity.pubHex).then((ok) => {
+                  setIdCopied(ok);
+                  append(ok ? 'ID copied' : 'copy unavailable — see technical details');
+                  if (!ok) setShowSecret(false);
+                });
+              }}
+            >
+              {idCopied ? 'Copied' : 'Copy my ID'}
+            </button>{' '}
+            <button style={{ fontSize: 11 }} onClick={() => setShowIdQr((v) => !v)} aria-expanded={showIdQr} className='fly-btn'>
+              {showIdQr ? 'Hide QR' : 'Show QR'}
+            </button>{' '}
+            <button
+              style={{ fontSize: 11 }}
+              className='fly-btn'
+              onClick={() => {
+                const id = createIdentity();
+                setIdentity(id);
+                setIdCopied(false);
+                setShowIdQr(false);
+                append('new identity generated');
+              }}
+            >
+              New ID
+            </button>
+            </div>
+            <details>
+              <summary>
+                Show technical details
+              </summary>{' '}
+              <code style={{ fontSize: 11 }}>{identity.pubHex}</code>
+            </details>
         {identity && !profileName.trim() && (
-          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+          <p className="fly-identity-tip">
             Tip: set your display name under About → Your profile so others recognize you.
           </p>
         )}
@@ -1216,8 +1287,8 @@ export function Social({
             <p className="fly-muted">Others scan this to message you. The code is made on this device.</p>
           </div>
         )}
-        <details style={{ marginTop: 4 }}>
-          <summary style={{ fontSize: 11, cursor: 'pointer' }}>Move my ID to another device</summary>
+        <details>
+          <summary>Move my ID to another device</summary>
           <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
             {identity
               ? 'Step 1 — on this device, reveal and copy your secret key. Step 2 — on the other device, paste it below. Anyone with this key is you: never share it with another person.'
@@ -1234,7 +1305,7 @@ export function Social({
                   <code style={{ fontSize: 11 }}>{identity.privHex}</code>{' '}
                   <button
                     style={{ fontSize: 11 }}
-                    className='fly-btn fly-btn-primary'
+                    className='fly-btn'
                     onClick={() => {
                       void copyText(identity.privHex).then((ok) => {
                         setSecretCopied(ok);
@@ -1244,7 +1315,7 @@ export function Social({
                   >
                     {secretCopied ? 'Copied' : 'Copy secret'}
                   </button>{' '}
-                  <button style={{ fontSize: 11 }} onClick={() => setShowSecret(false)} className='fly-btn fly-btn-primary'>
+                  <button style={{ fontSize: 11 }} onClick={() => setShowSecret(false)} className='fly-btn'>
                     Hide
                   </button>
                 </span>
@@ -1261,7 +1332,7 @@ export function Social({
           />
           <button
             style={{ fontSize: 11 }}
-            className='fly-btn fly-btn-primary'
+            className="fly-btn"
             onClick={() => {
               try {
                 setIdentity(importIdentity(importKey));
@@ -1275,8 +1346,8 @@ export function Social({
             Import
           </button>
         </details>
-        <details style={{ marginTop: 4 }}>
-          <summary style={{ fontSize: 11, cursor: 'pointer' }}>Back up / restore (encrypted file)</summary>
+        <details>
+          <summary>Back up / restore (encrypted file)</summary>
           <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
             Password-encrypted copy of your secret key — easier than raw hex on a new
             device. Anyone with this file <em>and</em> the password is you: store
@@ -1296,7 +1367,7 @@ export function Social({
               />
               <button
                 style={{ fontSize: 11 }}
-                className="fly-btn fly-btn-primary"
+                className="fly-btn"
                 onClick={() => void onExportBackup()}
                 disabled={busy || backupPw.length < BACKUP_MIN_PASSWORD_LENGTH}
               >
@@ -1325,7 +1396,7 @@ export function Social({
             />
             <button
               style={{ fontSize: 11 }}
-              className="fly-btn fly-btn-primary"
+              className="fly-btn"
               onClick={() => void onRestoreBackup()}
               disabled={busy || !restoreFile || !restorePw}
             >
@@ -1333,6 +1404,10 @@ export function Social({
             </button>
           </div>
         </details>
+          </div>
+          )}
+          </>
+        )}
       </div>
 
       <div role="tablist" aria-label="Community sections" className="fly-tabbar">
@@ -1356,7 +1431,7 @@ export function Social({
         <div
           style={{
             border: '1px solid #ccc',
-            borderRadius: 8,
+            borderRadius: 0,
             padding: '6px 10px',
             marginBottom: 8,
             fontSize: 12,
@@ -1373,7 +1448,7 @@ export function Social({
           </button>
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
         <input
           ref={composerRef}
           style={{ flex: 1 }}
@@ -1386,6 +1461,15 @@ export function Social({
         <button onClick={onPost} disabled={busy || !service || !draft.trim()} className='fly-btn fly-btn-secondary'>
           {replyTo ? 'Reply' : 'Post'}
         </button>
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <AttachmentPicker
+          files={postFiles}
+          onChange={setPostFiles}
+          onError={append}
+          disabled={busy || !service}
+          inputId="fly-attach-post"
+        />
       </div>
 
       <h3 style={{ fontSize: 15 }}>Timeline</h3>
@@ -1462,20 +1546,10 @@ export function Social({
         </div>
       )}
       {posts.length === 0 && !syncing && !feedError ? (
-        <div
-          style={{
-            border: '1px dashed #aaa',
-            borderRadius: 8,
-            padding: '20px 16px',
-            textAlign: 'center',
-            fontSize: 13,
-            color: '#666',
-          }}
-        >
-          <p style={{ margin: '0 0 4px', fontSize: 15, color: 'inherit' }}>
-            <strong>Nothing here yet</strong>
-          </p>
-          <p style={{ margin: '0 0 12px' }}>
+        <div className="fly-empty">
+          <span className="fly-empty-glyph" aria-hidden="true">💬</span>
+          <strong>Nothing here yet</strong>
+          <p>
             {service
               ? 'This community is quiet. Say the first word — it stays signed by your ID.'
               : 'Open a private link above to join a community, then come back here.'}
@@ -1528,7 +1602,7 @@ export function Social({
           }}
         />
       ) : (
-      <ul style={{ fontSize: 13, listStyle: 'none', padding: 0 }}>
+      <ul className="fly-timeline-list">
         {(trustedOnly
           ? topLevelPosts.filter(
               (p) =>
@@ -1541,7 +1615,7 @@ export function Social({
         ).map((p) => {
           const replyCount = countDescendants(p.id, threadNodes);
           return (
-            <li key={p.seq} style={{ borderTop: '1px solid #eee', padding: '6px 0' }}>
+            <li key={p.seq}>
               <span
                 role="button"
                 tabIndex={0}
@@ -1600,39 +1674,59 @@ export function Social({
       <h3 style={{ fontSize: 15, marginTop: 0 }}>
         Private messages{totalUnread > 0 && <span style={{ color: '#888' }}> ({totalUnread} unread)</span>}
       </h3>
-      <div
-        style={{
-          border: '1px solid #0a7a4a',
-          borderRadius: 8,
-          padding: '8px 12px',
-          marginBottom: 8,
-          fontSize: 12,
-        }}
-      >
-        <strong>Self-destruct on read.</strong> Each message is sealed so only
-        you can open it — and the moment you pick it up, it is deleted from
-        the community. Nobody can replay it, not even the host.
-      </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-        <input className="fly-input" style={{ flex: 1 }} placeholder="Their ID" value={dmTo} onChange={(e) => setDmTo(e.target.value)} spellCheck={false} />
-        <QrScanButton
-          label="Scan ID"
-          onScanText={(text) => {
-            const id = text.trim().toLowerCase();
-            if (/^[0-9a-f]{64}$/.test(id)) setDmTo(id);
-            else append('that QR code is not an ID (64 hex characters)');
+      <p className="fly-note">
+        🔒 Messages vanish once read — even from the host.
+      </p>
+      <div className="fly-dm-composer">
+        <label className="fly-dm-to">
+          To:
+          <input
+            className="fly-input"
+            placeholder="Their 64-hex ID"
+            value={dmTo}
+            onChange={(e) => setDmTo(e.target.value)}
+            spellCheck={false}
+            aria-label="Recipient ID"
+          />
+          <QrScanButton
+            label="Scan ID"
+            onScanText={(text) => {
+              const id = text.trim().toLowerCase();
+              if (/^[0-9a-f]{64}$/.test(id)) setDmTo(id);
+              else append('that QR code is not an ID (64 hex characters)');
+            }}
+            onScanError={(message) => append(`qr scan: ${message}`)}
+          />
+        </label>
+        <textarea
+          className="fly-input fly-dm-message"
+          rows={2}
+          placeholder="Secret message"
+          value={dmDraft}
+          aria-label="Secret message"
+          onChange={(e) => setDmDraft(e.target.value)}
+          onInput={(e) => {
+            const el = e.currentTarget;
+            el.style.height = 'auto';
+            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
           }}
-          onScanError={(message) => append(`qr scan: ${message}`)}
         />
-        <input className="fly-input" style={{ flex: 2 }} placeholder="Secret message" value={dmDraft} onChange={(e) => setDmDraft(e.target.value)} />
-        <button className="fly-btn fly-btn-primary" onClick={onSendDm} disabled={busy || !service || !dmTo || !dmDraft}>
-          Send privately
-        </button>
+        <div className="fly-dm-actions">
+          <AttachmentPicker
+            files={dmFiles}
+            onChange={setDmFiles}
+            onError={append}
+            disabled={busy || !service}
+            inputId="fly-attach-dm"
+          />
+          <button className="fly-btn fly-btn-primary" onClick={onSendDm} disabled={busy || !service || !dmTo || !dmDraft}>
+            Send
+          </button>
+        </div>
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
         <button
-          className="fly-btn"
-          style={{ fontSize: 12 }}
+          className="fly-btn fly-btn-quiet"
           onClick={() => {
             void pollDms();
           }}
@@ -1640,7 +1734,7 @@ export function Social({
         >
           Check for new messages
         </button>
-        <span style={{ fontSize: 11, color: '#888' }}>New arrivals appear automatically.</span>
+        <span style={{ fontSize: 11, color: '#888' }}>Arrivals appear automatically.</span>
       </div>
       {convos.length > 0 && (
         <>
@@ -1680,16 +1774,28 @@ export function Social({
                 <span style={{ color: '#888', fontSize: 11 }}>
                   {new Date(m.ts).toLocaleTimeString()}
                 </span>
+                {m.attachments && m.attachments.length > 0 && (
+                  <AttachmentList service={service} refs={m.attachments} />
+                )}
               </li>
             ))}
           </ul>
         </>
       ) : (
-        <p style={{ fontSize: 13, color: '#888' }}>
-          {convos.length === 0
-            ? 'Nothing here yet — received messages appear automatically.'
-            : 'Pick a conversation above.'}
-        </p>
+        <div className="fly-empty">
+          <span className="fly-empty-glyph" aria-hidden="true">✉️</span>
+          {convos.length === 0 ? (
+            <>
+              <strong>No messages yet</strong>
+              <p>When someone writes to your ID, it appears here automatically.</p>
+            </>
+          ) : (
+            <>
+              <strong>No conversation open</strong>
+              <p>Pick a conversation above to read and reply.</p>
+            </>
+          )}
+        </div>
       )}
       </div>
         );

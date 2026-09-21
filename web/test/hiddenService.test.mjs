@@ -161,3 +161,23 @@ test('checkPath mirrors the bridge guards', () => {
     assert.throws(() => checkPath(bad), `must reject ${bad}`);
   }
 });
+
+test('correlation tags ride the envelope and echo back', () => {
+  // Requests omit the tag unless asked (legacy-identical bytes).
+  const plain = JSON.parse(encodeRequest({ method: 'GET', path: '/', headers: {}, bodyBase64: '' }));
+  assert.equal('tag' in plain, false);
+  // Tagged requests carry it; overlong tags are refused client-side.
+  const tagged = JSON.parse(
+    encodeRequest({ method: 'GET', path: '/', headers: {}, bodyBase64: '', tag: 'p1-2-abc' }),
+  );
+  assert.equal(tagged.tag, 'p1-2-abc');
+  assert.throws(() => encodeRequest({ method: 'GET', path: '/', tag: '' }));
+  assert.throws(() => encodeRequest({ method: 'GET', path: '/', tag: 'x'.repeat(65) }));
+  // Responses default the tag to null (old providers) and accept echoes.
+  assert.equal(decodeResponse('{"status":200,"body_base64":""}').tag, null);
+  assert.equal(
+    decodeResponse('{"status":200,"body_base64":"","tag":"p1-2-abc"}').tag,
+    'p1-2-abc',
+  );
+  assert.throws(() => decodeResponse('{"status":200,"body_base64":"","tag":42}'));
+});

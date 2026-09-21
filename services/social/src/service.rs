@@ -145,8 +145,17 @@ fn descriptor_json(pow_bits: u32) -> serde_json::Value {
             "POST /profile",
             "POST /dm",
             "GET /dm?for=<hex64>",
+            "POST /blob/part?id=<hex64>&part=<i>&of=<n>",
+            "GET /blob/<hex64>",
         ],
     })
+}
+
+/// Stored attachments JSON (validated at write) back into an envelope value.
+fn attachments_value(raw: &Option<String>) -> serde_json::Value {
+    raw.as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or(serde_json::Value::Null)
 }
 
 const DESCRIPTOR_HTML: &str = "<!doctype html><html><head><meta charset=\"utf-8\">\
@@ -162,9 +171,10 @@ padding:.1em .35em;border-radius:.3em}li{margin:.25em 0}</style></head><body>\
 <h2>Timeline</h2>\
 <ul>\
 <li><code>GET /feed?since=&lt;seq&gt;&amp;limit=&lt;n&gt;</code> — global chronological timeline</li>\
-<li><code>POST /post</code> — signed micro-post (max 1400 bytes; optional <code>in_reply_to</code> parent id)</li>\
+<li><code>POST /post</code> — signed micro-post (max 1400 bytes; optional <code>in_reply_to</code> parent id; optional <code>attachments</code> metadata, blobs via <code>POST /blob/part</code>)</li>\
 <li><code>GET /post/&lt;id&gt;</code> — one post by id, for filling thread gaps</li>\
 <li><code>GET /profile/&lt;pubkey&gt;</code> / <code>POST /profile</code> — self-asserted profiles</li>\
+<li><code>POST /blob/part?id=&lt;hex64&gt;&amp;part=&lt;i&gt;&amp;of=&lt;n&gt;</code> / <code>GET /blob/&lt;id&gt;</code> — encrypted attachment blobs by content hash, one envelope per chunk (max 256 KiB total)</li>\
 </ul>\
 <h2>Private messages</h2>\
 <ul>\
@@ -233,6 +243,7 @@ impl HiddenService for SocialService {
                                     "seq": p.seq, "id": p.id_hex, "author": p.author_hex,
                                     "day": p.day, "body": p.body,
                                     "in_reply_to": p.in_reply_to_hex,
+                                    "attachments": attachments_value(&p.attachments_json),
                                     "sig": p.sig_hex,
                                 })
                             })
@@ -292,23 +303,33 @@ impl HiddenService for SocialService {
                         Some(id)
                     }
                 };
+                // Optional attachments: validated metadata whose canonical
+                // bytes ride the signature (absent array = legacy post).
+                let atts = match crate::attach::parse_attachments(&v) {
+                    Ok(a) => a,
+                    Err(e) => return Response::error(400, e),
+                };
                 if sig::verify(
                     &author,
-                    &sig::post_message(&author, day, text.as_bytes(), parent.as_ref()),
+                    &sig::post_message(&author, day, text.as_bytes(), parent.as_ref(), &atts),
                     &sig,
                 )
                 .is_err()
                 {
                     return Response::error(400, "signature verification failed");
                 }
-                // Spam backstops: PoW binds (author, parent, body) so a proof
-                // for a top-level post can't be replayed onto a reply and
-                // vice versa; budget is per author.
-                let mut pow_preimage = Vec::with_capacity(16 + text.len());
+                // Spam backstops: PoW binds (author, parent, body, attachment
+                // ids) so a proof for a top-level post can't be replayed onto
+                // a reply and vice versa; budget is per author.
+                let mut pow_preimage = Vec::with_capacity(16 + text.len() + 32 * atts.len());
                 if let Some(p) = parent.as_ref() {
                     pow_preimage.extend_from_slice(p);
                 }
                 pow_preimage.extend_from_slice(text.as_bytes());
+                for a in &atts {
+                    let raw = hex::decode(&a.id).unwrap_or_default();
+                    pow_preimage.extend_from_slice(&raw);
+                }
                 let pow_hash = portal_reputation::pow::payload_hash(&pow_preimage);
                 if let Err(e) = self.check_pow(&author, &pow_hash, &v) {
                     return e;
@@ -328,7 +349,20 @@ impl HiddenService for SocialService {
                     }
                 }
                 let sig_bytes = sig.to_bytes();
-                match store.insert_post(&author, day, text, parent.as_ref(), &sig_bytes, rand::random()) {
+                let attachments_json = if atts.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::to_string(&atts).unwrap_or_else(|_| "[]".into()))
+                };
+                match store.insert_post(
+                    &author,
+                    day,
+                    text,
+                    parent.as_ref(),
+                    attachments_json.as_deref(),
+                    &sig_bytes,
+                    rand::random(),
+                ) {
                     Ok(seq) => Response::ok(
                         200,
                         "application/json",
@@ -357,6 +391,7 @@ impl HiddenService for SocialService {
                             "seq": post.seq, "id": post.id_hex, "author": post.author_hex,
                             "day": post.day, "body": post.body,
                             "in_reply_to": post.in_reply_to_hex,
+                            "attachments": attachments_value(&post.attachments_json),
                             "sig": post.sig_hex,
                         })),
                     ),
@@ -500,6 +535,101 @@ impl HiddenService for SocialService {
                     Err(e) => Response::error(500, e),
                 }
             }
+            ("POST", p) if p.starts_with("/blob/part") => {
+                // One envelope per chunk (request bodies are capped at
+                // 64 KiB): `POST /blob/part?id=<hex64>&part=<i>&of=<n>`.
+                // Each part carries PoW bound to (id, index, bytes); when
+                // all `of` parts arrive they assemble, hash-verify against
+                // the claimed content address, and promote to `blobs`.
+                // Sender-anonymous like DMs: anyone may store.
+                let id_hex = match query.get("id") {
+                    Some(s) => s,
+                    None => return Response::error(400, "blob part needs ?id=<hex64>"),
+                };
+                let id_bytes = match hex::decode(id_hex.trim()) {
+                    Ok(b) if b.len() == 32 => b,
+                    _ => return Response::error(400, "blob id must be 32 bytes hex"),
+                };
+                let mut id = [0u8; 32];
+                id.copy_from_slice(&id_bytes);
+                let part = match query.get("part").and_then(|s| s.parse::<usize>().ok()) {
+                    Some(p) => p,
+                    None => return Response::error(400, "blob part needs ?part=<n>"),
+                };
+                let of = match query.get("of").and_then(|s| s.parse::<usize>().ok()) {
+                    Some(n) => n,
+                    None => return Response::error(400, "blob part needs ?of=<n>"),
+                };
+                if of == 0 || of > crate::attach::MAX_BLOB_PARTS || part >= of {
+                    return Response::error(400, "bad part coordinates");
+                }
+                let v: serde_json::Value = match serde_json::from_slice(&body) {
+                    Ok(v) => v,
+                    Err(_) => return Response::error(400, "blob part body must be JSON"),
+                };
+                let chunk = match v
+                    .get("bytes_b64")
+                    .and_then(|c| c.as_str())
+                    .and_then(|c| base64_decode(c))
+                {
+                    Some(b) if !b.is_empty() => b,
+                    _ => return Response::error(400, "bad chunk bytes"),
+                };
+                if chunk.len() > crate::attach::MAX_BLOB_PART_BYTES {
+                    return Response::error(400, "chunk too large");
+                }
+                let mut preimage = Vec::with_capacity(32 + 4 + chunk.len());
+                preimage.extend_from_slice(&id);
+                preimage.extend_from_slice(&(part as u32).to_be_bytes());
+                preimage.extend_from_slice(&chunk);
+                let pow_hash = portal_reputation::pow::payload_hash(&preimage);
+                if let Err(e) = self.check_pow(&id, &pow_hash, &v) {
+                    return e;
+                }
+                if let Err(e) = self.check_rate(&format!("blob:{}", hex::encode(id))) {
+                    return e;
+                }
+                let store = match self.lock() {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                match store.stage_blob_part(&id, part, of, &chunk) {
+                    Ok((complete, have)) => Response::ok(
+                        200,
+                        "application/json",
+                        &json_body(&serde_json::json!({
+                            "id": hex::encode(id), "complete": complete, "have": have, "of": of,
+                        })),
+                    ),
+                    Err(e) => Response::error(400, e),
+                }
+            }
+            ("GET", p) if p.starts_with("/blob/") => {
+                let hex = &p["/blob/".len()..];
+                let id_bytes = match hex::decode(hex.trim()) {
+                    Ok(b) if b.len() == 32 => b,
+                    _ => return Response::error(400, "blob id must be a 32-byte hex string"),
+                };
+                let mut id = [0u8; 32];
+                id.copy_from_slice(&id_bytes);
+                let store = match self.lock() {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                match store.get_blob(&id) {
+                    Ok(Some(bytes)) => Response::ok(
+                        200,
+                        "application/json",
+                        &json_body(&serde_json::json!({
+                            "id": hex::encode(id),
+                            "bytes_b64": base64::Engine::encode(
+                                &base64::engine::general_purpose::STANDARD, &bytes),
+                        })),
+                    ),
+                    Ok(None) => Response::error(404, "no such blob"),
+                    Err(e) => Response::error(500, e),
+                }
+            }
             _ => Response::error(404, "unknown route"),
         }
     }
@@ -542,7 +672,7 @@ mod tests {
         parent: Option<[u8; 16]>,
     ) -> serde_json::Value {
         let author = sk.verifying_key().to_bytes();
-        let msg = sig::post_message(&author, day, body.as_bytes(), parent.as_ref());
+        let msg = sig::post_message(&author, day, body.as_bytes(), parent.as_ref(), &[]);
         let sig = sk.sign(&msg);
         let mut v = serde_json::json!({
             "author": hex::encode(author),
@@ -639,6 +769,8 @@ mod tests {
         assert!(text.contains("GET /feed?since="));
         assert!(text.contains("POST /post"));
         assert!(text.contains("POST /dm"));
+        assert!(text.contains("POST /blob/part"));
+        assert!(text.contains("/blob/&lt;id&gt;"));
         assert!(text.contains("/post/&lt;id&gt;"));
     }
 
@@ -782,5 +914,178 @@ mod tests {
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
         let body: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
         assert!(body["dms"].as_array().unwrap().is_empty());
+    }
+
+    fn signed_post_with_attachments(
+        sk: &SigningKey,
+        day: u64,
+        body: &str,
+        atts: &[crate::attach::AttachmentRef],
+    ) -> serde_json::Value {
+        let author = sk.verifying_key().to_bytes();
+        let msg = sig::post_message(&author, day, body.as_bytes(), None, atts);
+        let sig = sk.sign(&msg);
+        serde_json::json!({
+            "author": hex::encode(author),
+            "day": day,
+            "body": body,
+            "attachments": atts,
+            "sig": hex::encode(sig.to_bytes()),
+        })
+    }
+
+    fn sample_attachment(id_byte: u8) -> crate::attach::AttachmentRef {
+        crate::attach::AttachmentRef {
+            id: hex::encode([id_byte; 32]),
+            name: "photo.png".into(),
+            mime: "image/png".into(),
+            size: 1024,
+            key: hex::encode([id_byte + 1; 32]),
+        }
+    }
+
+    #[test]
+    fn post_with_attachments_verifies_stores_and_serves() {
+        let svc = test_service();
+        let sk = SigningKey::from_bytes(&[31u8; 32]);
+        let day = sig::current_day();
+        let atts = vec![sample_attachment(0xab)];
+
+        let good = signed_post_with_attachments(&sk, day, "with files", &atts);
+        let raw = envelope("POST", "/post", good.to_string().as_bytes());
+        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
+
+        // Feed serves the metadata verbatim.
+        let raw = envelope("GET", "/feed?since=0&limit=20", &[]);
+        let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
+        let feed: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
+        assert_eq!(feed["posts"][0]["attachments"].as_array().unwrap().len(), 1);
+        assert_eq!(feed["posts"][0]["attachments"][0]["mime"], "image/png");
+
+        // Stripped attachments no longer verify under the same signature.
+        let mut stripped = signed_post_with_attachments(&sk, day, "with files", &atts);
+        stripped["attachments"] = serde_json::json!([]);
+        let raw = envelope("POST", "/post", stripped.to_string().as_bytes());
+        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 400);
+
+        // Disallowed MIME is refused before storage.
+        let mut bad_mime = vec![sample_attachment(0xcd)];
+        bad_mime[0].mime = "application/octet-stream".into();
+        let evil = signed_post_with_attachments(&sk, day, "evil", &bad_mime);
+        let raw = envelope("POST", "/post", evil.to_string().as_bytes());
+        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 400);
+    }
+
+    fn post_blob_part(
+        svc: &SocialService,
+        id_hex: &str,
+        part: usize,
+        of: usize,
+        chunk: &[u8],
+    ) -> serde_json::Value {
+        use base64::Engine as _;
+        let body = serde_json::json!({
+            "bytes_b64": base64::engine::general_purpose::STANDARD.encode(chunk),
+        });
+        let raw = envelope(
+            "POST",
+            &format!("/blob/part?id={id_hex}&part={part}&of={of}"),
+            body.to_string().as_bytes(),
+        );
+        let rep = Response::from_json(&dispatch(svc, &raw)).unwrap();
+        assert_eq!(rep.status, 200);
+        serde_json::from_slice(&rep.body().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn responses_echo_the_correlation_tag() {
+        let svc = test_service();
+        // A tagged health check comes back with the tag echoed, so parallel
+        // callers can match replies without sender tags.
+        let mut headers = std::collections::HashMap::new();
+        let req = nym_hidden_service::Request::new("GET", "/health", headers.clone(), &[]).unwrap();
+        let raw = req.to_json();
+        let mut tagged: serde_json::Value = serde_json::from_slice(raw.as_bytes()).unwrap();
+        tagged["tag"] = serde_json::json!("p0-1-xyz");
+        let rep = Response::from_json(&dispatch(&svc, tagged.to_string().as_bytes())).unwrap();
+        assert_eq!(rep.status, 200);
+        assert_eq!(rep.tag.as_deref(), Some("p0-1-xyz"));
+        // Untagged requests stay untagged.
+        headers.clear();
+        let rep = Response::from_json(&dispatch(&svc, raw.as_bytes())).unwrap();
+        assert_eq!(rep.tag, None);
+    }
+
+    #[test]
+    fn blob_parts_assemble_and_verify_by_content_hash() {
+        let svc = test_service();
+        let bytes = b"encrypted-blob-bytes";
+        let hash = portal_reputation::pow::payload_hash(bytes);
+        let id_hex = hex::encode(hash);
+
+        // Two parts: first incomplete, second completes the upload.
+        let mid = bytes.len() / 2;
+        let r: serde_json::Value =
+            post_blob_part(&svc, &id_hex, 0, 2, &bytes[..mid]);
+        assert_eq!(r["complete"], false);
+        assert_eq!(r["have"], 1);
+        let r: serde_json::Value =
+            post_blob_part(&svc, &id_hex, 1, 2, &bytes[mid..]);
+        assert_eq!(r["complete"], true);
+
+        // Fetched byte-identically.
+        let raw = envelope("GET", &format!("/blob/{id_hex}"), &[]);
+        let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
+        assert_eq!(rep.status, 200);
+        let body: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
+        assert_eq!(body["id"], id_hex);
+        let back = base64::engine::general_purpose::STANDARD
+            .decode(body["bytes_b64"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(back, bytes);
+
+        // Unknown blob: 404.
+        let raw = envelope("GET", &format!("/blob/{}", "00".repeat(32)), &[]);
+        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 404);
+    }
+
+    #[test]
+    fn blob_parts_reject_mismatch_oversize_and_bad_coords() {
+        use base64::Engine as _;
+        let svc = test_service();
+        let enc = |c: &[u8]| base64::engine::general_purpose::STANDARD.encode(c);
+        let post = |path: &str, chunk: &[u8]| {
+            let body = serde_json::json!({ "bytes_b64": enc(chunk) });
+            let raw = envelope("POST", path, body.to_string().as_bytes());
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status
+        };
+
+        // Parts that don't hash to the claimed id: refused at assembly.
+        let id_hex = "ff".repeat(32);
+        assert_eq!(post(&format!("/blob/part?id={id_hex}&part=0&of=1"), b"lies"), 400);
+
+        // Bad coordinates: part >= of, of = 0, of over the cap.
+        let real = hex::encode(portal_reputation::pow::payload_hash(b"x"));
+        assert_eq!(post(&format!("/blob/part?id={real}&part=1&of=1"), b"x"), 400);
+        assert_eq!(post(&format!("/blob/part?id={real}&part=0&of=0"), b"x"), 400);
+        assert_eq!(post(&format!("/blob/part?id={real}&part=0&of=99"), b"x"), 400);
+
+        // `of` mismatch mid-upload: refused.
+        let bytes = b"consistent-total";
+        let id2 = hex::encode(portal_reputation::pow::payload_hash(bytes));
+        assert_eq!(post(&format!("/blob/part?id={id2}&part=0&of=2"), b"consistent-"), 200);
+        assert_eq!(post(&format!("/blob/part?id={id2}&part=1&of=3"), b"total"), 400);
+
+        // Oversize total (6 full chunks > 256 KiB): refused at assembly.
+        let big_part = vec![7u8; crate::attach::MAX_BLOB_PART_BYTES];
+        let mut big = Vec::new();
+        for _ in 0..6 {
+            big.extend_from_slice(&big_part);
+        }
+        let big_id = hex::encode(portal_reputation::pow::payload_hash(&big));
+        for i in 0..5 {
+            assert_eq!(post(&format!("/blob/part?id={big_id}&part={i}&of=6"), &big_part), 200);
+        }
+        assert_eq!(post(&format!("/blob/part?id={big_id}&part=5&of=6"), &big_part), 400);
     }
 }

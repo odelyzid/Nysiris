@@ -27,8 +27,18 @@
 #
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the repo root from this file's location, following symlinks, so the
+# scripts keep working when the repo folder is moved/renamed or invoked
+# through a link (e.g. ~/bin/build.sh -> <repo>/build.sh) and from any cwd.
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 export ROOT
+unset SOURCE DIR
 
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"

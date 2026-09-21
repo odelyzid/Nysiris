@@ -18,7 +18,7 @@ export function Panel({
     <section
       style={{
         border: '1px solid #ddd',
-        borderRadius: 8,
+        borderRadius: 0,
         padding: 12,
         marginBottom: 12,
       }}

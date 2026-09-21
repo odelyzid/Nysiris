@@ -16,6 +16,8 @@ import { bytesToHex, hexToBytes, randomBytes } from '@noble/hashes/utils.js';
 import { argon2idAsync } from '@noble/hashes/argon2.js';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { base58Decode, parseNymAddress } from '../mixnet/hiddenService.mjs';
+import { canonicalAttachmentBytes } from './attachments.mjs';
+import type { AttachmentRef } from './attachmentCrypto';
 
 const STORAGE_KEY = 'fly.social.identity';
 const POST_DOMAIN = 'fly-social-v1/post';
@@ -189,8 +191,9 @@ export function parseParentHex(inReplyTo?: string | null): Uint8Array | null {
 }
 
 /**
- * Sign a post: `domain || author(32) || day_be64 || parent(16) || body`.
- * Byte-exact mirror of `sig::post_message` — `parent` is zeros when absent.
+ * Sign a post: `domain || author(32) || day_be64 || parent(16) || body || attachments`.
+ * Byte-exact mirror of `sig::post_message` — `parent` is zeros when absent,
+ * `attachments` canonical bytes are empty when absent (legacy-identical).
  */
 export function signPost(
   privHex: string,
@@ -198,6 +201,7 @@ export function signPost(
   day: number,
   body: Uint8Array,
   inReplyTo?: string | null,
+  atts: AttachmentRef[] = [],
 ): string {
   const msg = concat(
     enc.encode(POST_DOMAIN),
@@ -205,6 +209,7 @@ export function signPost(
     u64be(day),
     parseParentHex(inReplyTo) ?? new Uint8Array(16),
     body,
+    canonicalAttachmentBytes(atts),
   );
   return bytesToHex(ed25519.sign(msg, hexToBytes(privHex)));
 }
@@ -220,6 +225,7 @@ export function verifyPostSignature(
   body: Uint8Array,
   sigHex: string,
   inReplyTo?: string | null,
+  atts: AttachmentRef[] = [],
 ): boolean {
   try {
     const msg = concat(
@@ -228,6 +234,7 @@ export function verifyPostSignature(
       u64be(day),
       parseParentHex(inReplyTo) ?? new Uint8Array(16),
       body,
+      canonicalAttachmentBytes(atts),
     );
     if (ed25519.verify(hexToBytes(sigHex), msg, hexToBytes(authorHex))) return true;
     if (inReplyTo) return false;
@@ -239,16 +246,29 @@ export function verifyPostSignature(
 }
 
 /**
- * PoW preimage for a post: parent bytes (if any) + body. Mirrors the
- * provider, which binds the same preimage so a top-level proof can't be
- * replayed onto a reply.
+ * PoW preimage for a post: parent bytes (if any) + body + attachment ids.
+ * Mirrors the provider, which binds the same preimage so a top-level proof
+ * can't be replayed onto a reply — or across attachment swaps.
  */
-export function postPowPayload(body: Uint8Array, inReplyTo?: string | null): Uint8Array {
+export function postPowPayload(
+  body: Uint8Array,
+  inReplyTo?: string | null,
+  attIds: string[] = [],
+): Uint8Array {
   const parent = parseParentHex(inReplyTo);
-  if (!parent) return body;
-  const out = new Uint8Array(parent.length + body.length);
-  out.set(parent, 0);
-  out.set(body, parent.length);
+  const ids = attIds.map((id) => hexToBytes(id.trim().toLowerCase()));
+  const out = new Uint8Array((parent?.length ?? 0) + body.length + 32 * ids.length);
+  let at = 0;
+  if (parent) {
+    out.set(parent, at);
+    at += parent.length;
+  }
+  out.set(body, at);
+  at += body.length;
+  for (const raw of ids) {
+    out.set(raw, at);
+    at += raw.length;
+  }
   return out;
 }
 /** Sign a profile: `domain || author(32) || name || 0x00 || bio`. */

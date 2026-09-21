@@ -7,6 +7,18 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 
 ### Added
 
+- Encrypted attachments for posts and DMs: browser-encrypted files
+  (XChaCha20-Poly1305, content-addressed `SHA256(blob)` ids), ≤256 KiB and
+  ≤3 per message, 7 whitelisted MIME types. Provider stores opaque blobs
+  via chunked `POST /blob/part` upload (44 KiB/envelope, per-part PoW) and
+  `GET /blob/<id>`; attachment refs ride the post signature and the v2 DM
+  inner envelope. Composer paperclip picker with chips, blurred-until-click
+  thumbnails, download cards, "Attachment unavailable" fallback.
+  (`services/social/src/attach.rs`, `web/src/social/attachment{,Crypto}.mjs/ts`,
+  `attachmentUi.tsx`, docs §9.5b; 24 service tests, 135 web tests.)
+- Parallel blob-part upload (concurrency 3) via echoed correlation tags
+  (`Request`/`Response.tag`, `fetchNymParallel` with sequential fallback for
+  pre-tag providers).
 - **Experimental / pre-audit disclaimer** in `README.md`: no independent
   audit yet, reference crypto only.
 - Keystore-backed social identity on Android: `NysirisKeystore` Capacitor
@@ -26,6 +38,18 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 - Fixed `android:allowBackup` contradiction (generated manifest said `true`,
   docs and reference manifest said `false`): backups disabled so WebView /
   app data never lands in cloud backup.
+- Community UI polish (frontend only): progressive-disclosure identity bar
+  (short ID + invite action, full controls behind a toggle), stronger tab
+  states, calmer button hierarchy (one primary action per context),
+  chat-style DM composer with growing input, unified empty states, roomier
+  timeline spacing. No logic or protocol changes.
+- Orange pixel-bevel theme (was teal): square corners, raised-bevel buttons,
+  sunken-bevel inputs, AA-verified accent pairs.
+- Electron window association: top-level `desktopName` + `syncDesktopName`
+  so the `.desktop` entry carries `StartupWMClass=nysiris`.
+- Build scripts resolve the repo root through symlinks (`build.sh`,
+  `run-provider.sh`, `build-deb.sh`), so relocated folders and linked
+  entry points keep working.
 - On-device keystore smoke test (`KeystoreCryptoDeviceTest`, 2/2 green on
   an API-34 emulator): real Android Keystore round-trip, ciphertext-only
   storage assertion, tamper rejection; plus host-JVM framing tests

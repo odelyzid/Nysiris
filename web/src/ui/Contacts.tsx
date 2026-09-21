@@ -47,7 +47,7 @@ export function ContactsPanel({
         <div
           style={{
             border: '1px solid #bd5b4e',
-            borderRadius: 6,
+            borderRadius: 0,
             padding: 8,
             marginBottom: 8,
             fontSize: 13,

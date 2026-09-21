@@ -16,8 +16,8 @@ mixnet. Formerly `fly-protocol`; renamed, nothing else moved.
 > **Status:** foundations, hosting, browser client, social/DMs, trust
 > indicators, desktop packaging, and security analysis complete, with the
 > documented controls enforced in code and tests.
-> * Reference Sphinx core + enforcement controls: **61 Rust tests pass**.
-> * Browser PWA + social logic: **123 `node --test` tests pass**.
+> * Reference Sphinx core + enforcement controls: **63 Rust tests pass**.
+> * Browser PWA + social logic: **135 `node --test` tests pass**.
 > * Service hosting: runnable providers + hybrid compose + gateway assets.
 > * Build system: `./build.sh` for Rust / web / Android / services / desktop /
 >   Windows / check, plus CI.
@@ -28,8 +28,8 @@ mixnet. Formerly `fly-protocol`; renamed, nothing else moved.
 
 | Area | State |
 |---|---|
-| PWA: tunnel, leak guard, Nym-address messaging, `fetchNym` | Works (mainnet-verified delivery + SURB reply) |
-| Community timeline, threads, E2E DMs, trust dots, petnames, invites | Works against a `nysiris-social` provider you run |
+| PWA: tunnel, leak guard, Nym-address messaging, `fetchNym` (+ parallel tagged requests) | Works (mainnet-verified delivery + SURB reply) |
+| Community timeline, threads, E2E DMs, trust dots, petnames, invites, encrypted attachments | Works against a `nysiris-social` provider you run |
 | Providers, hybrid bridge, portal store | Works; you operate them (see `services/`) |
 | Linux `.deb`, Windows zip | Works; built by CI on every release tag |
 | Android (TWA/Capacitor), MV3 extension | Scaffolds — installable, not yet hardened |
@@ -91,7 +91,7 @@ Releases are cut from tags: `./build.sh bump <version>`, commit `VERSION`,
 publishes them with checksums (`.github/workflows/release.yml`).
 ```
 
-`./build.sh check` runs **61 Rust tests** and **123 web unit tests** with zero
+`./build.sh check` runs **63 Rust tests** and **135 web unit tests** with zero
 clippy warnings, validates the JSON manifests, and checks every relative link in
 the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 
@@ -160,10 +160,10 @@ touching the network path.
 | `services/echo-provider/` | Pure-mixnet service provider (`nym-sdk` 1.21.x messaging) | Written against documented API; build in place |
 | `services/acceptance/` | Live-network delivery + SURB reply harness | **Passed on mainnet**: delivery ≈7.6 s, SURB reply ≈7.1 s |
 | `services/hybrid-bridge/` | Nym↔HTTP bridge + Caddy + Docker Compose, using `bridge-guard` | `docker compose config` + guard tests |
-| `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`) | 13 tests + `web/src/social/` timeline UI |
+| `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); encrypted attachments (content-addressed blobs, chunked + parallel upload); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`) | 24 tests + `web/src/social/` timeline UI |
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
 | `services/gateway/` | `nym-node` entry-gateway config, systemd, bonding notes | Templates + operator steps |
-| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 123 `node --test` tests + `npm run build` |
+| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 135 `node --test` tests + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
 | `desktop/launcher/` | std-only Linux launcher: loopback static server + Chromium app window | 5 tests |
 | `desktop/debian/` | `.deb` packaging (control, postinst, `.desktop`, icon) | Built + inspected; `./build.sh desktop` |

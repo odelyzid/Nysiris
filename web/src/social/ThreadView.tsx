@@ -60,7 +60,7 @@ export function ThreadView({
         <div
           style={{
             border: '1px solid #ddd',
-            borderRadius: 8,
+            borderRadius: 0,
             padding: '8px 12px',
             marginBottom: 4,
             fontSize: 13,

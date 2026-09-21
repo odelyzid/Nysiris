@@ -46,7 +46,7 @@ pub fn dispatch(service: &impl HiddenService, raw: &[u8]) -> Vec<u8> {
         return Response::error(400, "request rejected by open-proxy guards").to_json();
     }
 
-    service.handle(&request).to_json()
+    service.handle(&request).with_tag(&request.tag).to_json()
 }
 
 /// A trivial echo service, useful for tests and as a template.
@@ -61,5 +61,33 @@ impl HiddenService for EchoService {
             "text/plain",
             format!("echo [{} {}]: {text}", request.method, request.path).as_bytes(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn dispatch_echoes_the_correlation_tag() {
+        let mut req = Request::new("GET", "/", HashMap::new(), b"hi").unwrap();
+        req.tag = Some("part-3-of-6".into());
+        let rep = Response::from_json(&dispatch(&EchoService, req.to_json().as_bytes())).unwrap();
+        assert_eq!(rep.tag.as_deref(), Some("part-3-of-6"));
+    }
+
+    #[test]
+    fn legacy_envelopes_without_tags_still_work() {
+        // No tag anywhere: None in, None out — old clients and old
+        // services interoperate unchanged.
+        let req = Request::new("GET", "/", HashMap::new(), b"hi").unwrap();
+        assert_eq!(req.tag, None);
+        let rep = Response::from_json(&dispatch(&EchoService, req.to_json().as_bytes())).unwrap();
+        assert_eq!(rep.tag, None);
+        // Unknown fields (e.g. a tag from a newer client) are ignored on parse.
+        let raw = br#"{"method":"GET","path":"/","tag":"new","mystery":42}"#;
+        let parsed = Request::from_json(raw).unwrap();
+        assert_eq!(parsed.tag.as_deref(), Some("new"));
     }
 }

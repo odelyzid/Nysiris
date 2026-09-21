@@ -411,6 +411,10 @@ rather than prose. Run `./build.sh check` to verify all of them at once.
 | Browser reply dedupe + TTL | §5.3.1/§5.3.3 | `web/src/mixnet/enforcement.mjs` (`ReplyTracker`) | `web/test/enforcement.test.mjs` |
 | Browser reply rate limit | §5.3.4 | `web/src/mixnet/enforcement.mjs` (`ReplyBudget`) | `web/test/enforcement.test.mjs` |
 | Browser privacy guardrail | §5.8 | `enforcement.mjs` + `web/src/mixnet/tunnel.ts` | `web/test/enforcement.test.mjs` |
+| Attachment validation (client) | §9.5b | `web/src/social/attachments.mjs` (MIME/size/count/names) | `web/test/attachments.test.mjs` (5 tests) |
+| Attachment encryption round-trip | §9.5b | `web/src/social/attachmentCrypto.ts` (XChaCha, content address) | `web/test/attachments-crypto.test.mjs` (4 tests) |
+| Attachment signature binding | §9.5b | `sig::post_message` + `attach::canonical_attachments`, DM inner v2 | `sig` + `service` attachment tests |
+| Blob content addressing + caps | §9.5b | `services/social` `/blob/part` + `GET /blob` (hash verify, 256 KiB, PoW/rate) | `blob_parts_*` + `blobs_round_trip` store tests |
 | Parser robustness (random/mutated bytes) | §5.1 | `crates/sphinx-core/tests/fuzz_parser.rs` | 6 fuzz tests |
 | Route/message soak | §5.1–§5.3 | `crates/sphinx-core/tests/soak.rs` | `./build.sh soak` |
 

@@ -28,6 +28,11 @@ pub struct Request {
     /// Raw body, base64-encoded.
     #[serde(default)]
     pub body_base64: String,
+    /// Opaque correlation nonce. Echoed back in the response so clients can
+    /// match concurrent replies without sender tags (which the browser SDK
+    /// does not expose). Absent on legacy envelopes — never required.
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 /// A reply from a hidden service.
@@ -38,6 +43,9 @@ pub struct Response {
     /// Raw body, base64-encoded.
     pub body_base64: String,
     pub error: Option<String>,
+    /// Echo of the request's correlation nonce (see `Request::tag`).
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 impl Request {
@@ -64,6 +72,7 @@ impl Request {
                 .into_iter()
                 .collect::<HashMap<_, _>>(),
             body_base64: B64.encode(body),
+            tag: None,
         })
     }
 
@@ -91,6 +100,7 @@ impl Response {
             headers,
             body_base64: B64.encode(body),
             error: None,
+            tag: None,
         }
     }
 
@@ -100,7 +110,16 @@ impl Response {
             headers: HashMap::new(),
             body_base64: String::new(),
             error: Some(message.into()),
+            tag: None,
         }
+    }
+
+    /// Attach the request's correlation nonce before sending. Every hidden
+    /// service should call this on the way out so clients can match
+    /// concurrent replies (see `Request::tag`).
+    pub fn with_tag(mut self, tag: &Option<String>) -> Self {
+        self.tag = tag.clone();
+        self
     }
 
     /// Decode the body bytes.
