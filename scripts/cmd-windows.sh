@@ -76,10 +76,10 @@ cmd_windows() {
   local zip="$ROOT/dist/nysiris_${version}_windows-${arch}.zip"
   if have powershell.exe; then
     log "zipping with Compress-Archive"
-    (cd "$ROOT/dist/windows" && rm -f "$zip" && powershell.exe -NoProfile -NonInteractive -Command "Compress-Archive -Path '$stage_name' -DestinationPath '$(basename "$zip")' -Force")
+    (cd "$ROOT/dist" && rm -f "$zip" && powershell.exe -NoProfile -NonInteractive -Command "Compress-Archive -Path 'windows/$stage_name' -DestinationPath '$(basename "$zip")' -Force")
   elif have zip; then
     log "zipping with zip"
-    (cd "$ROOT/dist/windows" && rm -f "$zip" && zip -qr "$(basename "$zip")" "$stage_name")
+    (cd "$ROOT/dist" && rm -f "$zip" && zip -qr "$(basename "$zip")" "$stage_name")
   else
     die "need powershell.exe (Windows) or zip to package; stage left at ${stage#"$ROOT"/}"
   fi
