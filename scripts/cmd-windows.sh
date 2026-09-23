@@ -3,6 +3,26 @@
 # Output: dist/nysiris_<version>_windows-<arch>.zip
 # shellcheck shell=bash
 cmd_windows() {
+  # rustup installs cargo into the native Windows profile (USERPROFILE); a
+  # bare MSYS2/MINGW64 shell PATH (and its MSYS2-style $HOME) does not include
+  # it. Prefer CARGO_HOME, then the native profile, then the MSYS2 $HOME.
+  if ! have cargo; then
+    local c
+    local -a candidates=()
+    [[ -n "$CARGO_HOME" ]] && candidates+=("$CARGO_HOME/bin")
+    [[ -n "$USERPROFILE" ]] && candidates+=("$USERPROFILE/.cargo/bin")
+    candidates+=("$HOME/.cargo/bin")
+    for c in "${candidates[@]}"; do
+      # MSYS bash resolves .exe for `command -v`/`-x` only through MSYS-style
+      # paths (/c/...), so normalize the Windows-style profile path.
+      if have cygpath; then c="$(cygpath -u "$c" 2>/dev/null || printf '%s' "$c")"; fi
+      if [[ -x "$c/cargo" || -x "$c/cargo.exe" ]]; then
+        PATH="$c:$PATH"
+        export PATH
+        break
+      fi
+    done
+  fi
   have cargo || die "cargo not found; install Rust via https://rustup.rs (on MSYS2: pacman -S mingw-w64-x86_64-toolchain)"
 
   local version="${APP_VERSION:-0.1.0}"

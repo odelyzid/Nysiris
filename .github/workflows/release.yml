@@ -41,6 +41,11 @@ jobs:
     name: Windows zip (MSYS2)
     needs: check
     runs-on: windows-latest
+    env:
+      # MSYS2's default shell PATH ignores GITHUB_PATH additions, so the
+      # rust-toolchain action's cargo would be invisible. Inherit the runner
+      # PATH (still prefixed with the MSYS2 bin dirs by setup-msys2).
+      MSYS2_PATH_TYPE: inherit
     defaults:
       run:
         shell: msys2 {0}
@@ -77,7 +82,10 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      # No android-actions/setup-android: the hosted ubuntu-latest image
+      # already ships a full SDK (/usr/local/lib/android/sdk, licenses
+      # accepted), and the action's sdkmanager 16 run fails on the removed
+      # 'tools' package.
       # Capacitor shell around the same web build. Unsigned release output
       # (app-release-unsigned.apk / .aab); sign with an upload key for Play
       # (see android/README.md). Staged as dist/nysiris_*_android.*.
