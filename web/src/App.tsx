@@ -14,7 +14,7 @@ import {
 } from './social/trust';
 import { Panel } from './ui/Panel';
 import { Toolbar } from './ui/Toolbar';
-import { ContactsPanel, type PendingInvite } from './ui/Contacts';
+import { ContactsPanel, type PendingInvite } from './ui/ContactsPanel';
 import {
   defaultContactStorage,
   loadContacts,

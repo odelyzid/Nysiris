@@ -530,9 +530,9 @@ fn find_in_path(name: &str) -> Option<PathBuf> {
     // native CreateProcess does not. Split on both separators: native
     // Windows uses `;`, MSYS2/Cygwin shells pass `:`-separated PATH down.
     let path_var = env::var_os("PATH")?;
+    let path_lossy = path_var.to_string_lossy();
     let dirs = env::split_paths(&path_var).chain(
-        path_var
-            .to_string_lossy()
+        path_lossy
             .split([';', ':'])
             .map(PathBuf::from),
     );
