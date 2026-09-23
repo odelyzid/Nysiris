@@ -531,11 +531,7 @@ fn find_in_path(name: &str) -> Option<PathBuf> {
     // Windows uses `;`, MSYS2/Cygwin shells pass `:`-separated PATH down.
     let path_var = env::var_os("PATH")?;
     let path_lossy = path_var.to_string_lossy();
-    let dirs = env::split_paths(&path_var).chain(
-        path_lossy
-            .split([';', ':'])
-            .map(PathBuf::from),
-    );
+    let dirs = env::split_paths(&path_var).chain(path_lossy.split([';', ':']).map(PathBuf::from));
     for dir in dirs {
         for candidate in [format!("{name}.exe"), name.to_string()] {
             let path = dir.join(candidate);
