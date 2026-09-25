@@ -1,0 +1,19 @@
+[package]
+name = "nysiris-sdk"
+version = "0.1.0"
+# Explicit (not workspace-inherited) so the crate also builds as a path
+# dependency of the standalone service crates, where the workspace root is
+# not in scope.
+edition = "2021"
+license = "Apache-2.0"
+description = "Hosting SDK for Nysiris hidden services: HostConfig (storage/gateway), a transport-generic serve() harness, a traversal-safe static-file service, and a curated re-export of nym-hidden-service + provider-runtime (docs/13-sdk-cli.md)."
+publish = false
+
+# Pure facade: no nym-sdk, no async runtime. Everything here runs in the fast
+# ./build.sh check loop. The nym-sdk-backed transport lives in services/nysiris-cli.
+[dependencies]
+nym-hidden-service = { path = "../nym-hidden-service" }
+provider-runtime = { path = "../provider-runtime" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

@@ -60,6 +60,12 @@ impl PetnameRegistry {
         self.entries.is_empty()
     }
 
+    /// Iterate over `(petname, address)` pairs in unspecified order. Used by
+    /// host tooling to list the local registry; never published anywhere.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &NymUri)> {
+        self.entries.iter().map(|(name, uri)| (name.as_str(), uri))
+    }
+
     /// Persist to disk as JSON `{ petname: "nym://..." }`.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let map: HashMap<&str, String> = self

@@ -5,6 +5,23 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 
 ## [Unreleased]
 
+## [0.1.27] — 2026-09-25
+
+### Added
+
+- Hosting SDK: `crates/nysiris-sdk/` (workspace member, nym-free) — `HostConfig`
+  (storage/gateway/address-file convention), a transport-generic `serve()`
+  harness over the provider-runtime loop, and a traversal-safe `StaticFiles`
+  hidden service. Curated re-exports + `prelude`, so a service author adds one
+  dependency. 11 tests; stays in the fast `./build.sh check` loop.
+- `nysiris` hosting CLI: `services/nysiris-cli/` (standalone, `nym-sdk`) with
+  `host echo|files`, `address`, `fetch`, `petname add|list|remove|resolve`, and
+  `doctor`. Carries the single `MixnetRuntime` adapter over `MixnetClient`
+  (replacing the per-provider glue); dependency-free, unit-tested parser.
+- `PetnameRegistry::iter`, so host tooling can list the local-only registry.
+- Docs: `docs/13-sdk-cli.md`; README/AGENTS/services cross-links; the new crate
+  is wired into the workspace, the service-pin check, and `./build.sh services`.
+
 ## [0.1.26] — 2026-09-25
 
 ### Added

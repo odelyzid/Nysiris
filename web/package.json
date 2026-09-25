@@ -1,7 +1,7 @@
 {
   "name": "nysiris-web",
   "private": true,
-  "version": "0.1.26",
+  "version": "0.1.27",
   "type": "module",
   "description": "Cross-platform Nym mixnet browser client (web + PWA + Android).",
   "scripts": {

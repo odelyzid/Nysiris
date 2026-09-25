@@ -6,8 +6,12 @@ Three hosting methods, documented in
 | Directory | Method | Purpose |
 |---|---|---|
 | `echo-provider/` | **A. Pure mixnet** | Service reachable only by Nym address. No inbound ports. Recommended. |
+| `nysiris-cli/` | **A. Pure mixnet** | The `nysiris` CLI: host `echo`/static `files`, print the address, `fetch` a service, manage petnames (`docs/13-sdk-cli.md`). |
 | `hybrid-bridge/` | **B. Hybrid** | Same backend behind Caddy (clearnet) and a Nym bridge (mixnet). |
 | `gateway/` | **C. Self-hosted Gateway** | Run an `entry-gateway` for a guaranteed-stable provider address. |
+
+The reusable library behind the CLI is `crates/nysiris-sdk/` (workspace member,
+nym-free); `nysiris-cli` is the only nym-sdk-aware half.
 
 All crates here are **standalone** (excluded from the root Cargo workspace)
 because they depend on the heavy `nym-sdk`/mixnet toolchain. Build each from its
@@ -27,7 +31,7 @@ dependencies; heavy first build — the `nym-sdk` toolchain):
 ```sh
 ./build.sh services               # all service crates
 ./build.sh services social        # just one (echo-provider, hybrid-bridge,
-                                  # portal-provider, social, acceptance)
+                                  # portal-provider, social, acceptance, nysiris-cli)
 ./build.sh services --skip-tests  # build only
 ```
 

@@ -35,13 +35,16 @@ reference Sphinx implementation (`crates/sphinx-core`). Live-network delivery
 ## Layout
 
 - Rust 2021 workspace at root. Members: `crates/sphinx-core`,
-  `crates/bridge-guard`, `crates/nym-hidden-service`, `crates/portal-data`,
-  `crates/portal-replication`, `crates/portal-reputation`,
-  `desktop/launcher`. Everything else with a `Cargo.toml` is standalone.
+  `crates/bridge-guard`, `crates/nym-hidden-service`, `crates/nysiris-sdk`,
+  `crates/portal-data`, `crates/portal-replication`, `crates/portal-reputation`,
+  `crates/provider-runtime`, `crates/social-format`, `desktop/launcher`.
+  Everything else with a `Cargo.toml` is standalone.
 - `services/`: `echo-provider`, `hybrid-bridge`, `portal-provider`, `social`,
-  `acceptance` (each with its own `Cargo.lock`; `gateway/` is ops-only: no
-  crate, just systemd + example config). Excluded from the workspace because
-  of the heavy `nym-sdk` toolchain — never add them to `workspace.members`.
+  `acceptance`, `nysiris-cli` (each with its own `Cargo.lock`; `gateway/` is
+  ops-only: no crate, just systemd + example config). Excluded from the
+  workspace because of the heavy `nym-sdk` toolchain — never add them to
+  `workspace.members`. `nysiris-cli` also depends on the workspace-member
+  `crates/nysiris-sdk` by path; keep the SDK nym-free so `check` stays fast.
 - `web/`: React PWA (`src/`), `test/` (node unit tests), `android/`,
   `extension/` (MV3, desktop-only). `docs/` is numbered `01–12` by
   deliverable. `scripts/cmd-*.sh` implement `./build.sh` subcommands.
@@ -70,7 +73,7 @@ Releases are cut from `v*` tags (CI builds `.deb` + Windows zip with
 checksums). `VERSION` is the source of truth; bump with
 `./build.sh bump <version>`.
 
-- Current counts: 100 Rust tests, 191 web tests, zero clippy warnings.
+- Current counts: 111 Rust tests, 191 web tests, zero clippy warnings.
 - Focused runs: `node --test web/test/<name>.test.mjs` (from repo root),
   `cargo test -p <crate>`, `./build.sh services social`.
 - CI (`check` job) runs `./build.sh check` on Node 24; `web-build`/`android`

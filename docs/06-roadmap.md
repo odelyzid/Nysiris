@@ -91,6 +91,9 @@ See `services/` and [`04-hosting-services.md`](04-hosting-services.md).
 ### 3A. Pure mixnet service provider (recommended)
 - `services/echo-provider/` — Rust, `nym-sdk` `MixnetClient` with
   `StoragePaths` (stable identity) and `wait_for_messages` / `send_reply`.
+- `crates/nysiris-sdk/` + `services/nysiris-cli/` — host a service with one
+  command (`nysiris host echo|files`), print its stable address, `fetch` it
+  back, and manage local petnames ([`13-sdk-cli.md`](13-sdk-cli.md)).
 - Pin to a chosen Gateway with `request_gateway(...)`.
 - Reply budget accounting (default ≈50 real packets/s shared across all
   clients; idle cover ≈5/s).

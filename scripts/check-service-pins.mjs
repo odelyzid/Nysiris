@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const services = ['acceptance', 'echo-provider', 'hybrid-bridge', 'portal-provider', 'social'];
+const services = ['acceptance', 'echo-provider', 'hybrid-bridge', 'nysiris-cli', 'portal-provider', 'social'];
 
 let failures = 0;
 

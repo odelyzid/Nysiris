@@ -1,0 +1,18 @@
+[package]
+name = "nysiris-cli"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "`nysiris` command-line host for hidden services: run echo/static-file services, derive the stable Nym address, fetch a service over the mixnet, and manage local petnames (docs/13-sdk-cli.md)."
+
+# Standalone: excluded from the root workspace (heavy nym-sdk toolchain).
+[[bin]]
+name = "nysiris"
+path = "src/main.rs"
+
+[dependencies]
+nym-sdk = "1.21"
+nym-bin-common = { version = "1.22.0", features = ["basic_tracing"] }
+tokio = { version = "1", features = ["full"] }
+# Hosting SDK: HostConfig, serve(), StaticFiles, and the hidden-service types.
+nysiris-sdk = { path = "../../crates/nysiris-sdk" }

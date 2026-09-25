@@ -24,10 +24,11 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 > **Status:** foundations, hosting, browser client, social/DMs, trust
 > indicators, desktop packaging, and security analysis complete, with the
 > documented controls enforced in code and tests.
-> * Reference Rust workspace: **100 tests pass** (the soak test is ignored by
+> * Reference Rust workspace: **111 tests pass** (the soak test is ignored by
 >   default).
 > * Browser PWA + social logic: **191 `node --test` tests pass** (0 failures).
-> * Service hosting: runnable providers + hybrid compose + gateway assets.
+> * Service hosting: runnable providers + `nysiris` CLI + hybrid compose +
+>   gateway assets.
 > * Build system: `./build.sh` for Rust / web / Android / services / desktop /
 >   Windows / check, plus CI.
 > * The `services/*` builds depend on Nym's own packages and are not compiled by
@@ -39,7 +40,7 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 |---|---|
 | PWA: tunnel, leak guard, Nym-address messaging, `fetchNym` (+ parallel tagged requests) | Works (mainnet-verified delivery + SURB reply) |
 | Community timeline, threads, E2E DMs, trust dots, petnames, invites, encrypted attachments | Works against a `nysiris-social` provider you run |
-| Providers, hybrid bridge, portal store | Works; you operate them (see `services/`) |
+| Providers, hybrid bridge, portal store, `nysiris` CLI | Works; you operate them (see `services/`) |
 | Linux `.deb`, Windows zip | Works; built by CI on every release tag |
 | Android (TWA/Capacitor), MV3 extension | Scaffolds — installable, not yet hardened |
 | `sphinx-core` crypto | Reference/educational only — never use in production |
@@ -53,7 +54,7 @@ browser client and its type-stripping tests).
 git clone https://github.com/odelyzid/Nysiris.git
 cd Nysiris
 
-./build.sh check     # toolchain sanity: fmt + clippy + 100 Rust + 191 web tests
+./build.sh check     # toolchain sanity: fmt + clippy + 111 Rust + 191 web tests
 ./build.sh web       # build the browser PWA into web/dist
 ```
 
@@ -67,7 +68,16 @@ cd web && npm install && npm run dev
 Hosting a service on the mixnet (echo / portal / social providers, the hybrid
 bridge, and a self-hosted entry gateway) is covered in
 [`docs/04-hosting-services.md`](docs/04-hosting-services.md) and the per-service
-READMEs under `services/`:
+READMEs under `services/`. The [`nysiris` CLI](docs/13-sdk-cli.md) is the
+one-command path:
+
+```bash
+./build.sh services nysiris-cli    # build the CLI
+cd services/nysiris-cli
+cargo run --release -- host echo                    # run a mixnet service
+cargo run --release -- host files --web-root ./public
+cargo run --release -- fetch <id.enc@gw> --path /   # test it over the mixnet
+```
 
 ```bash
 ./build.sh services            # build + test every standalone provider
@@ -107,11 +117,13 @@ Prefer a rendered site? These docs are mirrored to the
    V1/V2/V3, P1/P2), tagging, timing, SURB hoarding/reuse, exit trust.
 6. [`docs/08-hidden-services.md`](docs/08-hidden-services.md) — hidden-service
    abstraction: `nym://` URIs, envelopes, server dispatch, petnames, chunking.
-7. [`docs/09-social.md`](docs/09-social.md) — nysiris-social: metadata-minimal
+7. [`docs/13-sdk-cli.md`](docs/13-sdk-cli.md) — hosting SDK (`nysiris-sdk`) and
+   the `nysiris` CLI: `host`, `address`, `fetch`, `petname`, `doctor`.
+8. [`docs/09-social.md`](docs/09-social.md) — nysiris-social: metadata-minimal
    microblog + E2E DMs, SQLite security, signature/E2E specs, operations.
-8. [`docs/07-desktop-linux.md`](docs/07-desktop-linux.md) — Linux Mint / Debian
+9. [`docs/07-desktop-linux.md`](docs/07-desktop-linux.md) — Linux Mint / Debian
    desktop packaging (`.deb`, Electron, Tauri, Flatpak) and engine compatibility.
-9. [`docs/06-roadmap.md`](docs/06-roadmap.md) — phased plan with acceptance
+10. [`docs/06-roadmap.md`](docs/06-roadmap.md) — phased plan with acceptance
    criteria.
 
 ## Build & verify
@@ -139,7 +151,7 @@ Releases are cut from tags: `./build.sh bump <version>`, commit `VERSION`,
 `git push origin v<version>` — CI builds the `.deb` + Windows zip and
 publishes them with checksums (`.github/workflows/release.yml`).
 
-`./build.sh check` runs **100 Rust tests** and **191 web unit tests** with zero
+`./build.sh check` runs **111 Rust tests** and **191 web unit tests** with zero
 clippy warnings, validates the JSON manifests, and checks every relative link in
 the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 
@@ -157,6 +169,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `crates/sphinx-core/src/enforcement.rs` | Route policy, SURB single-use/expiry, reply budget, exit rotation, cover-traffic guardrail | 12 tests |
 | `crates/bridge-guard/` | Open-proxy guards for the mixnet↔HTTP bridge | 8 tests |
 | `crates/nym-hidden-service/` | Hidden-service abstraction: URIs, envelopes, dispatch, petnames, chunking | 13 tests |
+| `crates/nysiris-sdk/` | Hosting SDK: `HostConfig`, `serve` harness, traversal-safe `StaticFiles`, curated re-exports | 11 tests |
 | `crates/portal-data/` | Portal data model: content-addressed objects, append-only logs, LWW-map | 4 tests |
 | `crates/portal-replication/` | Sync core: heads, want-lists, verified atomic apply | 12 tests |
 | `crates/portal-reputation/` | PoW, local reputation scores, provider rate limits | 5 tests |
@@ -170,6 +183,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `services/hybrid-bridge/` | Nym↔HTTP bridge + Caddy + Docker Compose, using `bridge-guard` | `docker compose config` + guard tests |
 | `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); encrypted attachments (content-addressed blobs, chunked + parallel upload); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`) | 24 tests + `web/src/adapters/driving/social/` timeline UI |
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
+| `services/nysiris-cli/` | `nysiris` CLI + nym-sdk transport adapter: `host echo`/`host files`, `address`, `fetch`, `petname`, `doctor` | 9 parser tests + `./build.sh services` |
 | `services/gateway/` | `nym-node` entry-gateway config, systemd, bonding notes | Templates + operator steps |
 | `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 191 `node --test` tests + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
@@ -256,13 +270,14 @@ scripts/                 modular build commands + doc/JSON validators
 crates/sphinx-core/      reference Sphinx + enforcement controls (workspace)
 crates/bridge-guard/     open-proxy guards (workspace)
 crates/nym-hidden-service/  hidden-service abstraction: URIs, envelopes, dispatch, petnames (workspace)
+crates/nysiris-sdk/      hosting SDK: HostConfig, serve, StaticFiles, re-exports (workspace)
 crates/portal-data/      portal objects + append-only logs (workspace)
 crates/portal-replication/  sync core: heads, want-lists, verified atomic apply (workspace)
 crates/portal-reputation/   PoW + local reputation + rate limits (workspace)
 crates/provider-runtime/   shared hidden-service runtime (workspace)
 crates/social-format/      byte-exact social wire format (workspace)
 docs/                    architecture, addressing/routing, hosting, client, security, desktop, hidden-services, roadmap
-services/                echo-provider, hybrid-bridge, portal-provider, social, acceptance (standalone) + gateway ops
+services/                echo-provider, hybrid-bridge, portal-provider, social, acceptance, nysiris-cli (standalone) + gateway ops
 web/                     React PWA client (TypeScript)
   src/domain/              pure rules/types (no React, no fetch, no storage)
   src/application/        use-cases / orchestration over the ports

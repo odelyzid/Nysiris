@@ -140,7 +140,9 @@ Bulk transfer remains the weakest workload for anonymity (`05-security.md`
 
 | Path | Purpose |
 |---|---|
-| `crates/nym-hidden-service/` | `uri`, `envelope`, `service` (+ `dispatch`), `petnames`, `chunk`; 7 tests |
+| `crates/nym-hidden-service/` | `uri`, `envelope`, `service` (+ `dispatch`), `petnames`, `chunk`, `invite` |
+| `crates/nysiris-sdk/` | hosting SDK: `HostConfig`, `serve`, `StaticFiles`, curated re-exports (`docs/13-sdk-cli.md`) |
+| `services/nysiris-cli/` | the `nysiris` binary: `host` / `address` / `fetch` / `petname` / `doctor` |
 | `web/src/mixnet/hiddenService.mjs` | pure envelope/address/petname helpers; 6 tests |
 | `web/src/mixnet/fetchNym.ts` | `fetchNym()`, base64 bytes helpers |
 | `web/src/adapters/driving/shell/App.tsx` | omnibox, toolbar, portal main view (page iframe + Social), panel composition |

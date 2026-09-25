@@ -90,6 +90,9 @@ fn petnames_resolve_locally_and_persist() {
     assert!(reg.insert("shop", other).is_err());
     assert!(reg.insert("", uri).is_err());
     assert!(reg.insert("has space", uri).is_err());
+    // Tooling lists the local registry without publishing it.
+    let listed: Vec<&str> = reg.iter().map(|(name, _)| name).collect();
+    assert_eq!(listed, vec!["shop"]);
 
     let dir = std::env::temp_dir().join("fly-petnames-test.json");
     reg.save(&dir).unwrap();
