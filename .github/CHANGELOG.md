@@ -5,6 +5,16 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 
 ## [Unreleased]
 
+### Fixed
+
+- Community feed and DM polling no longer retry a lost portal forever:
+  transport failures back off exponentially (30 s → ×2 per failure, 10 min
+  cap) and a definitive service error (4xx except 429) pauses the automatic
+  poller until an explicit Retry. Refresh / Retry / Check-for-messages force
+  through and clear the pause. Status line distinguishes "unreachable"
+  (backing off) from "isn't answering as a community" (paused)
+  (`web/src/mixnet/backoff.mjs`; 195 web tests).
+
 ### Added
 
 - README: featured hidden services with copy-paste `nym://` addresses

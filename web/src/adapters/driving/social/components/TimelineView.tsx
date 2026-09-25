@@ -73,8 +73,9 @@ export function TimelineView({
         syncing={feed.syncing}
         lastSyncedAt={feed.lastSyncedAt}
         error={feed.feedError}
+        stopped={feed.feedStopped}
         busy={busy}
-        onRetry={() => void feed.refreshFeed()}
+        onRetry={() => void feed.refreshFeed(true)}
       />
       {Number.isFinite(feed.oldestSeq) && feed.oldestSeq > 1 && (
         <div style={{ marginBottom: 8 }}>

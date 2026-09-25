@@ -9,6 +9,7 @@ export function SyncLine({
   syncing,
   lastSyncedAt,
   error,
+  stopped,
   busy,
   onRetry,
 }: {
@@ -16,10 +17,12 @@ export function SyncLine({
   syncing: boolean;
   lastSyncedAt: number | null;
   error: string | null;
+  /** Automatic retries are paused (definitive service error). */
+  stopped?: boolean;
   busy: boolean;
   onRetry: () => void;
 }) {
-  const sync = describeSync(nowTick, { syncing, lastSyncedAt, error });
+  const sync = describeSync(nowTick, { syncing, lastSyncedAt, error, stopped });
   const tone = sync.tone === 'bad' ? '#b00020' : sync.tone === 'busy' ? '#b26b00' : '#888';
   return (
     <p style={{ fontSize: 11, color: tone }} role="status">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchNym } from '../../../../mixnet/fetchNym';
+import { isDefinitiveServiceError, pollDelayMs } from '../../../../mixnet/backoff.mjs';
 import { createReputation } from '../../../../mixnet/reputation.mjs';
 import { currentDay, verifyPostSignature } from '../../../../domain/identity';
 import {
@@ -32,6 +33,8 @@ export interface CommunityFeed {
   syncing: boolean;
   lastSyncedAt: number | null;
   feedError: string | null;
+  /** Automatic polling is paused after a definitive service error. */
+  feedStopped: boolean;
   nowTick: number;
   oldestSeq: number;
   loadingOlder: boolean;
@@ -39,7 +42,8 @@ export interface CommunityFeed {
   fetchingIds: string[];
   unavailableIds: string[];
   names: Record<string, string>;
-  refreshFeed: () => Promise<void>;
+  /** `force` clears backoff/pause; use it for the manual Retry action. */
+  refreshFeed: (force?: boolean) => Promise<void>;
   loadOlder: () => Promise<void>;
   showThread: (id: string) => void;
   closeThread: () => void;
@@ -68,6 +72,9 @@ export function useCommunityFeed({
   const [syncing, setSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [feedError, setFeedError] = useState<string | null>(null);
+  // Set when the service answers with a definitive client error: automatic
+  // polling pauses until an explicit Retry (see `mixnet/backoff.mjs`).
+  const [feedStopped, setFeedStopped] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
@@ -75,6 +82,10 @@ export function useCommunityFeed({
   const [unavailableIds, setUnavailableIds] = useState<string[]>([]);
   const cursorRef = useRef(0);
   cursorRef.current = cursor;
+  // Consecutive transport failures and the paused flag, read by the poller
+  // without re-rendering. Both reset on service switch and on a forced Retry.
+  const feedFailuresRef = useRef(0);
+  const feedStoppedRef = useRef(false);
 
   const postsById = useMemo(() => new Map(posts.map((p) => [p.id, p])), [posts]);
 
@@ -275,55 +286,82 @@ export function useCommunityFeed({
     }
   }, [openThreadId, activeThread, threadNodes, fetchingIds, unavailableIds, fetchPostById]);
 
-  const refreshFeed = useCallback(async () => {
-    if (!service) return;
-    setSyncing(true);
-    setFeedError(null);
-    try {
-      let since = cursorRef.current;
-      if (since === 0) {
-        // First sync starts at recent history, not genesis: the feed is
-        // oldest-first, so since=0 would walk the entire archive 20 posts
-        // per mixnet roundtrip before showing anything new.
-        try {
-          const health = await fetchNym(service, { method: 'GET', path: '/health' });
-          if (!health.error) {
-            const seq = (JSON.parse(new TextDecoder().decode(health.body)) as { seq?: unknown }).seq;
-            if (typeof seq === 'number' && Number.isFinite(seq) && seq > 20) {
-              since = Math.floor(seq) - 20;
+  /**
+   * Pull one feed page. `force` clears any backoff/pause (manual Retry or a
+   * fresh navigation). A definitive service error pauses the automatic poller;
+   * a transport failure schedules the next poll with exponential backoff.
+   */
+  const refreshFeed = useCallback(
+    async (force = false) => {
+      if (!service) return;
+      if (force) {
+        feedFailuresRef.current = 0;
+        feedStoppedRef.current = false;
+        setFeedStopped(false);
+      }
+      setSyncing(true);
+      try {
+        let since = cursorRef.current;
+        if (since === 0) {
+          // First sync starts at recent history, not genesis: the feed is
+          // oldest-first, so since=0 would walk the entire archive 20 posts
+          // per mixnet roundtrip before showing anything new.
+          try {
+            const health = await fetchNym(service, { method: 'GET', path: '/health' });
+            if (!health.error) {
+              const seq = (JSON.parse(new TextDecoder().decode(health.body)) as { seq?: unknown }).seq;
+              if (typeof seq === 'number' && Number.isFinite(seq) && seq > 20) {
+                since = Math.floor(seq) - 20;
+              }
             }
+          } catch {
+            // Fall through to since=0.
           }
-        } catch {
-          // Fall through to since=0.
         }
-      }
-      const res = await fetchNym(service, {
-        method: 'GET',
-        path: `/feed?since=${since}&limit=20`,
-      });
-      if (res.error) {
-        setFeedError(res.error);
-        append(`feed error: ${res.error}`);
-        return;
-      }
-      const feed = JSON.parse(new TextDecoder().decode(res.body)) as FeedReply;
-      if (feed.posts.length > 0) {
-        const verified = feed.posts.filter(checkPost);
-        if (verified.length > 0) {
-          setPosts((prev) => mergeFeedPosts(prev, verified));
-          setCursor(feed.next);
+        const res = await fetchNym(service, {
+          method: 'GET',
+          path: `/feed?since=${since}&limit=20`,
+        });
+        if (res.error) {
+          // A client error (e.g. `404 unknown route`) means the service is up
+          // but wrong for this route — retrying cannot help, so pause. A 429 /
+          // 5xx is transient: back off and keep trying.
+          if (isDefinitiveServiceError(res.status)) {
+            feedStoppedRef.current = true;
+            setFeedStopped(true);
+          } else {
+            feedFailuresRef.current += 1;
+          }
+          setFeedError(res.error);
+          append(`feed error: ${res.error}`);
+          return;
         }
+        const feed = JSON.parse(new TextDecoder().decode(res.body)) as FeedReply;
+        if (feed.posts.length > 0) {
+          const verified = feed.posts.filter(checkPost);
+          if (verified.length > 0) {
+            setPosts((prev) => mergeFeedPosts(prev, verified));
+            setCursor(feed.next);
+          }
+        }
+        feedFailuresRef.current = 0;
+        feedStoppedRef.current = false;
+        setFeedStopped(false);
+        setFeedError(null);
+        setLastSyncedAt(Date.now());
+        setNowTick(Date.now());
+      } catch (err) {
+        // Transport failure (timeout / send error): back off, keep trying.
+        feedFailuresRef.current += 1;
+        const msg = String(err);
+        setFeedError(msg);
+        append(`feed failed: ${msg}`);
+      } finally {
+        setSyncing(false);
       }
-      setLastSyncedAt(Date.now());
-      setNowTick(Date.now());
-    } catch (err) {
-      const msg = String(err);
-      setFeedError(msg);
-      append(`feed failed: ${msg}`);
-    } finally {
-      setSyncing(false);
-    }
-  }, [service, append, checkPost]);
+    },
+    [service, append, checkPost],
+  );
 
   /** Oldest seq held locally (Infinity when empty): the "load older" anchor. */
   const oldestSeq = useMemo(() => posts.reduce((min, p) => Math.min(min, p.seq), Number.POSITIVE_INFINITY), [posts]);
@@ -367,6 +405,9 @@ export function useCommunityFeed({
     setCursor(0);
     setFeedError(null);
     setLastSyncedAt(null);
+    feedFailuresRef.current = 0;
+    feedStoppedRef.current = false;
+    setFeedStopped(false);
     let threadId: string | null = null;
     try {
       threadId = parseThreadHash(window.location.hash);
@@ -390,14 +431,16 @@ export function useCommunityFeed({
 
   // Poll the feed on a chained timeout (never overlapping): if a slow
   // mixnet outlasts the interval, the tick is skipped instead of piling up
-  // another request. Reading needs no identity, so this runs for everyone.
+  // another request. Consecutive failures back off exponentially so an
+  // unreachable portal is not hammered forever, and a definitive service
+  // error pauses polling entirely (Retry re-enables it).
   useEffect(() => {
     if (!service) return;
     let cancelled = false;
     let timer = 0;
     let inFlight = false;
     const tick = async () => {
-      if (cancelled) return;
+      if (cancelled || feedStoppedRef.current) return;
       if (!inFlight) {
         inFlight = true;
         try {
@@ -406,9 +449,10 @@ export function useCommunityFeed({
           inFlight = false;
         }
       }
-      if (!cancelled) timer = window.setTimeout(tick, 30_000);
+      if (cancelled || feedStoppedRef.current) return;
+      timer = window.setTimeout(tick, pollDelayMs(feedFailuresRef.current));
     };
-    timer = window.setTimeout(tick, 30_000);
+    timer = window.setTimeout(tick, pollDelayMs(feedFailuresRef.current));
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -458,6 +502,7 @@ export function useCommunityFeed({
     syncing,
     lastSyncedAt,
     feedError,
+    feedStopped,
     nowTick,
     oldestSeq,
     loadingOlder,

@@ -34,11 +34,20 @@ export interface SyncState {
   syncing: boolean;
   lastSyncedAt: number | null;
   error: string | null;
+  /**
+   * The service answered with a definitive client error (see
+   * `mixnet/backoff.mjs`), so automatic retries are paused until an explicit
+   * Retry. Distinguishes "wrong/absent endpoint" from "temporarily unreachable".
+   */
+  stopped?: boolean;
 }
 
 /** One friendly line for the sync status under the timeline. */
 export function describeSync(now: number, state: SyncState): { text: string; tone: 'ok' | 'busy' | 'bad' | 'idle' } {
   if (state.syncing) return { text: 'Syncing… pulling recent posts.', tone: 'busy' };
+  if (state.error && state.stopped) {
+    return { text: `This address isn't answering as a community. ${state.error}`, tone: 'bad' };
+  }
   if (state.error) return { text: `Couldn't reach the community. ${state.error}`, tone: 'bad' };
   if (state.lastSyncedAt === null) return { text: 'Not synced yet.', tone: 'idle' };
   const ageMs = Math.max(0, now - state.lastSyncedAt);

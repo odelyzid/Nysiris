@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchNym } from '../../../../mixnet/fetchNym';
+import { isDefinitiveServiceError, pollDelayMs } from '../../../../mixnet/backoff.mjs';
 import { openDm, packDmInner, sealDm, unpackDmInner } from '../../../../application/dm';
 import { MAX_DM_CIPHERTEXT_BYTES } from '../../../../domain/limits';
 import { JSON_HEADERS, b64decode, buildDmRequest } from '../../../../domain/api';
@@ -28,7 +29,8 @@ export interface DirectMessages {
   dms: DmRecord[];
   dmRead: Record<string, number>;
   activeDmPeer: string | null;
-  pollDms: () => Promise<void>;
+  /** `force` clears backoff/pause; use it for the manual "Check" button. */
+  pollDms: (force?: boolean) => Promise<void>;
   onSendDm: () => Promise<void>;
   openConvo: (peer: string) => void;
 }
@@ -61,88 +63,115 @@ export function useDirectMessages({
   const [dms, setDms] = useState<DmRecord[]>(() => loadDmCache(defaultDmStore()));
   const [dmRead, setDmRead] = useState<Record<string, number>>(() => loadDmRead(defaultDmStore()));
   const [activeDmPeer, setActiveDmPeer] = useState<string | null>(null);
+  // Poll pacing state (see `mixnet/backoff.mjs`): consecutive transport
+  // failures back off; a definitive service error pauses until Check again.
+  const dmFailuresRef = useRef(0);
+  const dmStoppedRef = useRef(false);
 
   // A new service means a new dead-drop: drop the cached DM history and
   // staged attachments (matches the feed reset on service switch).
   useEffect(() => {
     setDms([]);
     setDmFiles([]);
+    dmFailuresRef.current = 0;
+    dmStoppedRef.current = false;
   }, [service]);
 
-  // Poll the DM dead-drop (needs an identity to open anything addressed to
-  // you). Destructive read server-side: fetched messages are gone from the
-  // provider, so every decrypted record is cached locally the moment it
-  // arrives — the cache is the history.
-  const pollDms = useCallback(async () => {
-    if (!service || !identity) return;
-    try {
-      const res = await fetchNym(service, {
-        method: 'GET',
-        path: `/dm?for=${identity.pubHex}`,
-      });
-      if (res.error) return;
-      const body = JSON.parse(new TextDecoder().decode(res.body)) as {
-        dms: { epub: string; nonce: string; ciphertext: string }[];
-      };
-      const fresh: DmRecord[] = [];
-      for (const dm of body.dms) {
-        let plain: Uint8Array;
-        try {
-          plain = openDm(identity.privHex, {
-            epubHex: dm.epub,
-            nonceHex: dm.nonce,
-            ciphertextB64: dm.ciphertext,
-          });
-        } catch {
-          append('DM undecryptable (not for this key or corrupted)');
-          continue;
-        }
-        const at = Date.now();
-        try {
-          const inner = unpackDmInner(new TextDecoder().decode(plain));
-          fresh.push({
-            peer: inner.from,
-            incoming: true,
-            text: new TextDecoder().decode(inner.body),
-            at,
-            ts: inner.ts,
-            msgId: inner.msgId,
-            attachments: inner.atts,
-          });
-        } catch {
-          // Legacy sender (pre-envelope): no attribution possible.
-          fresh.push({
-            peer: 'unknown',
-            incoming: true,
-            text: new TextDecoder().decode(plain),
-            at,
-            ts: at,
-            msgId: `legacy-${at}-${Math.random().toString(36).slice(2)}`,
-          });
-        }
+  /**
+   * Poll the DM dead-drop (needs an identity to open anything addressed to
+   * you). Destructive read server-side: fetched messages are gone from the
+   * provider, so every decrypted record is cached locally the moment it
+   * arrives — the cache is the history. `force` clears backoff/pause (the
+   * manual "Check for new messages" button).
+   */
+  const pollDms = useCallback(
+    async (force = false) => {
+      if (!service || !identity) return;
+      if (force) {
+        dmFailuresRef.current = 0;
+        dmStoppedRef.current = false;
       }
-      if (fresh.length > 0) {
-        setDms((prev) => {
-          let next = prev;
-          for (const r of fresh) next = addDmRecord(next, r);
-          if (next !== prev) saveDmCache(next, defaultDmStore());
-          return next;
+      try {
+        const res = await fetchNym(service, {
+          method: 'GET',
+          path: `/dm?for=${identity.pubHex}`,
         });
-        append(fresh.length === 1 ? 'DM received and decrypted' : `${fresh.length} DMs received and decrypted`);
+        if (res.error) {
+          // Definitive client error (e.g. not a community endpoint): pause
+          // the automatic poller; 429/5xx just back off.
+          if (isDefinitiveServiceError(res.status)) dmStoppedRef.current = true;
+          else dmFailuresRef.current += 1;
+          return;
+        }
+        dmFailuresRef.current = 0;
+        dmStoppedRef.current = false;
+        const body = JSON.parse(new TextDecoder().decode(res.body)) as {
+          dms: { epub: string; nonce: string; ciphertext: string }[];
+        };
+        const fresh: DmRecord[] = [];
+        for (const dm of body.dms) {
+          let plain: Uint8Array;
+          try {
+            plain = openDm(identity.privHex, {
+              epubHex: dm.epub,
+              nonceHex: dm.nonce,
+              ciphertextB64: dm.ciphertext,
+            });
+          } catch {
+            append('DM undecryptable (not for this key or corrupted)');
+            continue;
+          }
+          const at = Date.now();
+          try {
+            const inner = unpackDmInner(new TextDecoder().decode(plain));
+            fresh.push({
+              peer: inner.from,
+              incoming: true,
+              text: new TextDecoder().decode(inner.body),
+              at,
+              ts: inner.ts,
+              msgId: inner.msgId,
+              attachments: inner.atts,
+            });
+          } catch {
+            // Legacy sender (pre-envelope): no attribution possible.
+            fresh.push({
+              peer: 'unknown',
+              incoming: true,
+              text: new TextDecoder().decode(plain),
+              at,
+              ts: at,
+              msgId: `legacy-${at}-${Math.random().toString(36).slice(2)}`,
+            });
+          }
+        }
+        if (fresh.length > 0) {
+          setDms((prev) => {
+            let next = prev;
+            for (const r of fresh) next = addDmRecord(next, r);
+            if (next !== prev) saveDmCache(next, defaultDmStore());
+            return next;
+          });
+          append(fresh.length === 1 ? 'DM received and decrypted' : `${fresh.length} DMs received and decrypted`);
+        }
+      } catch (err) {
+        // Transport failure: back off, keep trying.
+        dmFailuresRef.current += 1;
+        append(`dm poll failed: ${String(err)}`);
       }
-    } catch (err) {
-      append(`dm poll failed: ${String(err)}`);
-    }
-  }, [service, identity, append]);
+    },
+    [service, identity, append],
+  );
 
-  // Same chained, non-overlapping pattern as the feed poll.
+  // Same chained, non-overlapping pattern as the feed poll, with the same
+  // backoff + pause semantics so a lost portal is not polled forever.
   useEffect(() => {
     if (!service || !identity) return;
     let cancelled = false;
     let timer = 0;
     let inFlight = false;
     const tick = async () => {
-      if (cancelled) return;
+      if (cancelled || dmStoppedRef.current) return;
       if (!inFlight) {
         inFlight = true;
         try {
@@ -151,9 +180,10 @@ export function useDirectMessages({
           inFlight = false;
         }
       }
-      if (!cancelled) timer = window.setTimeout(tick, 30_000);
+      if (cancelled || dmStoppedRef.current) return;
+      timer = window.setTimeout(tick, pollDelayMs(dmFailuresRef.current));
     };
-    timer = window.setTimeout(tick, 30_000);
+    timer = window.setTimeout(tick, pollDelayMs(dmFailuresRef.current));
     return () => {
       cancelled = true;
       window.clearTimeout(timer);

@@ -41,4 +41,10 @@ test('sync status reads friendly in every state', () => {
   const bad = describeSync(now, { syncing: false, lastSyncedAt: now, error: 'timed out' });
   assert.equal(bad.tone, 'bad');
   assert.match(bad.text, /timed out/);
+
+  // A definitive service error reads differently from a transient one.
+  const stopped = describeSync(now, { syncing: false, lastSyncedAt: now, error: 'unknown route', stopped: true });
+  assert.equal(stopped.tone, 'bad');
+  assert.match(stopped.text, /isn't answering as a community/);
+  assert.match(stopped.text, /unknown route/);
 });

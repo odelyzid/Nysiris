@@ -132,7 +132,7 @@ export function Social({
 
   return (
     <section className="panel" aria-label="Community">
-      <CommunityHeader session={session} busy={busy} onRefresh={() => void feed.refreshFeed()} />
+      <CommunityHeader session={session} busy={busy} onRefresh={() => void feed.refreshFeed(true)} />
       <CommunityTabs tab={tab} onSelect={onSelectTab} />
 
       {tab === 'timeline' && (
@@ -170,7 +170,7 @@ export function Social({
           dmFiles={dms.dmFiles}
           onDmFilesChange={dms.setDmFiles}
           onSendDm={() => void dms.onSendDm()}
-          onCheckMessages={() => void dms.pollDms()}
+          onCheckMessages={() => void dms.pollDms(true)}
           petnameMap={petnames.petnameMap}
           names={feed.names}
           onError={append}
