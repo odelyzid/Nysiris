@@ -26,5 +26,5 @@ pub mod uri;
 pub use bridge_guard::GuardError;
 pub use envelope::{Request, Response};
 pub use invite::{Invite, InviteError};
-pub use service::{dispatch, HiddenService};
+pub use service::{dispatch, EchoService, HiddenService};
 pub use uri::NymUri;

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- nysiris icon: three mix layers between an entry and a destination. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0d12"/>
+      <stop offset="1" stop-color="#1c2433"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
+  <g stroke="#4cc9f0" stroke-width="3" fill="none" opacity="0.9">
+    <circle cx="20" cy="64" r="7"/>
+    <circle cx="108" cy="64" r="7"/>
+  </g>
+  <g stroke="#8bd3ff" stroke-width="3" fill="none">
+    <line x1="27" y1="64" x2="101" y2="64" stroke-dasharray="6 6"/>
+  </g>
+  <g fill="#e6f1ff">
+    <circle cx="48" cy="40" r="5"/>
+    <circle cx="64" cy="64" r="5"/>
+    <circle cx="80" cy="88" r="5"/>
+  </g>
+  <g stroke="#e6f1ff" stroke-width="2.5" fill="none" opacity="0.85">
+    <path d="M27 64 L48 40 L64 64 L80 88 L101 64"/>
+    <path d="M27 64 L48 88 L64 64 L80 40 L101 64"/>
+  </g>
+</svg>

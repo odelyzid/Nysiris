@@ -29,3 +29,51 @@ jobs:
 
       - name: Build and test services
         run: ./build.sh services
+
+  # Same drift check on Windows: the services/* crates are platform-neutral
+  # (no systemd/nix deps), but nym-sdk 1.21 is only exercised on Windows here.
+  # Uses the MSYS2 MINGW64 pattern from release.yml::windows-zip; the inherited
+  # PATH is what makes dtolnay/rust-toolchain's cargo visible to the MSYS2 shell.
+  windows-services:
+    name: Build + test service crates (Windows)
+    runs-on: windows-latest
+    env:
+      MSYS2_PATH_TYPE: inherit
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-nasm
+            git
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-services-${{ hashFiles('services/*/Cargo.lock') }}
+
+      # Workspace build covers crates/nym-hidden-service, portal-data,
+      # portal-replication, portal-reputation, and sphinx-core. cmd-rust.sh
+      # only builds when --target is set (no tests/clippy on that branch).
+      - name: Build workspace for Windows target
+        run: ./build.sh rust --release --target x86_64-pc-windows-gnu
+
+      # Builds + tests every services/* crate against its committed lockfile
+      # (aws-lc-sys needs the cmake/nasm installed above).
+      - name: Build and test services for Windows target
+        run: ./build.sh services --target x86_64-pc-windows-gnu

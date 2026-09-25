@@ -14,6 +14,10 @@ use std::collections::HashMap;
 use portal_data::{Log, LogEntry};
 use serde::{Deserialize, Serialize};
 
+mod serve;
+
+pub use serve::{heads_reply_json, log_reply_json};
+
 /// What sequence we hold per author (hex pubkey in wire form).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Heads {

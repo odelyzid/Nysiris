@@ -100,12 +100,18 @@ fn petnames_resolve_locally_and_persist() {
 
 #[test]
 fn chunks_split_and_rejoin() {
-    assert!(chunk::split(&[], 10).is_empty());
+    assert!(chunk::split(&[], 10).unwrap().is_empty());
     let data: Vec<u8> = (0..5000u32).map(|i| (i % 251) as u8).collect();
-    let parts = chunk::split(&data, 2000);
+    let parts = chunk::split(&data, 2000).unwrap();
     assert_eq!(parts.len(), 3);
-    assert_eq!(chunk::count(5000, 2000), 3);
+    assert_eq!(chunk::count(5000, 2000).unwrap(), 3);
     assert_eq!(chunk::join(&parts), data);
+}
+
+#[test]
+fn chunk_helpers_reject_zero_and_never_panic() {
+    assert!(chunk::split(&[1, 2, 3], 0).is_err());
+    assert!(chunk::count(0, 0).is_err());
 }
 
 #[test]

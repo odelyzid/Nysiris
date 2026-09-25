@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/sphinx-core", "crates/bridge-guard", "crates/nym-hidden-service", "crates/portal-data", "crates/portal-replication", "crates/portal-reputation", "desktop/launcher"]
+members = ["crates/sphinx-core", "crates/bridge-guard", "crates/nym-hidden-service", "crates/portal-data", "crates/portal-replication", "crates/portal-reputation", "crates/provider-runtime", "crates/social-format", "desktop/launcher"]
 # Service/browser crates are standalone: they pull the heavy nym-sdk/mixnet
 # toolchain and must not slow down or couple to the reference core's build.
 exclude = ["services/echo-provider", "services/hybrid-bridge", "services/acceptance", "services/social", "services/portal-provider", "crates/sphinx-core/fuzz"]

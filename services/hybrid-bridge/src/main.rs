@@ -28,7 +28,8 @@ use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use bridge_guard::{validate, RequestSpec, DEFAULT_MAX_BODY_BYTES};
-use nym_sdk::mixnet::{MixnetClientBuilder, MixnetMessageSender, StoragePaths};
+use nym_sdk::mixnet::{MixnetClient, MixnetClientBuilder, MixnetMessageSender, StoragePaths};
+use provider_runtime::{run_loop, InboundMessage, MixnetRuntime, Outbound, SendError, SenderTag};
 use serde::{Deserialize, Serialize};
 use tokio::signal;
 
@@ -77,32 +78,90 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(gateway) = std::env::var("SP_GATEWAY") {
         builder = builder.request_gateway(gateway);
     }
-    let mut client = builder.build()?.connect_to_mixnet().await?;
+    let client = builder.build()?.connect_to_mixnet().await?;
 
     let address = *client.nym_address();
     println!("\nHybrid bridge Nym address:\n{address}\n");
     println!("Forwarding to backend: {backend}\n");
 
-    loop {
-        tokio::select! {
-            _ = signal::ctrl_c() => break,
-            maybe = client.wait_for_messages() => {
-                let Some(messages) = maybe else { break; };
-                for msg in messages {
-                    if msg.message.is_empty() { continue; }
-                    let Some(tag) = msg.sender_tag else { continue; };
-                    let response = handle(&http, &backend, &msg.message).await;
-                    let bytes = serde_json::to_vec(&response).unwrap_or_default();
-                    if let Err(err) = client.send_reply(tag, bytes).await {
-                        eprintln!("reply failed: {err}");
-                    }
-                }
-            }
+    let mut runtime = MixnetClientRuntime {
+        client: Some(client),
+    };
+    // provider_runtime::run_loop answers tagged bridge requests until the
+    // transport closes; ctrl_c tears down gracefully either way.
+    let mut serve = Box::pin(run_loop(&mut runtime, |msg| {
+        bridge_step(&http, &backend, msg)
+    }));
+    tokio::select! {
+        _ = signal::ctrl_c() => {
+            println!("shutdown signal received");
+            drop(serve);
+            runtime.disconnect().await;
         }
+        _ = &mut serve => {}
     }
 
-    client.disconnect().await;
     Ok(())
+}
+
+/// One inbound message through the backend bridge, packaged for [`run_loop`]:
+/// empty payloads (and senders without reply SURBs) are dropped unchanged.
+async fn bridge_step(
+    http: &reqwest::Client,
+    backend: &str,
+    msg: InboundMessage,
+) -> Option<Outbound> {
+    if msg.message.is_empty() {
+        return None;
+    }
+    let sender_tag = msg.sender_tag?;
+    let response = handle(http, backend, &msg.message).await;
+    let bytes = serde_json::to_vec(&response).unwrap_or_default();
+    Some(Outbound {
+        sender_tag,
+        reply: bytes,
+    })
+}
+
+/// `MixnetRuntime` adapter over the real Nym client: the shared loop in
+/// provider-runtime stays nym-free, this bit maps its SenderTag ↔
+/// `AnonymousSenderTag` (both exactly `[u8; 16]`). The client is boxed in an
+/// `Option` because `MixnetClient::disconnect` consumes — the `&mut self`
+/// trait hook takes it out at teardown.
+struct MixnetClientRuntime {
+    client: Option<MixnetClient>,
+}
+
+impl MixnetRuntime for MixnetClientRuntime {
+    async fn wait_for_messages(&mut self) -> Option<Vec<InboundMessage>> {
+        let client = self.client.as_mut()?;
+        client.wait_for_messages().await.map(|batch| {
+            batch
+                .into_iter()
+                .map(|msg| InboundMessage {
+                    message: msg.message,
+                    sender_tag: msg.sender_tag.map(|tag| tag.to_bytes()),
+                })
+                .collect()
+        })
+    }
+
+    async fn send_reply(&self, sender_tag: SenderTag, reply: Vec<u8>) -> Result<(), SendError> {
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| SendError("client already disconnected".into()))?;
+        client
+            .send_reply(nym_sdk::mixnet::AnonymousSenderTag::from_bytes(sender_tag), reply)
+            .await
+            .map_err(|err| SendError(err.to_string()))
+    }
+
+    async fn disconnect(&mut self) {
+        if let Some(client) = self.client.take() {
+            client.disconnect().await;
+        }
+    }
 }
 
 async fn handle(http: &reqwest::Client, backend: &str, raw: &[u8]) -> ResponseEnvelope {

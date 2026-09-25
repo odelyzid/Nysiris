@@ -12,6 +12,7 @@ import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { bytesToHex, hexToBytes, randomBytes } from '@noble/hashes/utils.js';
 import { payloadHashBytes } from '../mixnet/pow.mjs';
 import {
+  ALLOWED_MIMES,
   ATTACHMENT_OVERHEAD_BYTES,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS_PER_MESSAGE,
@@ -19,25 +20,15 @@ import {
 } from './attachments.mjs';
 
 // Re-exported so callers need only this module; the single source of truth
-// for the values stays in `./attachments.mjs`.
+// for the values stays in `./attachments.mjs` (typed there via JSDoc).
+export { ALLOWED_MIMES };
+export type AllowedMime = (typeof ALLOWED_MIMES)[number];
 export {
   ATTACHMENT_OVERHEAD_BYTES,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_FILENAME_CHARS,
 };
-
-export const ALLOWED_MIMES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'text/plain',
-  'text/markdown',
-  'application/pdf',
-] as const;
-
-export type AllowedMime = (typeof ALLOWED_MIMES)[number];
 
 /** Attachment metadata as carried in a post or (sealed) DM envelope. */
 export interface AttachmentRef {

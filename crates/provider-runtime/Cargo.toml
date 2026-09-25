@@ -1,0 +1,20 @@
+[package]
+name = "provider-runtime"
+version = "0.1.0"
+# Explicit (not workspace-inherited) so the crate also builds standalone
+# inside service Docker images, where the workspace root is not copied.
+edition = "2021"
+license = "Apache-2.0"
+description = "Shared hidden-service request loop for the nysiris providers: a nym-free transport trait (MixnetRuntime), a testable run loop, and Router/PowGuard/RateGuard spam backstops (docs/10-portal.md)."
+publish = false
+
+# Pure runtime crate: no nym-sdk, no async runtime at compile time of the
+# library itself (tokio appears only as a dev-dependency for tests), so this
+# stays in the fast ./build.sh check loop while services use it unchanged.
+[dependencies]
+nym-hidden-service = { path = "../nym-hidden-service" }
+portal-reputation = { path = "../portal-reputation" }
+serde_json = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

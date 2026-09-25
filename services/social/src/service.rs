@@ -25,14 +25,14 @@ use std::sync::Mutex;
 
 use base64::Engine as _;
 use nym_hidden_service::{HiddenService, Request, Response};
+use provider_runtime::Router;
 
-use crate::sig;
+use social_format::sig;
 use crate::store::Store;
 
 pub struct SocialService {
     store: Mutex<Store>,
-    rate: Mutex<portal_reputation::rate::RateLimiter>,
-    pow_bits: u32,
+    router: Router,
 }
 
 impl SocialService {
@@ -49,8 +49,7 @@ impl SocialService {
     ) -> Self {
         Self {
             store: Mutex::new(store),
-            rate: Mutex::new(portal_reputation::rate::RateLimiter::new(policy)),
-            pow_bits: pow_bits.min(portal_reputation::pow::MAX_POW_BITS),
+            router: Router::new(pow_bits, policy),
         }
     }
 
@@ -60,52 +59,25 @@ impl SocialService {
             .map_err(|_| Response::error(500, "store busy"))
     }
 
-    fn today() -> u64 {
-        sig::current_day()
-    }
-
-    fn check_rate(&self, bucket: &str) -> Result<(), Response> {
-        let mut rate = self
+    fn gate_rate(&self, bucket: &str) -> Result<(), Response> {
+        self.router
             .rate
-            .lock()
-            .map_err(|_| Response::error(500, "store busy"))?;
-        if rate.try_spend(bucket, Self::today()) {
-            Ok(())
-        } else {
-            Err(Response::error(429, "rate budget exhausted for today"))
-        }
+            .check(bucket)
+            .map_err(|msg| Response::error(429, msg))
     }
 
     /// PoW binds (key, payload_hash): posts/profiles bind the author's key,
     /// DMs bind the recipient's key (senders stay anonymous).
-    fn check_pow(
+    fn gate_pow(
         &self,
         key: &[u8; 32],
         payload_hash: &[u8; 32],
         v: &serde_json::Value,
     ) -> Result<(), Response> {
-        if self.pow_bits == 0 {
-            return Ok(());
-        }
-        let pow = v
-            .get("pow")
-            .ok_or_else(|| Response::error(400, "proof-of-work required"))?;
-        let nonce = pow
-            .get("nonce")
-            .and_then(|n| n.as_u64())
-            .ok_or_else(|| Response::error(400, "bad pow nonce"))?;
-        let bits = pow
-            .get("bits")
-            .and_then(|b| b.as_u64())
-            .ok_or_else(|| Response::error(400, "bad pow bits"))? as u32;
-        if bits < self.pow_bits {
-            return Err(Response::error(400, "proof-of-work below required difficulty"));
-        }
-        let proof = portal_reputation::pow::Proof { nonce, bits };
-        if !portal_reputation::pow::verify(key, payload_hash, &proof) {
-            return Err(Response::error(400, "invalid proof-of-work"));
-        }
-        Ok(())
+        self.router
+            .pow
+            .verify_json(key, payload_hash, v)
+            .map_err(|msg| Response::error(400, msg))
     }
 }
 
@@ -203,7 +175,7 @@ impl HiddenService for SocialService {
                 if wants_html {
                     Response::ok(200, "text/html", DESCRIPTOR_HTML.as_bytes())
                 } else {
-                    Response::ok(200, "application/json", &json_body(&descriptor_json(self.pow_bits)))
+                    Response::ok(200, "application/json", &json_body(&descriptor_json(self.router.pow.bits())))
                 }
             }
             ("GET", "/health") => {
@@ -277,7 +249,7 @@ impl HiddenService for SocialService {
                     return Response::error(400, "stale day: re-sign with the current UTC day");
                 }
                 let text = v.get("body").and_then(|b| b.as_str()).unwrap_or("");
-                if text.as_bytes().len() > crate::store::MAX_POST_BYTES {
+                if text.as_bytes().len() > social_format::limits::MAX_POST_BYTES {
                     return Response::error(400, "post too long (max 1400 bytes)");
                 }
                 // Optional reply parent: 16 raw bytes as 32 hex chars, naming
@@ -305,7 +277,7 @@ impl HiddenService for SocialService {
                 };
                 // Optional attachments: validated metadata whose canonical
                 // bytes ride the signature (absent array = legacy post).
-                let atts = match crate::attach::parse_attachments(&v) {
+                let atts = match social_format::attach::parse_attachments(&v) {
                     Ok(a) => a,
                     Err(e) => return Response::error(400, e),
                 };
@@ -321,20 +293,13 @@ impl HiddenService for SocialService {
                 // Spam backstops: PoW binds (author, parent, body, attachment
                 // ids) so a proof for a top-level post can't be replayed onto
                 // a reply and vice versa; budget is per author.
-                let mut pow_preimage = Vec::with_capacity(16 + text.len() + 32 * atts.len());
-                if let Some(p) = parent.as_ref() {
-                    pow_preimage.extend_from_slice(p);
-                }
-                pow_preimage.extend_from_slice(text.as_bytes());
-                for a in &atts {
-                    let raw = hex::decode(&a.id).unwrap_or_default();
-                    pow_preimage.extend_from_slice(&raw);
-                }
-                let pow_hash = portal_reputation::pow::payload_hash(&pow_preimage);
-                if let Err(e) = self.check_pow(&author, &pow_hash, &v) {
+                let pow_hash = portal_reputation::pow::payload_hash(
+                    &social_format::pow::post_pow_preimage(parent.as_ref(), text.as_bytes(), &atts),
+                );
+                if let Err(e) = self.gate_pow(&author, &pow_hash, &v) {
                     return e;
                 }
-                if let Err(e) = self.check_rate(&hex::encode(author)) {
+                if let Err(e) = self.gate_rate(&hex::encode(author)) {
                     return e;
                 }
                 let store = match self.lock() {
@@ -444,15 +409,14 @@ impl HiddenService for SocialService {
                 if sig::verify(&author, &sig::profile_message(&author, name, bio), &sig).is_err() {
                     return Response::error(400, "signature verification failed");
                 }
-                let mut payload_preimage = Vec::with_capacity(name.len() + 1 + bio.len());
-                payload_preimage.extend_from_slice(name.as_bytes());
-                payload_preimage.push(0x00);
-                payload_preimage.extend_from_slice(bio.as_bytes());
-                let pow_hash = portal_reputation::pow::payload_hash(&payload_preimage);
-                if let Err(e) = self.check_pow(&author, &pow_hash, &v) {
+                let pow_hash = portal_reputation::pow::payload_hash(&social_format::pow::profile_pow_preimage(
+                    name,
+                    bio,
+                ));
+                if let Err(e) = self.gate_pow(&author, &pow_hash, &v) {
                     return e;
                 }
-                if let Err(e) = self.check_rate(&hex::encode(author)) {
+                if let Err(e) = self.gate_rate(&hex::encode(author)) {
                     return e;
                 }
                 let store = match self.lock() {
@@ -498,10 +462,10 @@ impl HiddenService for SocialService {
                 // the ciphertext, and the budget buckets per recipient (this
                 // caps mailbox flooding against one victim).
                 let pow_hash = portal_reputation::pow::payload_hash(&ct);
-                if let Err(e) = self.check_pow(&to, &pow_hash, &v) {
+                if let Err(e) = self.gate_pow(&to, &pow_hash, &v) {
                     return e;
                 }
-                if let Err(e) = self.check_rate(&format!("dm:{}", hex::encode(to))) {
+                if let Err(e) = self.gate_rate(&format!("dm:{}", hex::encode(to))) {
                     return e;
                 }
                 let store = match self.lock() {
@@ -560,7 +524,7 @@ impl HiddenService for SocialService {
                     Some(n) => n,
                     None => return Response::error(400, "blob part needs ?of=<n>"),
                 };
-                if of == 0 || of > crate::attach::MAX_BLOB_PARTS || part >= of {
+                if of == 0 || of > social_format::attach::MAX_BLOB_PARTS || part >= of {
                     return Response::error(400, "bad part coordinates");
                 }
                 let v: serde_json::Value = match serde_json::from_slice(&body) {
@@ -575,18 +539,18 @@ impl HiddenService for SocialService {
                     Some(b) if !b.is_empty() => b,
                     _ => return Response::error(400, "bad chunk bytes"),
                 };
-                if chunk.len() > crate::attach::MAX_BLOB_PART_BYTES {
+                if chunk.len() > social_format::attach::MAX_BLOB_PART_BYTES {
                     return Response::error(400, "chunk too large");
                 }
-                let mut preimage = Vec::with_capacity(32 + 4 + chunk.len());
-                preimage.extend_from_slice(&id);
-                preimage.extend_from_slice(&(part as u32).to_be_bytes());
-                preimage.extend_from_slice(&chunk);
-                let pow_hash = portal_reputation::pow::payload_hash(&preimage);
-                if let Err(e) = self.check_pow(&id, &pow_hash, &v) {
+                let pow_hash = portal_reputation::pow::payload_hash(&social_format::pow::blob_part_pow_preimage(
+                    &id,
+                    part,
+                    &chunk,
+                ));
+                if let Err(e) = self.gate_pow(&id, &pow_hash, &v) {
                     return e;
                 }
-                if let Err(e) = self.check_rate(&format!("blob:{}", hex::encode(id))) {
+                if let Err(e) = self.gate_rate(&format!("blob:{}", hex::encode(id))) {
                     return e;
                 }
                 let store = match self.lock() {
@@ -702,12 +666,11 @@ mod tests {
         parent: Option<[u8; 16]>,
         bits: u32,
     ) -> serde_json::Value {
-        let mut preimage = Vec::with_capacity(16 + body.len());
-        if let Some(p) = parent {
-            preimage.extend_from_slice(&p);
-        }
-        preimage.extend_from_slice(body.as_bytes());
-        let hash = portal_reputation::pow::payload_hash(&preimage);
+        let hash = portal_reputation::pow::payload_hash(&social_format::pow::post_pow_preimage(
+            parent.as_ref(),
+            body.as_bytes(),
+            &[],
+        ));
         let proof =
             portal_reputation::pow::prove(author, &hash, bits, 0, 10_000_000).expect("low-bit proof");
         serde_json::json!({"nonce": proof.nonce, "bits": proof.bits})
@@ -920,7 +883,7 @@ mod tests {
         sk: &SigningKey,
         day: u64,
         body: &str,
-        atts: &[crate::attach::AttachmentRef],
+        atts: &[social_format::attach::AttachmentRef],
     ) -> serde_json::Value {
         let author = sk.verifying_key().to_bytes();
         let msg = sig::post_message(&author, day, body.as_bytes(), None, atts);
@@ -934,8 +897,8 @@ mod tests {
         })
     }
 
-    fn sample_attachment(id_byte: u8) -> crate::attach::AttachmentRef {
-        crate::attach::AttachmentRef {
+    fn sample_attachment(id_byte: u8) -> social_format::attach::AttachmentRef {
+        social_format::attach::AttachmentRef {
             id: hex::encode([id_byte; 32]),
             name: "photo.png".into(),
             mime: "image/png".into(),
@@ -1077,7 +1040,7 @@ mod tests {
         assert_eq!(post(&format!("/blob/part?id={id2}&part=1&of=3"), b"total"), 400);
 
         // Oversize total (6 full chunks > 256 KiB): refused at assembly.
-        let big_part = vec![7u8; crate::attach::MAX_BLOB_PART_BYTES];
+        let big_part = vec![7u8; social_format::attach::MAX_BLOB_PART_BYTES];
         let mut big = Vec::new();
         for _ in 0..6 {
             big.extend_from_slice(&big_part);

@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToBytes } from '@noble/hashes/utils.js';
+import { b64decode, b64encode } from '../lib/bytes';
 import { fetchNym, fetchNymParallel, type FetchNymRequest } from '../mixnet/fetchNym';
 import {
   MAX_ATTACHMENTS_PER_MESSAGE,
@@ -29,21 +30,6 @@ export { parseAttachmentRefs };
  * travel as one envelope per chunk. Mirrors `attach::MAX_BLOB_PART_BYTES`. */
 export const BLOB_PART_BYTES = 45_056;
 export const BLOB_MAX_PARTS = 8;
-
-function b64encode(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binary);
-}
-
-function b64decode(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
-  return out;
-}
 
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;

@@ -5401,10 +5401,12 @@ dependencies = [
  "nym-hidden-service",
  "nym-sdk",
  "portal-reputation",
+ "provider-runtime",
  "rand 0.8.8",
  "rusqlite",
  "serde",
  "serde_json",
+ "social-format",
  "tokio",
 ]
 
@@ -5813,9 +5815,6 @@ dependencies = [
 name = "portal-reputation"
 version = "0.1.0"
 dependencies = [
- "hex",
- "serde",
- "serde_json",
  "sha2 0.10.9",
 ]
 
@@ -5978,6 +5977,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e36c2f31e0a47f9280fb347ef5e461ffcd2c52dd520d8e216b52f93b0b0d7d6"
 dependencies = [
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "provider-runtime"
+version = "0.1.0"
+dependencies = [
+ "nym-hidden-service",
+ "portal-reputation",
+ "serde_json",
 ]
 
 [[package]]
@@ -7080,6 +7088,16 @@ dependencies = [
  "rustc_version",
  "sha2 0.10.9",
  "subtle 2.6.1",
+]
+
+[[package]]
+name = "social-format"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek 3.0.0",
+ "hex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

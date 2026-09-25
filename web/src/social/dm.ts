@@ -20,6 +20,7 @@ import { blake2b } from '@noble/hashes/blake2.js';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { bytesToHex, hexToBytes, randomBytes } from '@noble/hashes/utils.js';
 import { canonicalAttachmentBytes, parseAttachmentRefs } from './attachments.mjs';
+import { b64decode, b64encode, u64be } from '../lib/bytes';
 import type { AttachmentRef } from './attachmentCrypto';
 
 const DM_DOMAIN = new TextEncoder().encode('fly-social-v1/dm');
@@ -38,7 +39,11 @@ const DM_INNER_DOMAIN = new TextEncoder().encode('fly-social-v1/dm-inner');
 const DM_INNER_VERSION = 2;
 
 /** Mirror of the provider's MAX_DM_BYTES (services/social/src/store.rs). */
-export const MAX_DM_CIPHERTEXT_BYTES = 1800;
+/**
+ * Max DM ciphertext bytes enforced client-side before proving PoW
+ * (`social_format::limits::MAX_DM_BYTES`).
+ */
+export { MAX_DM_CIPHERTEXT_BYTES } from './limits';
 
 function kdf(shared: Uint8Array): Uint8Array {
   const input = new Uint8Array(DM_DOMAIN.length + shared.length);
@@ -64,7 +69,7 @@ export function sealDm(recipientEdPubHex: string, plaintext: Uint8Array): Sealed
   return {
     epubHex: bytesToHex(epub),
     nonceHex: bytesToHex(nonce),
-    ciphertextB64: fromBytes(ct),
+    ciphertextB64: b64encode(ct),
   };
 }
 
@@ -73,18 +78,12 @@ export function openDm(ownEdPrivHex: string, dm: SealedDm): Uint8Array {
   const xpriv = ed25519.utils.toMontgomerySecret(hexToBytes(ownEdPrivHex));
   const shared = x25519.getSharedSecret(xpriv, hexToBytes(dm.epubHex));
   const key = kdf(shared);
-  return xchacha20poly1305(key, hexToBytes(dm.nonceHex)).decrypt(toBytes(dm.ciphertextB64));
+  return xchacha20poly1305(key, hexToBytes(dm.nonceHex)).decrypt(b64decode(dm.ciphertextB64));
 }
 
 const HEX64 = /^[0-9a-f]{64}$/;
 const HEX32 = /^[0-9a-f]{32}$/;
 const HEX128 = /^[0-9a-f]{128}$/;
-
-function u64be(n: number): Uint8Array {
-  const out = new Uint8Array(8);
-  new DataView(out.buffer).setBigUint64(0, BigInt(n));
-  return out;
-}
 
 function innerSignBytes(
   fromHex: string,
@@ -144,7 +143,7 @@ export function packDmInner(
     from,
     ts,
     msgId,
-    bodyB64: fromBytes(body),
+    bodyB64: b64encode(body),
     ...(atts.length > 0 ? { atts } : {}),
     sig,
   });
@@ -186,7 +185,7 @@ export function unpackDmInner(json: string): OpenedDmInner {
   if (typeof sig !== 'string' || !HEX128.test(sig)) throw new Error('DM inner has a bad signature');
   let body: Uint8Array;
   try {
-    body = toBytes(bodyB64);
+    body = b64decode(bodyB64);
   } catch {
     throw new Error('DM inner body is not base64');
   }
@@ -212,19 +211,4 @@ export function unpackDmInner(json: string): OpenedDmInner {
   }
   if (!ok) throw new Error('DM inner signature invalid');
   return { from: normFrom, ts: ts as number, msgId: normId, body, atts: parsedAtts };
-}
-
-function fromBytes(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binary);
-}
-
-function toBytes(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
-  return out;
 }

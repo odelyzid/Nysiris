@@ -3,7 +3,7 @@
 //! The backend stays Nym-unaware: it sees an ordinary method + path + headers +
 //! body, and returns status + headers + body. Bodies travel base64-encoded so
 //! the envelope is always valid JSON/UTF-8, matching what the TypeScript client
-//! (`web/src/mixnet/hiddenService.ts`) and the Rust bridge exchange.
+//! (`web/src/mixnet/hiddenService.mjs`) and the Rust bridge exchange.
 //!
 //! Every request constructed here passes through `bridge-guard` validation, so
 //! the open-proxy guards (`docs/05-security.md` §5.10) hold for any service

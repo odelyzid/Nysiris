@@ -33,6 +33,25 @@ clearnet ──▶ :443 ──────▶│  Caddy / nginx  ─────
 
 ---
 
+## 3.0a From the browser: the "Run a Portal" tab
+
+The cross-platform client ships a **Service** tab (primary navigation, next to
+Portal) that keeps this section in sync with the UI:
+
+* **Portal identity** — generates or imports a *separate* keypair from your
+  social identity (localStorage key `fly.portal.identity`);
+* **Quick start** — copyable commands for Linux, Docker, and Windows, plus a
+  link to the CI-published release assets (GitHub latest release);
+* **Status** — paste the running provider's address to test reachability with
+  a measured round-trip latency.
+
+The provider address always comes from the provider's own startup output /
+`nym-address.txt` — the browser never invents one. See
+[`web/src/social/runPortal.ts`](../web/src/social/runPortal.ts) (pure logic)
+and [`web/src/ui/RunPortal.tsx`](../web/src/ui/RunPortal.tsx) (the tab).
+
+---
+
 ## 3.0b Quick start: host and connect (verified)
 
 ### A. Pure mixnet service (no web server, no inbound ports)

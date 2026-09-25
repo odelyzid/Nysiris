@@ -42,7 +42,8 @@ cmd_check() {
     node "$ROOT/scripts/check-json.mjs"
     node "$ROOT/scripts/check-service-pins.mjs"
     node "$ROOT/scripts/check-docs.mjs"
-    ok "manifests and doc links valid"
+    node "$ROOT/scripts/check-constants.mjs"
+    ok "manifests and doc links valid; wire constants in step"
   else
     warn "node not found; skipping web/json/doc checks"
   fi

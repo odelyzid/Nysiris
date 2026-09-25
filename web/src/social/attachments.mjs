@@ -4,7 +4,7 @@
  *
  * Dependency-free so `node --test web/test` and the offline
  * `./build.sh check` loop cover it; noble crypto lives in
- * `./attachments.ts`.
+ * `./attachmentCrypto.ts`.
  *
  * @typedef {object} AttachmentRef
  * @property {string} id content address: SHA256(ciphertext blob), lowercase hex
@@ -20,6 +20,7 @@ export const MAX_FILENAME_CHARS = 80;
 /** XChaCha nonce (24) + Poly1305 tag (16): ciphertext overhead per blob. */
 export const ATTACHMENT_OVERHEAD_BYTES = 40;
 
+/** @type {readonly ['image/jpeg','image/png','image/webp','image/gif','text/plain','text/markdown','application/pdf']} */
 export const ALLOWED_MIMES = Object.freeze([
   'image/jpeg',
   'image/png',

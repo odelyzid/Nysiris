@@ -17,13 +17,13 @@ use std::sync::Mutex;
 
 use nym_hidden_service::{HiddenService, Request, Response};
 use portal_data::{LogEntry, Object};
+use provider_runtime::Router;
 
 use crate::store::Store;
 
 pub struct PortalService {
     store: Mutex<Store>,
-    rate: Mutex<portal_reputation::rate::RateLimiter>,
-    pow_bits: u32,
+    router: Router,
 }
 
 impl PortalService {
@@ -40,8 +40,7 @@ impl PortalService {
     ) -> Self {
         Self {
             store: Mutex::new(store),
-            rate: Mutex::new(portal_reputation::rate::RateLimiter::new(policy)),
-            pow_bits: pow_bits.min(portal_reputation::pow::MAX_POW_BITS),
+            router: Router::new(pow_bits, policy),
         }
     }
 
@@ -51,43 +50,21 @@ impl PortalService {
             .map_err(|_| Response::error(500, "store busy"))
     }
 
-    fn today() -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() / 86_400)
-            .unwrap_or(0)
-    }
-
     /// Rate check keyed by author hex. 429 on exhaustion.
-    fn check_rate(&self, author_hex: &str) -> Result<(), Response> {
-        let mut rate = self
+    fn gate_rate(&self, author_hex: &str) -> Result<(), Response> {
+        self.router
             .rate
-            .lock()
-            .map_err(|_| Response::error(500, "store busy"))?;
-        if rate.try_spend(author_hex, Self::today()) {
-            Ok(())
-        } else {
-            Err(Response::error(429, "rate budget exhausted for today"))
-        }
+            .check(author_hex)
+            .map_err(|msg| Response::error(429, msg))
     }
 
     /// PoW check. The proof binds (author, object id) — it cannot be replayed
     /// for another object or author. Skipped entirely when `pow_bits` is 0.
-    fn check_pow(&self, author: &[u8; 32], obj_id: &[u8; 32], v: &serde_json::Value) -> Result<(), Response> {
-        if self.pow_bits == 0 {
-            return Ok(());
-        }
-        let pow = v.get("pow").ok_or_else(|| Response::error(400, "proof-of-work required"))?;
-        let nonce = pow.get("nonce").and_then(|n| n.as_u64()).ok_or_else(|| Response::error(400, "bad pow nonce"))?;
-        let bits = pow.get("bits").and_then(|b| b.as_u64()).ok_or_else(|| Response::error(400, "bad pow bits"))? as u32;
-        if bits < self.pow_bits {
-            return Err(Response::error(400, "proof-of-work below required difficulty"));
-        }
-        let proof = portal_reputation::pow::Proof { nonce, bits };
-        if !portal_reputation::pow::verify(author, obj_id, &proof) {
-            return Err(Response::error(400, "invalid proof-of-work"));
-        }
-        Ok(())
+    fn gate_pow(&self, author: &[u8; 32], obj_id: &[u8; 32], v: &serde_json::Value) -> Result<(), Response> {
+        self.router
+            .pow
+            .verify_json(author, obj_id, v)
+            .map_err(|msg| Response::error(400, msg))
     }
 }
 
@@ -173,7 +150,7 @@ impl HiddenService for PortalService {
                         &json_body(&serde_json::json!({
                             "service": "portal-provider",
                             "version": "0.1.0",
-                            "pow_bits": self.pow_bits,
+                            "pow_bits": self.router.pow.bits(),
                             "routes": ["GET /heads", "GET /obj/<id>", "GET /log/<author>?since=<n>",
                                        "POST /obj", "POST /log-entry"],
                         })),
@@ -189,10 +166,10 @@ impl HiddenService for PortalService {
                     Ok(obj) => obj,
                     Err(e) => return Response::error(400, e.to_string()),
                 };
-                if let Err(e) = self.check_pow(&obj.author, &obj.id, &v) {
+                if let Err(e) = self.gate_pow(&obj.author, &obj.id, &v) {
                     return e;
                 }
-                if let Err(e) = self.check_rate(&hex::encode(obj.author)) {
+                if let Err(e) = self.gate_rate(&hex::encode(obj.author)) {
                     return e;
                 }
                 let store = match self.lock() {
@@ -250,10 +227,10 @@ impl HiddenService for PortalService {
                     portal_reputation::pow::payload_hash(&portal_data::log::entry_bytes(
                         &author, seq, &obj_id,
                     ));
-                if let Err(e) = self.check_pow(&author, &entry_hash, &v) {
+                if let Err(e) = self.gate_pow(&author, &entry_hash, &v) {
                     return e;
                 }
-                if let Err(e) = self.check_rate(&hex::encode(author)) {
+                if let Err(e) = self.gate_rate(&hex::encode(author)) {
                     return e;
                 }
                 let store = match self.lock() {
@@ -288,29 +265,11 @@ impl HiddenService for PortalService {
                     Err(e) => return e,
                 };
                 match store.load_log(&author) {
-                    Ok(log) => {
-                        let entries: Vec<_> = log
-                            .entries()
-                            .iter()
-                            .filter(|e| e.seq >= since)
-                            .map(|e| {
-                                serde_json::json!({
-                                    "author": hex::encode(e.author),
-                                    "seq": e.seq,
-                                    "obj_id": hex::encode(e.obj_id),
-                                    "sig": hex::encode(e.sig),
-                                })
-                            })
-                            .collect();
-                        Response::ok(
-                            200,
-                            "application/json",
-                            &json_body(&serde_json::json!({
-                                "entries": entries,
-                                "head": log.len() as u64,
-                            })),
-                        )
-                    }
+                    Ok(log) => Response::ok(
+                        200,
+                        "application/json",
+                        &json_body(&portal_replication::log_reply_json(&log, since)),
+                    ),
                     Err(e) => Response::error(500, e),
                 }
             }
@@ -320,15 +279,11 @@ impl HiddenService for PortalService {
                     Err(e) => return e,
                 };
                 match store.heads() {
-                    Ok(heads) => {
-                        let items: Vec<_> = heads
-                            .iter()
-                            .map(|(author, seq)| {
-                                serde_json::json!({"author": hex::encode(author), "seq": seq})
-                            })
-                            .collect();
-                        Response::ok(200, "application/json", &json_body(&serde_json::json!({"heads": items})))
-                    }
+                    Ok(heads) => Response::ok(
+                        200,
+                        "application/json",
+                        &json_body(&portal_replication::heads_reply_json(&heads)),
+                    ),
                     Err(e) => Response::error(500, e),
                 }
             }

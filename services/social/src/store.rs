@@ -21,15 +21,7 @@
 
 use base64::Engine as _;
 use rusqlite::{params, Connection, OptionalExtension};
-
-/// DM lifetime in seconds (7 days). Expired DMs are pruned on write.
-pub const DM_TTL_SECS: u64 = 7 * 86_400;
-
-/// Max stored field sizes (also bounded by the envelope cap upstream).
-pub const MAX_POST_BYTES: usize = 1400;
-pub const MAX_NAME_CHARS: usize = 40;
-pub const MAX_BIO_CHARS: usize = 280;
-pub const MAX_DM_BYTES: usize = 1800;
+use social_format::limits::{DM_TTL_SECS, MAX_BIO_CHARS, MAX_DM_BYTES, MAX_NAME_CHARS, MAX_POST_BYTES};
 
 pub struct Post {
     pub seq: i64,
@@ -313,10 +305,10 @@ impl Store {
     /// of the same bytes are a no-op. Size-capped so one client cannot fill
     /// the disk; blobs never expire (posts referencing them persist).
     pub fn put_blob(&self, id: &[u8; 32], bytes: &[u8]) -> Result<(), String> {
-        if bytes.len() > crate::attach::MAX_ATTACHMENT_BYTES {
+        if bytes.len() > social_format::attach::MAX_ATTACHMENT_BYTES {
             return Err(format!(
                 "blob too large (max {} bytes)",
-                crate::attach::MAX_ATTACHMENT_BYTES
+                social_format::attach::MAX_ATTACHMENT_BYTES
             ));
         }
         self.conn
@@ -349,13 +341,13 @@ impl Store {
         of: usize,
         chunk: &[u8],
     ) -> Result<(bool, usize), String> {
-        if of == 0 || of > crate::attach::MAX_BLOB_PARTS || part >= of {
+        if of == 0 || of > social_format::attach::MAX_BLOB_PARTS || part >= of {
             return Err("bad part coordinates".into());
         }
-        if chunk.len() > crate::attach::MAX_BLOB_PART_BYTES {
+        if chunk.len() > social_format::attach::MAX_BLOB_PART_BYTES {
             return Err(format!(
                 "chunk too large (max {} bytes)",
-                crate::attach::MAX_BLOB_PART_BYTES
+                social_format::attach::MAX_BLOB_PART_BYTES
             ));
         }
         self.prune_blob_parts()?;
@@ -407,11 +399,11 @@ impl Store {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
         let total: usize = parts.iter().map(|p| p.len()).sum();
-        if total > crate::attach::MAX_ATTACHMENT_BYTES {
+        if total > social_format::attach::MAX_ATTACHMENT_BYTES {
             self.clear_blob_parts(id)?;
             return Err(format!(
                 "blob too large (max {} bytes)",
-                crate::attach::MAX_ATTACHMENT_BYTES
+                social_format::attach::MAX_ATTACHMENT_BYTES
             ));
         }
         let mut joined = Vec::with_capacity(total);
@@ -436,7 +428,7 @@ impl Store {
 
     fn prune_blob_parts(&self) -> Result<(), String> {
         let cutoff =
-            Self::now_unix().saturating_sub(crate::attach::BLOB_STAGING_TTL_SECS) as i64;
+            Self::now_unix().saturating_sub(social_format::attach::BLOB_STAGING_TTL_SECS) as i64;
         self.conn
             .execute("DELETE FROM blob_parts WHERE created<?", params![cutoff])
             .map_err(|e| e.to_string())?;
@@ -599,7 +591,7 @@ mod tests {
         s.put_blob(&id, b"ciphertext-blob").unwrap();
         assert_eq!(s.get_blob(&id).unwrap().unwrap(), b"ciphertext-blob");
         // Over the 256 KiB cap.
-        let big = vec![0u8; crate::attach::MAX_ATTACHMENT_BYTES + 1];
+        let big = vec![0u8; social_format::attach::MAX_ATTACHMENT_BYTES + 1];
         assert!(s.put_blob(&[6u8; 32], &big).is_err());
     }
 

@@ -22,8 +22,8 @@ function fakeStorage(initial = {}) {
   };
 }
 
-test('registry covers the four everyday views', () => {
-  assert.deepEqual([...VIEW_ORDER].sort(), ['home', 'messages', 'portal', 'settings']);
+test('registry covers the five everyday views', () => {
+  assert.deepEqual([...VIEW_ORDER].sort(), ['home', 'messages', 'portal', 'service', 'settings']);
   for (const id of VIEW_ORDER) {
     assert.ok(VIEW_META[id].title.length > 0);
     assert.ok(VIEW_META[id].blurb.length > 0);

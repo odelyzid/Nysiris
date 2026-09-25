@@ -12,7 +12,7 @@
 //! profile: b"fly-social-v1/profile" || author(32) || name || 0x00 || bio
 //! ```
 //!
-//! `attachments` is the canonical encoding from `crate::attach`
+//! `attachments` is the canonical encoding from [`crate::attach`]
 //! (empty when absent), so attachment-free posts sign byte-identically to
 //! the pre-attachment layout and old signatures keep verifying.
 //!
@@ -100,7 +100,8 @@ pub fn parse_sig(hex_str: &str) -> Result<Signature, String> {
 
 pub fn verify(author: &[u8; 32], message: &[u8], sig: &Signature) -> Result<(), String> {
     let key = VerifyingKey::from_bytes(author).map_err(|e| format!("bad key: {e}"))?;
-    key.verify(message, sig).map_err(|e| format!("bad signature: {e}"))
+    key.verify(message, sig)
+        .map_err(|e| format!("bad signature: {e}"))
 }
 
 /// Test helper: sign with a raw 32-byte secret.

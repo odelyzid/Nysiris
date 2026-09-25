@@ -28,6 +28,7 @@
  */
 import { NymAddressClient } from './messaging';
 import { decodeResponse, dispatchReply, encodeRequest } from './hiddenService.mjs';
+import { b64decode, b64encode } from '../lib/bytes';
 
 const NYM_API_URL = 'https://validator.nymtech.net/api';
 
@@ -53,23 +54,10 @@ export interface FetchNymOptions {
   timeoutMs?: number;
 }
 
-export function toBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  // eslint-disable-next-line no-undef
-  return typeof btoa === 'function' ? btoa(binary) : Buffer.from(binary, 'binary').toString('base64');
-}
-
-export function fromBase64(b64: string): Uint8Array {
-  if (!b64) return new Uint8Array(0);
-  // eslint-disable-next-line no-undef
-  const binary = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
-  return out;
-}
+/** @deprecated use `b64encode` from `../lib/bytes`; kept for existing callers. */
+export const toBase64 = b64encode;
+/** @deprecated use `b64decode` from `../lib/bytes`; kept for existing callers. */
+export const fromBase64 = b64decode;
 
 /** Persistent client shared by all `fetchNym` calls (boot promise). */
 let sharedClient: Promise<NymAddressClient> | null = null;

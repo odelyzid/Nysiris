@@ -31,7 +31,8 @@ import {
   type Identity,
 } from './identity';
 import { encodeInviteCompact } from '../mixnet/hiddenService.mjs';
-import { MAX_DM_CIPHERTEXT_BYTES, openDm, packDmInner, sealDm, unpackDmInner } from './dm';
+import { openDm, packDmInner, sealDm, unpackDmInner } from './dm';
+import { MAX_DM_CIPHERTEXT_BYTES, MAX_POST_BYTES } from './limits';
 import {
   AttachmentList,
   AttachmentPicker,
@@ -74,8 +75,10 @@ import {
   withPetname,
 } from './petnames';
 import { describeSync, mergeFeedPosts } from './sync';
+import { defaultBooleanStorage, loadTrustedOnly, saveTrustedOnly } from './settings';
 import { copyText, shortenAddress } from '../ui/share';
 import { QrScanButton } from '../ui/QrScanButton';
+import { useQrCode } from '../ui/useQrCode';
 import {
   MAX_GAP_FETCH_ATTEMPTS,
   buildThread,
@@ -182,13 +185,7 @@ export function Social({
   // Posts collapsed by the spam gate, revealed per post id for this session.
   const [revealedBlocked, setRevealedBlocked] = useState<Record<string, boolean>>({});
   // Timeline scope: everyone, or only explicitly/observably trusted authors.
-  const [trustedOnly, setTrustedOnly] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('fly.social.trustedOnly') === '1';
-    } catch {
-      return false;
-    }
-  });
+  const [trustedOnly, setTrustedOnly] = useState<boolean>(() => loadTrustedOnly(defaultBooleanStorage()));
   // Attach the explicit-trust list as signed vouches on the next invite copy.
   const [vouchOnCopy, setVouchOnCopy] = useState(false);
   // Encrypted file backup (password + restore file).
@@ -200,7 +197,6 @@ export function Social({
   // Identity sharing (copy + local QR) and secret-key export reveal.
   const [idCopied, setIdCopied] = useState(false);
   const [showIdQr, setShowIdQr] = useState(false);
-  const [idQrUrl, setIdQrUrl] = useState<string | null>(null);
   const [showSecret, setShowSecret] = useState(false);
   const [secretCopied, setSecretCopied] = useState(false);
   // Progressive disclosure: the identity bar shows the short ID + invite
@@ -596,24 +592,7 @@ export function Social({
   }, [service, refreshFeed]);
 
   // Local QR for your public ID: generated on this device, never uploaded.
-  useEffect(() => {
-    if (!showIdQr || !identity) return;
-    let cancelled = false;
-    setIdQrUrl(null);
-    import('qrcode')
-      .then((m) => m.toDataURL(identity.pubHex, { margin: 1, width: 220 }))
-      .then(
-        (url) => {
-          if (!cancelled) setIdQrUrl(url);
-        },
-        () => {
-          if (!cancelled) setIdQrUrl(null);
-        },
-      );
-    return () => {
-      cancelled = true;
-    };
-  }, [showIdQr, identity]);
+  const { url: idQrUrl } = useQrCode(showIdQr, identity ? identity.pubHex : null);
 
   // Encrypted file backup: password-encrypted copy of the secret key for
   // moving an ID without pasting raw hex. The hex export stays as fallback.
@@ -788,7 +767,7 @@ export function Social({
     setBusy(true);
     try {
       await authed(async (id) => {
-        const body = new TextEncoder().encode(draft.trim().slice(0, 1400));
+        const body = new TextEncoder().encode(draft.trim().slice(0, MAX_POST_BYTES));
         const day = currentDay();
         // Replying keeps the parent's id stable for the whole send: capture
         // it up front so a thread switch mid-send can't retarget the post.
@@ -1452,10 +1431,10 @@ export function Social({
         <input
           ref={composerRef}
           style={{ flex: 1 }}
-          placeholder={replyTo ? 'Write a reply…' : 'Share something (max 1400 characters)'}
+          placeholder={replyTo ? 'Write a reply…' : `Share something (max ${MAX_POST_BYTES} characters)`}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          maxLength={1400}
+          maxLength={MAX_POST_BYTES}
           className='fly-input'
         />
         <button onClick={onPost} disabled={busy || !service || !draft.trim()} className='fly-btn fly-btn-secondary'>
@@ -1486,11 +1465,7 @@ export function Social({
           onClick={() => {
             setTrustedOnly((prev) => {
               const next = !prev;
-              try {
-                localStorage.setItem('fly.social.trustedOnly', next ? '1' : '0');
-              } catch {
-                // Private mode: scope just doesn't persist.
-              }
+              saveTrustedOnly(next, defaultBooleanStorage());
               return next;
             });
           }}
@@ -1810,7 +1785,7 @@ export function Social({
       </p>
       <ul style={{ fontSize: 13 }}>
         <li><code>GET /feed?since=&lt;seq&gt;&amp;limit=&lt;n&gt;</code> — global chronological timeline</li>
-        <li><code>POST /post</code> — signed micro-post (max 1400 bytes; optional <code>in_reply_to</code> parent id for replies)</li>
+        <li><code>POST /post</code> — signed micro-post (max {MAX_POST_BYTES} bytes; optional <code>in_reply_to</code> parent id for replies)</li>
         <li><code>GET /post/&lt;id&gt;</code> — one post by id, for filling thread gaps</li>
         <li><code>GET /profile/&lt;pubkey&gt;</code> / <code>POST /profile</code> — self-asserted profiles</li>
         <li><code>POST /dm</code> / <code>GET /dm?for=&lt;pubkey&gt;</code> — sealed direct messages, self-destruct on read</li>

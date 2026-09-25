@@ -18,7 +18,7 @@
 //! recipient, so attachment keys inside a DM are confidential end-to-end.
 //! The service never sees keys or plaintext: it stores opaque blobs.
 //!
-//! Hard limits (mirrored in `web/src/social/attachments.ts`):
+//! Hard limits (mirrored in `web/src/social/attachments.mjs`):
 //! * ciphertext blob ≤ 256 KiB, at most 3 attachments per post/DM,
 //! * 7 whitelisted MIME types, filenames ≤ 80 chars, no path separators.
 
@@ -143,7 +143,9 @@ pub fn parse_attachments(v: &serde_json::Value) -> Result<Vec<AttachmentRef>, St
         // Ciphertext is plaintext + 40 bytes (24 nonce + 16 tag); bounding
         // the plaintext by the blob cap keeps every stored blob in range.
         if size > MAX_ATTACHMENT_BYTES as u64 {
-            return Err(format!("attachment too large (max {MAX_ATTACHMENT_BYTES} bytes)"));
+            return Err(format!(
+                "attachment too large (max {MAX_ATTACHMENT_BYTES} bytes)"
+            ));
         }
         out.push(AttachmentRef {
             id: hex::encode(id),
@@ -172,7 +174,9 @@ pub fn validate_filename(name: &str) -> Result<(), String> {
         return Err("attachment name too long in bytes".into());
     }
     if name.contains(['/', '\\', '\0']) || name.chars().any(|c| c.is_control()) {
-        return Err("attachment name must not contain path separators or control characters".into());
+        return Err(
+            "attachment name must not contain path separators or control characters".into(),
+        );
     }
     Ok(())
 }

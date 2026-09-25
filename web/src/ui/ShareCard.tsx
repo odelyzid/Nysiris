@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { copyText, displayLabel, shortenAddress, toPrivateLink } from './share';
+import { useQrCode } from './useQrCode';
 
 /**
  * Everyday sharing card: petname-first label, Copy link, local QR,
@@ -19,32 +20,12 @@ export function ShareCard({
 }) {
   const [showTechnical, setShowTechnical] = useState(false);
   const [showQr, setShowQr] = useState(false);
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [qrError, setQrError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const link = toPrivateLink(address);
   const label = displayLabel(address, petname);
 
-  useEffect(() => {
-    if (!showQr || !link) return;
-    let cancelled = false;
-    setQrUrl(null);
-    setQrError(null);
-    import('qrcode')
-      .then((m) => m.toDataURL(link, { margin: 1, width: 220 }))
-      .then(
-        (url) => {
-          if (!cancelled) setQrUrl(url);
-        },
-        (err: unknown) => {
-          if (!cancelled) setQrError(err instanceof Error ? err.message : String(err));
-        },
-      );
-    return () => {
-      cancelled = true;
-    };
-  }, [showQr, link]);
+  const { url: qrUrl, error: qrError } = useQrCode(showQr, link);
 
   if (!address) return null;
 

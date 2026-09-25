@@ -10,16 +10,17 @@
  * panels live inside Settings → Advanced and keep their own persistence.
  */
 
-export type ViewId = 'home' | 'messages' | 'portal' | 'settings';
+export type ViewId = 'home' | 'messages' | 'portal' | 'service' | 'settings';
 
 export const VIEW_META: Record<ViewId, { title: string; blurb: string }> = {
   home: { title: 'Home', blurb: 'Status and getting started' },
   messages: { title: 'Messages', blurb: 'Private conversations' },
   portal: { title: 'Portal', blurb: 'Private sites and community' },
+  service: { title: 'Service', blurb: 'Run your own portal over the mixnet' },
   settings: { title: 'Settings', blurb: 'Your app and advanced tools' },
 };
 
-export const VIEW_ORDER: ViewId[] = ['home', 'messages', 'portal', 'settings'];
+export const VIEW_ORDER: ViewId[] = ['home', 'messages', 'portal', 'service', 'settings'];
 
 export interface ViewStorage {
   getItem(key: string): string | null;

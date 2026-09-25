@@ -289,7 +289,7 @@ export function ContextPanel({
   return (
     <aside className="fly-context" aria-label="Details">
       <div className="fly-context-head">
-        <h3>{view === 'portal' ? 'Portal' : view === 'messages' ? 'Conversation' : view === 'home' ? 'Connection' : 'Settings'}</h3>
+        <h3>{view === 'portal' ? 'Portal' : view === 'service' ? 'Service' : view === 'messages' ? 'Conversation' : view === 'home' ? 'Connection' : 'Settings'}</h3>
         <button className="fly-btn" onClick={onToggle} aria-label="Hide the info panel">
           »
         </button>
@@ -324,6 +324,14 @@ export function ContextPanel({
                 <CopyButton text={threadAddress} />
               </InfoRow>
             )}
+          </>
+        )}
+        {view === 'service' && (
+          <>
+            <InfoRow label="Portal service">
+              The browser is only the client — the service runs as a separate program.
+            </InfoRow>
+            <InfoRow label="Identity">A keypair separate from your social identity.</InfoRow>
           </>
         )}
         {view === 'home' && (

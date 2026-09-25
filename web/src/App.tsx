@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ensureTunnel, teardownTunnel, tunnelState, type TunnelStateView } from './mixnet/tunnel';
-import { exitStatus, mixnetFetch } from './mixnet/fetch';
+import { exitStatus, proveTunnel } from './mixnet/fetch';
 import { NymAddressClient, type IncomingMessage } from './mixnet/messaging';
 import { fetchNym } from './mixnet/fetchNym';
 import { parseInviteLink } from './mixnet/hiddenService.mjs';
@@ -28,6 +28,7 @@ import { Onboarding } from './ui/Onboarding';
 import { FriendlyError } from './ui/FriendlyError';
 import { QrScanButton } from './ui/QrScanButton';
 import { ShareCard } from './ui/ShareCard';
+import { RunPortal } from './ui/RunPortal';
 import {
   defaultViewStorage,
   loadActiveView,
@@ -227,14 +228,10 @@ export function App() {
     setBusy(true);
     setLastError(null);
     try {
-      // Clearnet comparison.
-      const direct = await fetch('https://api.ipify.org?format=json').then((r) => r.json());
-      setClearnetIp(String(direct.ip ?? ''));
-      // Same request over the mixnet.
-      const res = await mixnetFetch('https://api.ipify.org?format=json');
-      const viaMix = (await res.json()) as { ip?: string };
-      setMixnetIp(String(viaMix.ip ?? ''));
-      append(`clearnet=${direct.ip} mixnet=${viaMix.ip} differ=${direct.ip !== viaMix.ip}`);
+      const { clearnet, mixnet, differ } = await proveTunnel('https://api.ipify.org?format=json');
+      setClearnetIp(clearnet);
+      setMixnetIp(mixnet);
+      append(`clearnet=${clearnet} mixnet=${mixnet} differ=${differ}`);
     } catch (err) {
       setLastError(err);
       append(`proof failed: ${String(err)}`);
@@ -382,6 +379,29 @@ export function App() {
     void goTo(uri);
     onSelectView('portal');
   }, [goTo, uri, onSelectView]);
+
+  // "Run a Portal" tab: probe a running provider's address through the tunnel.
+  const onProbePortal = useCallback(
+    async (address: string): Promise<{ ok: boolean; summary: string }> => {
+      append(`probe ${address.slice(0, 12)}…`);
+      try {
+        const res = await fetchNym(
+          address,
+          { method: 'GET', path: '/' },
+          { timeoutMs: 120_000 },
+        );
+        const text = new TextDecoder().decode(res.body);
+        return {
+          ok: !res.error && res.status >= 200 && res.status < 500,
+          summary: `status=${res.status}${res.error ? ` error=${res.error}` : ''} ${text.slice(0, 200)}`.trim(),
+        };
+      } catch (err) {
+        append(`probe failed: ${String(err)}`);
+        return { ok: false, summary: String(err) };
+      }
+    },
+    [append],
+  );
 
   const onVisitContact = useCallback(
     (address: string) => {
@@ -882,6 +902,10 @@ export function App() {
             onVerdict={onVerdict}
           />
         </main>
+      )}
+
+      {view === 'service' && (
+        <RunPortal onProbe={onProbePortal} busy={busy} />
       )}
 
       {view === 'settings' && (

@@ -1,0 +1,17 @@
+[package]
+name = "social-format"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Byte-exact social wire grammar for nysiris-social (docs/09-social.md): signed post/profile envelopes, attachment metadata, and PoW payload preimages."
+
+# Pure grammar crate: no nym-sdk, no runtime deps beyond ed25519/hex/serde,
+# so `cargo test` here is fast and the layout can be reused by the browser.
+
+[dependencies]
+ed25519-dalek = "3"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

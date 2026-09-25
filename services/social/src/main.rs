@@ -10,15 +10,15 @@
 //! over SURBs. See `docs/09-social.md`.
 
 mod service;
-mod sig;
 mod store;
-mod attach;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use nym_hidden_service::dispatch;
-use nym_sdk::mixnet::{MixnetClientBuilder, MixnetMessageSender, StoragePaths};
+use nym_sdk::mixnet::{MixnetClient, MixnetClientBuilder, MixnetMessageSender, StoragePaths};
+use provider_runtime::{
+    hidden_step, run_loop, InboundMessage, MixnetRuntime, SendError, SenderTag,
+};
 
 use crate::service::SocialService;
 use crate::store::Store;
@@ -66,32 +66,69 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         println!("pinning provider to gateway {gateway}");
         builder = builder.request_gateway(gateway);
     }
-    let mut client = builder.build()?.connect_to_mixnet().await?;
+    let client = builder.build()?.connect_to_mixnet().await?;
 
     let address = *client.nym_address();
     println!("\nnysiris-social Nym address:\n{address}\n");
     let _ = std::fs::write("nym-address.txt", address.to_string());
 
-    loop {
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {
-                println!("shutdown signal received");
-                break;
-            }
-            maybe_messages = client.wait_for_messages() => {
-                let Some(messages) = maybe_messages else { break; };
-                for msg in messages {
-                    if msg.message.is_empty() { continue; }
-                    let Some(tag) = msg.sender_tag else { continue; };
-                    let reply = dispatch(&service, &msg.message);
-                    if let Err(err) = client.send_reply(tag, reply).await {
-                        eprintln!("failed to send reply: {err}");
-                    }
-                }
-            }
+    let mut runtime = MixnetClientRuntime {
+        client: Some(client),
+    };
+    // provider_runtime::run_loop answers tagged hidden-service messages until
+    // the transport closes; ctrl_c tears down gracefully either way.
+    let mut serve = Box::pin(run_loop(&mut runtime, |msg| {
+        hidden_step(&service, msg)
+    }));
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            println!("shutdown signal received");
+            drop(serve);
+            runtime.disconnect().await;
         }
+        _ = &mut serve => {}
     }
 
-    client.disconnect().await;
     Ok(())
+}
+
+/// `MixnetRuntime` adapter over the real Nym client: the shared loop in
+/// provider-runtime stays nym-free, this bit maps its SenderTag ↔
+/// `AnonymousSenderTag` (both exactly `[u8; 16]`). The client is boxed in an
+/// `Option` because `MixnetClient::disconnect` consumes — the `&mut self`
+/// trait hook takes it out at teardown.
+struct MixnetClientRuntime {
+    client: Option<MixnetClient>,
+}
+
+impl MixnetRuntime for MixnetClientRuntime {
+    async fn wait_for_messages(&mut self) -> Option<Vec<InboundMessage>> {
+        let client = self.client.as_mut()?;
+        client.wait_for_messages().await.map(|batch| {
+            batch
+                .into_iter()
+                .map(|msg| InboundMessage {
+                    message: msg.message,
+                    sender_tag: msg.sender_tag.map(|tag| tag.to_bytes()),
+                })
+                .collect()
+        })
+    }
+
+    async fn send_reply(&self, sender_tag: SenderTag, reply: Vec<u8>) -> Result<(), SendError> {
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| SendError("client already disconnected".into()))?;
+        client
+            .send_reply(nym_sdk::mixnet::AnonymousSenderTag::from_bytes(sender_tag), reply)
+            .await
+            .map_err(|err| SendError(err.to_string()))
+    }
+
+    async fn disconnect(&mut self) {
+        if let Some(client) = self.client.take() {
+            client.disconnect().await;
+        }
+    }
 }

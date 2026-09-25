@@ -17,6 +17,7 @@ import { argon2idAsync } from '@noble/hashes/argon2.js';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { base58Decode, parseNymAddress } from '../mixnet/hiddenService.mjs';
 import { canonicalAttachmentBytes } from './attachments.mjs';
+import { b64decode, b64encode, u64be } from '../lib/bytes';
 import type { AttachmentRef } from './attachmentCrypto';
 
 const STORAGE_KEY = 'fly.social.identity';
@@ -55,12 +56,6 @@ function concat(...parts: Uint8Array[]): Uint8Array {
     out.set(p, at);
     at += p.length;
   }
-  return out;
-}
-
-function u64be(n: number): Uint8Array {
-  const out = new Uint8Array(8);
-  new DataView(out.buffer).setBigUint64(0, BigInt(n));
   return out;
 }
 
@@ -103,6 +98,40 @@ export function importIdentity(privHex: string): Identity {
   const pub = ed25519.getPublicKey(priv);
   const id = { privHex: bytesToHex(priv), pubHex: bytesToHex(pub) };
   kv().setItem(STORAGE_KEY, JSON.stringify(id));
+  return id;
+}
+
+/**
+ * Portal-service identity: a *separate* keypair from the social identity
+ * (`fly.portal.identity`). The service's Nym address derives from its client
+ * keys when it starts (written to `nym-address.txt`); this keypair is the
+ * one you control directly — keep it to re-publish from the same address.
+ * Same ed25519 key logic as the social identity, different slot.
+ */
+const PORTAL_IDENTITY_KEY = 'fly.portal.identity';
+
+export function loadPortalIdentity(): Identity | null {
+  try {
+    return parseIdentityJson(kv().getItem(PORTAL_IDENTITY_KEY));
+  } catch {
+    return null;
+  }
+}
+
+export function createPortalIdentity(): Identity {
+  const priv = ed25519.utils.randomSecretKey();
+  const pub = ed25519.getPublicKey(priv);
+  const id = { privHex: bytesToHex(priv), pubHex: bytesToHex(pub) };
+  kv().setItem(PORTAL_IDENTITY_KEY, JSON.stringify(id));
+  return id;
+}
+
+export function importPortalIdentity(privHex: string): Identity {
+  const priv = hexToBytes(privHex.trim().toLowerCase());
+  if (priv.length !== 32) throw new Error('private key must be 32 bytes hex');
+  const pub = ed25519.getPublicKey(priv);
+  const id = { privHex: bytesToHex(priv), pubHex: bytesToHex(pub) };
+  kv().setItem(PORTAL_IDENTITY_KEY, JSON.stringify(id));
   return id;
 }
 
@@ -419,21 +448,6 @@ export interface IdentityBackup {
   saltB64: string;
   nonceB64: string;
   ctB64: string;
-}
-
-function b64encode(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binary);
-}
-
-function b64decode(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
-  return out;
 }
 
 /** Encrypt the private key to a portable JSON backup. Takes ~1s (KDF cost). */

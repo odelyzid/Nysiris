@@ -22,3 +22,5 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 portal-data = { path = "../../crates/portal-data" }
 nym-hidden-service = { path = "../../crates/nym-hidden-service" }
 portal-reputation = { path = "../../crates/portal-reputation" }
+portal-replication = { path = "../../crates/portal-replication" }
+provider-runtime = { path = "../../crates/provider-runtime" }

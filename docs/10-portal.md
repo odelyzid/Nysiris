@@ -29,8 +29,8 @@ service-side code running in the browser.
 | Layer | Crate / module | Status |
 |---|---|---|
 | Data model | `crates/portal-data` (objects, logs, LWW-map) | ✅ 4 tests |
-| Sync core | `crates/portal-replication` (heads, wants, verified apply) | ✅ 4 tests |
-| Provider | `services/portal-provider/` (object/log store, 6 routes) | ✅ 4 tests |
+| Sync core | `crates/portal-replication` (heads, wants, verified apply) | ✅ 4 tests + 5 golden wire vectors |
+| Provider | `services/portal-provider/` (object/log store, 6 routes) | ✅ 5 tests |
 | Replication | client-driven gossip over the routes above | provider side ✅, browser TS port planned |
 | Discovery | signed invite links + local contacts + URI-bar binding | ✅ |
 | Reputation | client PoW + web-of-trust + local scores | ✅ (this section: PoW, local scores, rate limits) |
@@ -100,7 +100,12 @@ signatures and continuity, and answers `GET /obj/<id>`, `GET /log/<author>?since
 `POST /obj`, `POST /log-entry` — data + verification only, via the existing
 `HiddenService::dispatch` harness. Replication is client-driven gossip:
 browsers exchange want-lists/have-lists through SURB replies and converge
-LWW state locally. Discovery starts where we already are — invite links
+LWW state locally. The serve shapes for the two read routes
+(`GET /heads`, `GET /log/<author>?since=`) live in
+`crates/portal-replication/src/serve.rs` and are pinned byte-for-byte by the
+golden vectors in `crates/portal-replication/tests/golden.rs`, so the
+browser TypeScript port must reproduce the exact same JSON. Discovery starts
+where we already are — invite links
 (`nym://` URIs + petnames) and URI-bar binding — before any ambient mechanism.
 
 ## 10.5 Reputation and spam (implemented)

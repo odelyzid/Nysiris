@@ -39,3 +39,9 @@ services/*/*.sqlite
 services/*/*.sqlite-shm
 services/*/*.sqlite-wal
 services/*/nym-address.txt
+
+# Acceptance harness runtime state: mixnet identity + bandwidth credentials.
+services/acceptance/acceptance-storage/
+
+# Local screenshots and scratch, kept out of the repo on purpose.
+.exclude/
