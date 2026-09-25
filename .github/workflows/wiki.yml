@@ -36,7 +36,20 @@ jobs:
         with:
           node-version: '24'
 
+      # Keep the branch green until the wiki is switched on once:
+      # Settings -> Features -> Wikis (create the first page).
+      - name: Check whether the wiki is enabled
+        id: wiki
+        run: |
+          if git ls-remote "https://github.com/${{ github.repository }}.wiki.git" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Wiki not enabled::Enable Settings -> Features -> Wikis to publish docs."
+          fi
+
       - name: Publish docs to wiki
+        if: steps.wiki.outputs.enabled == 'true'
         env:
           WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
