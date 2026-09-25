@@ -5,6 +5,11 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 
 ## [Unreleased]
 
+### Added
+
+- README: featured hidden services with copy-paste `nym://` addresses
+  (TribeWarez Portal, Hidden Wiki) and a sandbox/no-endorsement note.
+
 ## [0.1.27] — 2026-09-25
 
 ### Added

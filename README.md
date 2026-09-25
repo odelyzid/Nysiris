@@ -90,6 +90,21 @@ The live-network proof — real delivery and a SURB reply against mainnet — is
 ./build.sh acceptance
 ```
 
+## Featured hidden services
+
+Reach these from the Nysiris omnibox (`nym://<id>.<enc>@<gw>/path`), or with
+the CLI: `nysiris fetch <address> --path /`. Addresses are shared out of band
+on purpose — there is no global directory (`docs/05-security.md` §5.7).
+
+| Service | Nym address |
+|---|---|
+| TribeWarez Portal | `nym://6BH3ALNQ9L39qsei6QjofNcRRdFydoq82UJ2KE3XTZnq.6vdcFysfmE4yXqsgn3hd2uPPpoE5kvkvot4tYqWWhvKJ@CcYinhLeFU8n6xs78FG6Rz3wvosGTCU2hLB1CZyfkMVe/` |
+| Hidden Wiki | `nym://9LZZpXYkmwxvuo3JD7udjzuDUCTm9FmDUAnHQb8Hnq2u.8LHeYzMCs5DwVWFxbctuRKL4gqWQvyBnyJASfLYXCdQg@4cdgnckjRBAaaP4ds68YEJPRc78paC4YWMGBDUS8G57C/` |
+
+Listed as-is: no endorsement, no uptime guarantee. Fetched HTML renders in a
+sandboxed iframe (no scripts, no forms) — service pages are displayed, never
+executed.
+
 ## Threat model (short version)
 
 Mixing + cover traffic hide **who talks to whom and when** from network
