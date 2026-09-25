@@ -16,10 +16,14 @@
 //! * [`router`] — [`Router`] with its [`PowGuard`] / [`RateGuard`]: optional
 //!   proof-of-work + per-author daily budget, composed over
 //!   `portal_reputation`.
+//! * [`route`] — shared route plumbing every provider needs: query parsing,
+//!   fixed-width hex decode, JSON body serialization, and a test envelope
+//!   builder.
 //!
 //! The crate is pure (no nym-sdk, no tokio in the library itself), so it runs
 //! in the fast `./build.sh check` loop.
 
+pub mod route;
 pub mod router;
 pub mod runner;
 pub mod transport;

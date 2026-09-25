@@ -12,11 +12,11 @@
 //! Every write is verified before storage. Reads re-verify. Unknown object
 //! kinds store fine (bytes are bytes) — rendering stays client-side.
 
-use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nym_hidden_service::{HiddenService, Request, Response};
 use portal_data::{LogEntry, Object};
+use provider_runtime::route::{hex32, hex64, json_body, parse_query};
 use provider_runtime::Router;
 
 use crate::store::Store;
@@ -27,10 +27,6 @@ pub struct PortalService {
 }
 
 impl PortalService {
-    pub fn new(store: Store) -> Self {
-        Self::with_limits(store, 0, portal_reputation::rate::RatePolicy::default())
-    }
-
     /// `pow_bits`: required PoW difficulty (0 = off). `max_per_day`: per-author
     /// daily write budget (backstop when PoW pricing is wrong).
     pub fn with_limits(
@@ -66,46 +62,6 @@ impl PortalService {
             .verify_json(author, obj_id, v)
             .map_err(|msg| Response::error(400, msg))
     }
-}
-
-fn parse_query(path: &str) -> (String, HashMap<String, String>) {
-    let (base, query) = match path.split_once('?') {
-        Some((b, q)) => (b.to_string(), q),
-        None => (path.to_string(), ""),
-    };
-    let mut params = HashMap::new();
-    for pair in query.split('&') {
-        if let Some((k, v)) = pair.split_once('=') {
-            if !k.is_empty() {
-                params.insert(k.to_string(), v.to_string());
-            }
-        }
-    }
-    (base, params)
-}
-
-fn json_body<T: serde::Serialize>(value: &T) -> Vec<u8> {
-    serde_json::to_vec(value).unwrap_or_default()
-}
-
-fn hex32(s: &str) -> Result<[u8; 32], String> {
-    let bytes = hex::decode(s.trim()).map_err(|e| format!("not hex: {e}"))?;
-    if bytes.len() != 32 {
-        return Err(format!("expected 32 bytes, got {}", bytes.len()));
-    }
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&bytes);
-    Ok(out)
-}
-
-fn hex64(s: &str) -> Result<[u8; 64], String> {
-    let bytes = hex::decode(s.trim()).map_err(|e| format!("not hex: {e}"))?;
-    if bytes.len() != 64 {
-        return Err(format!("expected 64 bytes, got {}", bytes.len()));
-    }
-    let mut out = [0u8; 64];
-    out.copy_from_slice(&bytes);
-    Ok(out)
 }
 
 const DESCRIPTOR_HTML: &str = "<!doctype html><html><head><meta charset=\"utf-8\">\
@@ -297,15 +253,17 @@ mod tests {
     use super::*;
     use ed25519_dalek::Signer;
     use nym_hidden_service::dispatch;
-    use std::collections::HashMap;
 
     fn test_service() -> PortalService {
-        PortalService::new(Store::open_in_memory().unwrap())
+        PortalService::with_limits(
+            Store::open_in_memory().unwrap(),
+            0,
+            portal_reputation::rate::RatePolicy::default(),
+        )
     }
 
     fn envelope(method: &str, path: &str, body: &[u8]) -> Vec<u8> {
-        let req = nym_hidden_service::Request::new(method, path, HashMap::new(), body).unwrap();
-        req.to_json().into_bytes()
+        provider_runtime::route::envelope(method, path, body)
     }
 
     fn publish(svc: &PortalService, seed: u8, kind: &str, payload: &[u8]) -> (String, [u8; 32]) {

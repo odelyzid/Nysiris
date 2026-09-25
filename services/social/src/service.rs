@@ -20,11 +20,11 @@
 //! exists — then stores the field opaquely. Thread assembly is entirely the
 //! client's job (see `web/src/social/threads.ts`).
 
-use std::collections::HashMap;
 use std::sync::Mutex;
 
 use base64::Engine as _;
 use nym_hidden_service::{HiddenService, Request, Response};
+use provider_runtime::route::{json_body, parse_query};
 use provider_runtime::Router;
 
 use social_format::sig;
@@ -36,10 +36,6 @@ pub struct SocialService {
 }
 
 impl SocialService {
-    pub fn new(store: Store) -> Self {
-        Self::with_limits(store, 0, portal_reputation::rate::RatePolicy::default())
-    }
-
     /// `pow_bits`: required PoW difficulty, advertised in `GET /` (0 = off).
     /// `policy`: per-author daily write budget (DMs bucketed per recipient).
     pub fn with_limits(
@@ -79,26 +75,6 @@ impl SocialService {
             .verify_json(key, payload_hash, v)
             .map_err(|msg| Response::error(400, msg))
     }
-}
-
-fn parse_query(path: &str) -> (String, HashMap<String, String>) {
-    let (base, query) = match path.split_once('?') {
-        Some((b, q)) => (b.to_string(), q),
-        None => (path.to_string(), ""),
-    };
-    let mut params = HashMap::new();
-    for pair in query.split('&') {
-        if let Some((k, v)) = pair.split_once('=') {
-            if !k.is_empty() {
-                params.insert(k.to_string(), v.to_string());
-            }
-        }
-    }
-    (base, params)
-}
-
-fn json_body<T: serde::Serialize>(value: &T) -> Vec<u8> {
-    serde_json::to_vec(value).unwrap_or_default()
 }
 
 /// Machine-readable service descriptor (see `DESCRIPTOR_HTML` for humans).
@@ -622,7 +598,11 @@ mod tests {
     use std::collections::HashMap;
 
     fn test_service() -> SocialService {
-        SocialService::new(Store::open_in_memory().unwrap())
+        SocialService::with_limits(
+            Store::open_in_memory().unwrap(),
+            0,
+            portal_reputation::rate::RatePolicy::default(),
+        )
     }
 
     fn signed_post(sk: &SigningKey, day: u64, body: &str) -> serde_json::Value {
@@ -651,8 +631,7 @@ mod tests {
     }
 
     fn envelope(method: &str, path: &str, body: &[u8]) -> Vec<u8> {
-        let req = nym_hidden_service::Request::new(method, path, HashMap::new(), body).unwrap();
-        req.to_json().into_bytes()
+        provider_runtime::route::envelope(method, path, body)
     }
 
     fn pow_for_post(author: &[u8; 32], body: &str, bits: u32) -> serde_json::Value {

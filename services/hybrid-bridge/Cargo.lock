@@ -5958,8 +5958,10 @@ dependencies = [
 name = "provider-runtime"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "nym-hidden-service",
  "portal-reputation",
+ "serde",
  "serde_json",
 ]
 
