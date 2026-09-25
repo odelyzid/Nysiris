@@ -18,8 +18,8 @@ export function Onboarding({
 }) {
   if (step === 'done') return null;
   return (
-    <section className="fly-card" aria-label="Getting started">
-      <h2>Welcome to Nysiris</h2>
+    <section className="panel" aria-label="Getting started">
+      <h2 className="section-title">Welcome to Nysiris</h2>
       <p>Browse and chat privately. One tap connects you over the private network.</p>
       <div className="fly-steps" aria-hidden={step !== 'welcome'}>
         <span>1 · Welcome — nothing to set up yet.</span>
@@ -28,10 +28,10 @@ export function Onboarding({
       </div>
       {step === 'welcome' && (
         <div className="fly-row">
-          <button className="fly-btn fly-btn-primary" onClick={onConnect} disabled={busy}>
+          <button className="btn-primary" onClick={onConnect} disabled={busy}>
             Connect privately
           </button>
-          <button className="fly-btn" onClick={onDismiss}>
+          <button className="btn-ghost" onClick={onDismiss}>
             Look around first
           </button>
         </div>

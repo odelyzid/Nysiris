@@ -56,7 +56,7 @@ export function DmView({
 
   return (
     <div role="tabpanel" aria-label="Private messages">
-      <h3 style={{ fontSize: 15, marginTop: 0 }}>
+      <h3 className="section-title">
         Private messages{totalUnread > 0 && <span style={{ color: '#888' }}> ({totalUnread} unread)</span>}
       </h3>
       <p className="fly-note">🔒 Messages vanish once read — even from the host.</p>

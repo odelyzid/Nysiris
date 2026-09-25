@@ -14,17 +14,19 @@ export function CommunityHeader({
 }) {
   return (
     <>
-      <h2 style={{ marginTop: 0, fontSize: 18 }}>Community</h2>
-      <button onClick={onRefresh} disabled={busy} className="fly-btn">
-        Refresh
-      </button>
+      <div className="panel-title">
+        <span>Community</span>
+        <button className="btn-secondary" onClick={onRefresh} disabled={busy}>
+          ↻ Refresh
+        </button>
+      </div>
       <div style={{ fontSize: 13, marginBottom: 8 }}>
         {!session.identity ? (
           <div className="fly-row" style={{ alignItems: 'center' }}>
             <span style={{ wordBreak: 'break-word' }}>
               You need a private ID to post or receive messages — one tap creates it on this device.
             </span>
-            <button className="fly-btn fly-btn-primary" onClick={session.onCreateIdentity}>
+            <button className="btn-primary" onClick={session.onCreateIdentity}>
               Create my private ID
             </button>
           </div>

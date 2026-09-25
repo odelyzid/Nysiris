@@ -59,7 +59,7 @@ export function TimelineComposer({
           maxLength={MAX_POST_BYTES}
           className="fly-input"
         />
-        <button onClick={onPost} disabled={busy || !draft.trim()} className="fly-btn fly-btn-secondary">
+        <button onClick={onPost} disabled={busy || !draft.trim()} className="btn-primary">
           {replyTo ? 'Reply' : 'Post'}
         </button>
       </div>

@@ -131,15 +131,7 @@ export function Social({
   if (!service) return null;
 
   return (
-    <section
-      style={{
-        border: '1px solid var(--fly-line)',
-        borderRadius: 0,
-        padding: 12,
-        marginBottom: 12,
-        background: 'var(--fly-surface)',
-      }}
-    >
+    <section className="panel" aria-label="Community">
       <CommunityHeader session={session} busy={busy} onRefresh={() => void feed.refreshFeed()} />
       <CommunityTabs tab={tab} onSelect={onSelectTab} />
 

@@ -699,3 +699,424 @@
     animation: none !important;
   }
 }
+
+/* ==========================================================================
+   90s-desktop polish: shared bevel panels + button hierarchy + density.
+   Palette unchanged — only the existing tokens plus translucent bevel shading
+   (rgba black/white), so the dark + orange theme stays exactly as-is.
+   ========================================================================== */
+
+/* ---- shared window/panel system (canonical names + existing .fly-* aliases) */
+.panel,
+.fly-card {
+  background: var(--fly-surface);
+  border: 1px solid var(--fly-line);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 0 rgba(255, 255, 255, 0.5),
+    inset -1px -1px 0 0 rgba(0, 0, 0, 0.35);
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+
+.panel-inset,
+.fly-panel-inset {
+  background: var(--fly-surface);
+  border: 1px solid var(--fly-line);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 0 rgba(0, 0, 0, 0.35),
+    inset -1px -1px 0 0 rgba(255, 255, 255, 0.35);
+  padding: 8px;
+}
+
+/* Raised title bar for a floating/portable window. */
+.panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -10px -12px 8px;
+  padding: 3px 6px;
+  background: var(--fly-line);
+  color: var(--fly-ink);
+  border-bottom: 1px solid var(--fly-line);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.panel-title .btn-ghost,
+.panel-title .fly-btn-ghost {
+  color: var(--fly-ink);
+  min-height: 18px;
+  padding: 0 4px;
+}
+
+/* Small uppercase section heading with a thin divider — never a hero. */
+.section-title,
+.fly-card h2 {
+  margin: 0 0 8px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--fly-line);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--fly-ink);
+}
+
+/* ---- buttons: one bevel system, three roles ------------------------------ */
+/* Secondary (default): outline, surface fill. */
+.btn,
+.fly-btn {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.1;
+  padding: 6px 11px;
+  min-height: 30px;
+  border-radius: 0;
+  border: 1px solid var(--fly-line);
+  background: var(--fly-surface);
+  color: var(--fly-ink);
+  cursor: pointer;
+  box-shadow:
+    inset 1px 1px 0 0 rgba(255, 255, 255, 0.55),
+    inset -1px -1px 0 0 rgba(0, 0, 0, 0.4);
+}
+
+.btn:active:not(:disabled),
+.fly-btn:active:not(:disabled) {
+  box-shadow: inset 1px 1px 0 0 rgba(0, 0, 0, 0.45);
+}
+
+/* Toggle buttons read as pressed (sunken). */
+.btn[aria-pressed='true'],
+.fly-btn[aria-pressed='true'] {
+  box-shadow: inset 1px 1px 0 0 rgba(0, 0, 0, 0.45);
+  font-weight: 700;
+}
+
+.btn:disabled,
+.fly-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Primary: filled orange (Connect / Send / Post / Open). */
+.btn-primary,
+.fly-btn-primary {
+  background: var(--fly-accent);
+  border-color: var(--fly-accent-edge);
+  color: var(--fly-accent-ink);
+  font-weight: 700;
+  box-shadow:
+    inset 1px 1px 0 0 rgba(255, 255, 255, 0.35),
+    inset -1px -1px 0 0 rgba(0, 0, 0, 0.35);
+}
+
+/* Secondary: orange outline (Copy / Refresh / Attach). */
+.btn-secondary,
+.fly-btn-secondary {
+  background: var(--fly-surface);
+  border-color: var(--fly-accent);
+  color: var(--fly-accent);
+}
+
+/* Ghost / technical: text-only (Hide QR / Advanced / toggles). */
+.btn-ghost,
+.fly-btn-ghost,
+.fly-btn-quiet {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--fly-muted);
+  font-size: 12px;
+  min-height: 24px;
+  padding: 2px 6px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* A ghost toggle that is on reads as active text, not a chrome button. */
+.btn-ghost[aria-pressed='true'],
+.fly-btn-ghost[aria-pressed='true'] {
+  color: var(--fly-ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.btn:focus-visible,
+.fly-btn:focus-visible,
+.fly-input:focus-visible {
+  outline: 2px solid var(--fly-accent);
+  outline-offset: 1px;
+}
+
+/* ---- inputs: sunken bevel, tighter --------------------------------------- */
+.fly-input {
+  flex: 1;
+  min-width: 180px;
+  font: inherit;
+  font-size: 14px;
+  padding: 5px 8px;
+  min-height: 30px;
+  border: 1px solid var(--fly-line);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 0 rgba(0, 0, 0, 0.4),
+    inset -1px -1px 0 0 rgba(255, 255, 255, 0.25);
+  background: var(--fly-surface);
+  color: var(--fly-ink);
+}
+
+/* Monospace only for addresses / technical IDs. */
+code,
+pre,
+kbd,
+samp,
+.fly-mono,
+.fly-identity-id,
+.fly-info dd,
+.uri-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ---- density: chrome, lists, composers, empty states --------------------- */
+.fly-shell {
+  font-family: system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif;
+  font-size: 14px;
+  line-height: 1.35;
+  padding: 12px 12px 40px;
+}
+
+.fly-nav {
+  gap: 2px;
+  padding: 6px 2px;
+}
+.fly-nav-btn {
+  font-size: 13px;
+  padding: 6px 10px;
+  min-height: 32px;
+}
+
+.fly-card p {
+  font-size: 13px;
+  line-height: 1.4;
+}
+.fly-row {
+  gap: 6px;
+}
+.fly-status {
+  font-size: 13px;
+  padding: 5px 10px;
+  min-height: 32px;
+}
+
+.fly-conv-list {
+  gap: 1px;
+}
+.fly-conv-list button {
+  padding: 6px 8px;
+  min-height: 30px;
+  font-size: 13px;
+}
+
+.fly-tabbar {
+  gap: 2px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom-width: 1px;
+}
+.fly-tab {
+  font-size: 12px;
+  padding: 5px 10px;
+  min-height: 30px;
+}
+.fly-tab[aria-selected='true'] {
+  padding-bottom: 6px;
+  margin-bottom: -5px;
+  border-bottom-width: 2px;
+}
+
+.fly-qr {
+  max-width: 180px;
+}
+.fly-error {
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+.fly-muted {
+  font-size: 12px;
+}
+
+.fly-identity-bar {
+  gap: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  box-shadow: inset 1px 1px 0 0 rgba(0, 0, 0, 0.25);
+}
+.fly-identity-panel {
+  padding: 8px;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.fly-timeline-list {
+  font-size: 13px;
+}
+.fly-timeline-list > li {
+  padding: 8px 2px;
+}
+
+.fly-empty {
+  padding: 12px;
+  box-shadow: inset 1px 1px 0 0 rgba(0, 0, 0, 0.3);
+}
+.fly-empty-glyph {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+.fly-empty strong {
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.fly-empty p {
+  margin: 0 0 8px;
+}
+
+.fly-dm-composer {
+  gap: 6px;
+  padding: 8px;
+  margin-bottom: 6px;
+  box-shadow: inset 1px 1px 0 0 rgba(0, 0, 0, 0.25);
+}
+.fly-dm-to {
+  font-size: 12px;
+  gap: 6px;
+}
+.fly-dm-message {
+  min-height: 44px;
+  max-height: 140px;
+}
+.fly-dm-actions {
+  gap: 6px;
+}
+
+.fly-note {
+  font-size: 12px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+}
+.fly-steps {
+  gap: 4px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+/* Trust legend: one compact wrapped row, not a paragraph. */
+.fly-trust-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: var(--fly-muted);
+}
+
+/* Touch devices keep comfortable targets (density is a desktop concern). */
+@media (pointer: coarse) {
+  .btn,
+  .fly-btn {
+    min-height: 42px;
+    padding: 9px 13px;
+    font-size: 15px;
+  }
+  .fly-input {
+    min-height: 42px;
+    font-size: 16px;
+    padding: 9px 10px;
+  }
+  .fly-nav-btn {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 15px;
+  }
+  .fly-tab {
+    min-height: 40px;
+  }
+}
+
+/* Desktop: tighter chrome, fixed-ish columns, a main stage that does not
+   stretch endlessly on ultrawide. */
+@media (min-width: 1024px) {
+  .fly-shell {
+    padding: 0 14px;
+  }
+  .fly-topbar {
+    gap: 8px;
+    padding: 6px 2px;
+  }
+  .fly-topbar .fly-btn {
+    min-height: 30px;
+    padding: 5px 10px;
+    font-size: 13px;
+  }
+  .fly-topbar .fly-nav-btn {
+    min-height: 30px;
+    padding: 5px 10px;
+    font-size: 13px;
+  }
+  .fly-topbar .fly-status {
+    min-height: 30px;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .fly-topbar .fly-input {
+    padding: 5px 8px;
+    font-size: 13px;
+  }
+
+  .fly-desktop {
+    grid-template-columns: 248px minmax(0, 1fr) 272px;
+  }
+  .fly-desktop[data-context='closed'] {
+    grid-template-columns: 248px minmax(0, 1fr);
+  }
+
+  .fly-main {
+    padding: 2px 16px 28px;
+  }
+  .fly-main > main {
+    max-width: 1200px;
+  }
+  .fly-main .fly-card {
+    padding: 10px 12px;
+    margin: 8px 0;
+  }
+
+  .fly-roster {
+    padding: 8px 10px 20px 0;
+  }
+  .fly-roster h3 {
+    margin: 10px 0 4px;
+    font-size: 11px;
+  }
+  .fly-roster li button {
+    padding: 5px 6px;
+    font-size: 13px;
+  }
+  .fly-context {
+    padding: 8px 0 20px 10px;
+  }
+  .fly-info {
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .uri-input {
+    width: 55%;
+  }
+}

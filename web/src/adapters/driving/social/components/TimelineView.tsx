@@ -52,7 +52,7 @@ export function TimelineView({
         composerRef={composer.composerRef}
       />
 
-      <h3 style={{ fontSize: 15 }}>Timeline</h3>
+      <h3 className="section-title">Timeline</h3>
       <p style={{ fontSize: 11, color: '#888' }}>
         Global chronological timeline — every post is checked before it appears, so fakes never show.
       </p>

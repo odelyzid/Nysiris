@@ -80,7 +80,7 @@ export function TopBar({
         Open
       </button>
       <button
-        className="fly-btn"
+        className="btn-ghost"
         aria-pressed={advanced}
         title="Technical tools (also in Settings)"
         onClick={() => onToggleAdvanced(!advanced)}
@@ -88,7 +88,7 @@ export function TopBar({
         Advanced
       </button>
       <button
-        className="fly-btn"
+        className="btn-ghost"
         aria-pressed={contextOpen}
         title={contextOpen ? 'Hide the info panel' : 'Show the info panel'}
         onClick={onToggleContext}

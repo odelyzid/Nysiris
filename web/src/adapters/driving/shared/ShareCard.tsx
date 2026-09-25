@@ -52,10 +52,10 @@ export function ShareCard({
         <button className="fly-btn" onClick={() => void onCopy()}>
           {copied ? 'Copied' : 'Copy link'}
         </button>
-        <button className="fly-btn" onClick={() => setShowQr((v) => !v)} aria-expanded={showQr}>
+        <button className="btn-ghost" onClick={() => setShowQr((v) => !v)} aria-expanded={showQr}>
           {showQr ? 'Hide QR' : 'Show QR'}
         </button>
-        <button className="fly-btn" onClick={() => setShowTechnical((v) => !v)} aria-expanded={showTechnical}>
+        <button className="btn-ghost" onClick={() => setShowTechnical((v) => !v)} aria-expanded={showTechnical}>
           {showTechnical ? 'Hide technical details' : 'Show technical details'}
         </button>
       </div>

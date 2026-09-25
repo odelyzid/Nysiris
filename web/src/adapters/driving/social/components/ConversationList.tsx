@@ -14,7 +14,7 @@ export function ConversationList({
 }) {
   return (
     <>
-      <h3 style={{ fontSize: 15 }}>Conversations</h3>
+      <h3 className="section-title">Conversations</h3>
       <ul className="fly-conv-list">
         {convos.map((c) => {
           const last = c.messages[c.messages.length - 1];

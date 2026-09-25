@@ -13,7 +13,7 @@ export function DmConversation({
 }) {
   return (
     <>
-      <h3 style={{ fontSize: 15 }}>Chat with {peerLabel(activeConvo.peer)}</h3>
+      <h3 className="section-title">Chat with {peerLabel(activeConvo.peer)}</h3>
       <ul style={{ fontSize: 13, listStyle: 'none', padding: 0 }}>
         {activeConvo.messages.map((m) => (
           <li key={m.msgId} style={{ borderTop: '1px solid #eee', padding: '6px 0' }}>

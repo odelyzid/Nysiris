@@ -20,7 +20,7 @@ export function AboutView({
 }) {
   return (
     <div role="tabpanel" aria-label="About this community">
-      <h3 style={{ fontSize: 15, marginTop: 0 }}>About this community</h3>
+      <h3 className="section-title">About this community</h3>
       <p style={{ fontSize: 13 }}>
         Metadata-minimal microblog + encrypted DMs, reachable only over the private network.
       </p>
@@ -44,7 +44,7 @@ export function AboutView({
       </ul>
       <p style={{ fontSize: 13 }}>No accounts, no follows, no likes, no read receipts. Your public key is your name.</p>
 
-      <h3 style={{ fontSize: 15 }}>Your profile</h3>
+      <h3 className="section-title">Your profile</h3>
       <p style={{ fontSize: 11, color: '#888' }}>
         Self-asserted: the name and bio you set here are signed by your ID.
       </p>
