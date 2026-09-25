@@ -58,7 +58,10 @@ export function ContactsPanel({
           </div>
           <div style={{ color: '#666' }}>“{pending.note}”</div>
           {pending.invite.vouches && pending.invite.vouches.length > 0 && (
-            <div style={{ color: '#666' }} title="IDs the inviter explicitly trusts. Signed into the invite — but verify out-of-band before trusting them yourself.">
+            <div
+              style={{ color: '#666' }}
+              title="IDs the inviter explicitly trusts. Signed into the invite — but verify out-of-band before trusting them yourself."
+            >
               Vouched by inviter ({pending.invite.vouches.length}):{' '}
               <code style={{ wordBreak: 'break-all' }}>
                 {pending.invite.vouches.map((v) => `${v.slice(0, 12)}…`).join(', ')}
@@ -87,26 +90,22 @@ export function ContactsPanel({
             <button className="fly-btn fly-btn-primary" onClick={onAccept} disabled={!petname.trim()}>
               Save
             </button>
-            <button className="fly-btn" onClick={onDismissInvite}>Dismiss</button>
+            <button className="fly-btn" onClick={onDismissInvite}>
+              Dismiss
+            </button>
           </div>
         </div>
       )}
       {contacts.length === 0 && !pending && (
         <p style={{ fontSize: 13, color: '#666' }}>
-          No people yet. Open a private invite link — saving it adds the
-          person here under a name you choose.
+          No people yet. Open a private invite link — saving it adds the person here under a name you choose.
         </p>
       )}
       <ul style={{ fontSize: 13, listStyle: 'none', padding: 0, margin: 0 }}>
         {contacts.map((c) => (
-          <li
-            key={c.name}
-            style={{ borderTop: '1px solid #eee', padding: '6px 0' }}
-          >
+          <li key={c.name} style={{ borderTop: '1px solid #eee', padding: '6px 0' }}>
             <strong>{c.name}</strong>{' '}
-            <code style={{ fontSize: 11, wordBreak: 'break-all' }}>
-              {c.address.slice(0, 24)}…
-            </code>
+            <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{c.address.slice(0, 24)}…</code>
             {c.note && <div style={{ color: '#666' }}>“{c.note}”</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
               <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => onVisit(c.address)}>

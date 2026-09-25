@@ -8,4 +8,3 @@
 export const MAX_POST_BYTES = 1400;
 /** Max DM ciphertext bytes after sealing (`social_format::limits::MAX_DM_BYTES`). */
 export const MAX_DM_CIPHERTEXT_BYTES = 1800;
-

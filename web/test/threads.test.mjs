@@ -26,18 +26,16 @@ test('buildThread assembles root plus transitive descendants oldest-first', () =
   ];
   const t = buildThread('root', byId(posts));
   assert.equal(t.root.id, 'root');
-  assert.deepEqual(t.replies.map((r) => r.id), ['r2', 'r1', 'r1a']);
+  assert.deepEqual(
+    t.replies.map((r) => r.id),
+    ['r2', 'r1', 'r1a'],
+  );
   assert.deepEqual(t.missing, []);
   assert.equal(countDescendants('root', byId(posts)), 3);
 });
 
 test('buildThread reports missing roots and terminates on cycles', () => {
-  const posts = [
-    node('a', 'ghost', 1),
-    node('self', 'self', 2),
-    node('x', 'y', 3),
-    node('y', 'x', 4),
-  ];
+  const posts = [node('a', 'ghost', 1), node('self', 'self', 2), node('x', 'y', 3), node('y', 'x', 4)];
   const map = byId(posts);
   const unknown = buildThread('nope', map);
   assert.equal(unknown.root, null);
@@ -56,7 +54,18 @@ test('thread hash codec round-trips and rejects garbage', () => {
   assert.equal(formatThreadHash(id), `#thread=${id}`);
   assert.equal(parseThreadHash(`#thread=${id}`), id);
   assert.equal(parseThreadHash(`#thread=${id.toUpperCase()}`), id);
-  for (const bad of ['', '#thread=', '#thread=xyz', '#thread=ab', `#thread=${'ab'.repeat(17)}`, '#invite=abc', null, undefined, 42, '#thread=ab!'.repeat(8)]) {
+  for (const bad of [
+    '',
+    '#thread=',
+    '#thread=xyz',
+    '#thread=ab',
+    `#thread=${'ab'.repeat(17)}`,
+    '#invite=abc',
+    null,
+    undefined,
+    42,
+    '#thread=ab!'.repeat(8),
+  ]) {
     assert.equal(parseThreadHash(bad), null, JSON.stringify(bad));
   }
 });

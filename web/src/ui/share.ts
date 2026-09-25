@@ -30,15 +30,18 @@ export function displayLabel(address: string, petname?: string | null): string {
 }
 
 /** Find a petname for an address in the local address book. */
-export function petnameFor(
-  address: string,
-  contacts: { name: string; address: string }[],
-): string | null {
+export function petnameFor(address: string, contacts: { name: string; address: string }[]): string | null {
   const want = toPrivateLink(address).toLowerCase();
   for (const c of contacts) {
     if (toPrivateLink(c.address).toLowerCase() === want) return c.name;
     // Also match bare-vs-schemed variants.
-    if (c.address.trim().toLowerCase() === String(address ?? '').trim().toLowerCase()) return c.name;
+    if (
+      c.address.trim().toLowerCase() ===
+      String(address ?? '')
+        .trim()
+        .toLowerCase()
+    )
+      return c.name;
   }
   return null;
 }
@@ -69,10 +72,7 @@ export function threadKeyFor(msg: { senderTag?: string }, index: number): string
   return msg.senderTag ? `tag:${msg.senderTag}` : `direct:${index}`;
 }
 
-export function threadLabel(
-  key: string,
-  contacts: { name: string; address: string }[],
-): string {
+export function threadLabel(key: string, contacts: { name: string; address: string }[]): string {
   if (key.startsWith('contact:')) {
     const address = key.slice('contact:'.length);
     return displayLabel(address, petnameFor(address, contacts));

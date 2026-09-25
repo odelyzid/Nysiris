@@ -2,11 +2,7 @@
 // Verifies the timeline-scope toggle persistence in web/src/social/settings.ts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  defaultBooleanStorage,
-  loadTrustedOnly,
-  saveTrustedOnly,
-} from '../src/social/settings.ts';
+import { defaultBooleanStorage, loadTrustedOnly, saveTrustedOnly } from '../src/social/settings.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));

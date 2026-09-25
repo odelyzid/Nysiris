@@ -14,7 +14,8 @@ try {
 test('invite sign/verify round-trips', { skip: !identity }, () => {
   const id = identity.createIdentity();
   assert.match(id.pubHex, /^[0-9a-f]{64}$/);
-  const ADDR = '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi.8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR@CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8';
+  const ADDR =
+    '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi.8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR@CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8';
   const service = `nym://${ADDR}`;
   const invite = identity.signInvite(id.privHex, service, 'join my portal');
   assert.equal(invite.service, service);
@@ -24,18 +25,26 @@ test('invite sign/verify round-trips', { skip: !identity }, () => {
 
 test('invite verification rejects tampering and bait-and-switch', { skip: !identity }, () => {
   const id = identity.createIdentity();
-  const ADDR = '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi.8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR@CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8';
+  const ADDR =
+    '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi.8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR@CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8';
   const service = `nym://${ADDR}`;
   const invite = identity.signInvite(id.privHex, service, 'hi');
   assert.equal(identity.verifyInvite({ ...invite, note: 'evil' }, service), false);
-  assert.equal(identity.verifyInvite(invite, 'nym://4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi.8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR@AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'), false);
+  assert.equal(
+    identity.verifyInvite(
+      invite,
+      'nym://4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi.8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR@AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+    ),
+    false,
+  );
   assert.equal(identity.verifyInvite({ ...invite, sig: '00'.repeat(64) }, service), false);
   assert.throws(() => identity.signInvite(id.privHex, service, ''));
 });
 
 test('invites carry signed vouches; stripping them fails closed', { skip: !identity }, () => {
   const id = identity.createIdentity();
-  const ADDR = '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi.8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR@CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8';
+  const ADDR =
+    '4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi.8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR@CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8';
   const service = `nym://${ADDR}`;
   const friendA = identity.createIdentity().pubHex;
   const friendB = identity.createIdentity().pubHex;
@@ -59,16 +68,18 @@ test('invites carry signed vouches; stripping them fails closed', { skip: !ident
   // Shape defects fail closed without throwing.
   assert.equal(identity.verifyInvite({ ...invite, vouches: ['xyz'] }, service), false);
   assert.equal(identity.verifyInvite({ ...invite, vouches: 'nope' }, service), false);
-  assert.equal(
-    identity.verifyInvite({ ...invite, vouches: Array.from({ length: 9 }, () => friendA) }, service),
-    false,
-  );
+  assert.equal(identity.verifyInvite({ ...invite, vouches: Array.from({ length: 9 }, () => friendA) }, service), false);
 
   // Self-vouch is dropped, duplicates collapse, over-cap throws.
   const self = identity.signInvite(id.privHex, service, 'hi', [id.pubHex, friendA, friendA]);
   assert.deepEqual(self.vouches, [friendA]);
   assert.equal(identity.verifyInvite(self, service), true);
   assert.throws(() =>
-    identity.signInvite(id.privHex, service, 'hi', Array.from({ length: 9 }, (_, i) => `${i.toString(16).padStart(2, '0')}`.repeat(32))),
+    identity.signInvite(
+      id.privHex,
+      service,
+      'hi',
+      Array.from({ length: 9 }, (_, i) => `${i.toString(16).padStart(2, '0')}`.repeat(32)),
+    ),
   );
 });

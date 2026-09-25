@@ -55,11 +55,7 @@ export function ShareCard({
         <button className="fly-btn" onClick={() => setShowQr((v) => !v)} aria-expanded={showQr}>
           {showQr ? 'Hide QR' : 'Show QR'}
         </button>
-        <button
-          className="fly-btn"
-          onClick={() => setShowTechnical((v) => !v)}
-          aria-expanded={showTechnical}
-        >
+        <button className="fly-btn" onClick={() => setShowTechnical((v) => !v)} aria-expanded={showTechnical}>
           {showTechnical ? 'Hide technical details' : 'Show technical details'}
         </button>
       </div>

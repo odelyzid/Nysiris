@@ -59,21 +59,8 @@ import {
   saveSocialTab,
   type SocialTab,
 } from './tabs';
-import {
-  STANDING_META,
-  cautionFor,
-  resolveStanding,
-  shouldCollapse,
-  standingTitle,
-  type Verdict,
-} from './trust';
-import {
-  authorLabel,
-  duplicatePetnames,
-  loadPetnames,
-  savePetnames,
-  withPetname,
-} from './petnames';
+import { STANDING_META, cautionFor, resolveStanding, shouldCollapse, standingTitle, type Verdict } from './trust';
+import { authorLabel, duplicatePetnames, loadPetnames, savePetnames, withPetname } from './petnames';
 import { describeSync, mergeFeedPosts } from './sync';
 import { defaultBooleanStorage, loadTrustedOnly, saveTrustedOnly } from './settings';
 import { copyText, shortenAddress } from '../ui/share';
@@ -218,13 +205,7 @@ export function Social({
 
   /** Minimal thread shape adapted from feed posts for `threads.ts`. */
   const threadNodes = useMemo(
-    () =>
-      new Map(
-        posts.map((p) => [
-          p.id,
-          { id: p.id, inReplyTo: normalizeParent(p.in_reply_to), seq: p.seq },
-        ]),
-      ),
+    () => new Map(posts.map((p) => [p.id, { id: p.id, inReplyTo: normalizeParent(p.in_reply_to), seq: p.seq }])),
     [posts],
   );
 
@@ -235,12 +216,15 @@ export function Social({
   }, [petnameMap]);
 
   /** Start a reply: attach the parent and focus the composer. */
-  const startReply = useCallback((post: Post) => {
-    setReplyTo(post);
-    onSelectTab('timeline');
-    // Focus after the tab switch paints.
-    window.setTimeout(() => composerRef.current?.focus(), 0);
-  }, [onSelectTab]);
+  const startReply = useCallback(
+    (post: Post) => {
+      setReplyTo(post);
+      onSelectTab('timeline');
+      // Focus after the tab switch paints.
+      window.setTimeout(() => composerRef.current?.focus(), 0);
+    },
+    [onSelectTab],
+  );
 
   const savePetname = useCallback((author: string, name: string | null) => {
     setPetnameMap((prev) => {
@@ -292,28 +276,24 @@ export function Social({
    * parent id and attachment refs are part of the signed bytes; malformed
    * attachments drop the post fail-closed.
    */
-  const checkPost = useCallback((p: Post): boolean => {
-    const parent = normalizeParent(p.in_reply_to);
-    let atts: AttachmentRef[] = [];
-    try {
-      atts = parseAttachmentRefs(p.attachments);
-    } catch {
-      recordRep(p.author, 'invalidSignature');
-      append(`post with bad attachments dropped (seq ${p.seq})`);
-      return false;
-    }
-    const ok = verifyPostSignature(
-      p.author,
-      p.day,
-      new TextEncoder().encode(p.body),
-      p.sig,
-      parent,
-      atts,
-    );
-    recordRep(p.author, ok ? 'valid' : 'invalidSignature');
-    if (!ok) append(`forged post dropped (seq ${p.seq})`);
-    return ok;
-  }, [append, recordRep]);
+  const checkPost = useCallback(
+    (p: Post): boolean => {
+      const parent = normalizeParent(p.in_reply_to);
+      let atts: AttachmentRef[] = [];
+      try {
+        atts = parseAttachmentRefs(p.attachments);
+      } catch {
+        recordRep(p.author, 'invalidSignature');
+        append(`post with bad attachments dropped (seq ${p.seq})`);
+        return false;
+      }
+      const ok = verifyPostSignature(p.author, p.day, new TextEncoder().encode(p.body), p.sig, parent, atts);
+      recordRep(p.author, ok ? 'valid' : 'invalidSignature');
+      if (!ok) append(`forged post dropped (seq ${p.seq})`);
+      return ok;
+    },
+    [append, recordRep],
+  );
 
   /** Fetch one post by id to fill a thread gap. Verifies before merging. */
   const fetchPostByIdInner = useCallback(
@@ -444,31 +424,31 @@ export function Social({
   const powBitsCache = useRef(new Map<string, number>());
 
   /** Prove work if the service requires it; null when not required. */
-  const powFor = useCallback(
-    async (serviceAddr: string, keyHex: string, payload: Uint8Array) => {
-      let bits = powBitsCache.current.get(serviceAddr);
-      if (bits === undefined) {
-        try {
-          const res = await fetchNym(serviceAddr, { method: 'GET', path: '/' });
-          const desc = JSON.parse(new TextDecoder().decode(res.body)) as { pow_bits?: unknown };
-          bits = typeof desc.pow_bits === 'number' ? desc.pow_bits : 0;
-        } catch {
-          bits = 0;
-        }
-        powBitsCache.current.set(serviceAddr, bits);
+  const powFor = useCallback(async (serviceAddr: string, keyHex: string, payload: Uint8Array) => {
+    let bits = powBitsCache.current.get(serviceAddr);
+    if (bits === undefined) {
+      try {
+        const res = await fetchNym(serviceAddr, { method: 'GET', path: '/' });
+        const desc = JSON.parse(new TextDecoder().decode(res.body)) as { pow_bits?: unknown };
+        bits = typeof desc.pow_bits === 'number' ? desc.pow_bits : 0;
+      } catch {
+        bits = 0;
       }
-      if (!bits) return null;
-      const hash = await payloadHashBytes(payload);
-      return provePow(hexToBytes(keyHex), hash, bits, {});
-    },
-    [],
-  );
+      powBitsCache.current.set(serviceAddr, bits);
+    }
+    if (!bits) return null;
+    const hash = await payloadHashBytes(payload);
+    return provePow(hexToBytes(keyHex), hash, bits, {});
+  }, []);
 
-  const authed = useCallback(async <T,>(fn: (id: Identity) => Promise<T>): Promise<T | null> => {
-    const id = identity ?? createIdentity();
-    setIdentity(id);
-    return fn(id);
-  }, [identity]);
+  const authed = useCallback(
+    async <T,>(fn: (id: Identity) => Promise<T>): Promise<T | null> => {
+      const id = identity ?? createIdentity();
+      setIdentity(id);
+      return fn(id);
+    },
+    [identity],
+  );
 
   const refreshFeed = useCallback(async () => {
     if (!service) return;
@@ -521,10 +501,7 @@ export function Social({
   }, [service, append, checkPost]);
 
   /** Oldest seq held locally (Infinity when empty): the "load older" anchor. */
-  const oldestSeq = useMemo(
-    () => posts.reduce((min, p) => Math.min(min, p.seq), Number.POSITIVE_INFINITY),
-    [posts],
-  );
+  const oldestSeq = useMemo(() => posts.reduce((min, p) => Math.min(min, p.seq), Number.POSITIVE_INFINITY), [posts]);
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   /**
@@ -775,9 +752,7 @@ export function Social({
         // Blobs upload first (chunked, content-addressed): the post only
         // carries refs, so a failed upload aborts the send — never a
         // dangling attachment.
-        const refs: AttachmentRef[] = postFiles.map(
-          ({ id, name, mime, size, key }) => ({ id, name, mime, size, key }),
-        );
+        const refs: AttachmentRef[] = postFiles.map(({ id, name, mime, size, key }) => ({ id, name, mime, size, key }));
         if (!(await uploadBlobs(service, postFiles, powFor, append))) return;
         const sig = signPost(id.privHex, id.pubHex, day, body, parent, refs);
         const pow = await powFor(
@@ -886,9 +861,13 @@ export function Social({
         // Attachments pack inside the sealed box: refs (with file keys)
         // stay confidential end-to-end. Blobs upload first so a failed
         // upload aborts the send — never a dangling ref.
-        const refs: AttachmentRef[] = dmFiles.map(
-          ({ id: aid, name, mime, size, key }) => ({ id: aid, name, mime, size, key }),
-        );
+        const refs: AttachmentRef[] = dmFiles.map(({ id: aid, name, mime, size, key }) => ({
+          id: aid,
+          name,
+          mime,
+          size,
+          key,
+        }));
         if (!(await uploadBlobs(service, dmFiles, powFor, append))) return;
         // Signed inside the sealed box: the recipient can attribute the
         // message, the provider cannot.
@@ -1006,7 +985,8 @@ export function Social({
               style={{ fontSize: 11, color: '#888' }}
               title="Same name as another author — the hex tells them apart"
             >
-              {' '}·{p.author.slice(0, 8)}…
+              {' '}
+              ·{p.author.slice(0, 8)}…
             </span>
           )}{' '}
           <span style={{ color: '#888' }}>{dayLabel(p.day)}</span>{' '}
@@ -1063,10 +1043,20 @@ export function Social({
           )}{' '}
           {explicit === null ? (
             <>
-              <button className="fly-btn" style={{ fontSize: 11 }} title="Always show them as trusted" onClick={() => onVerdict(p.author, 'trusted')}>
+              <button
+                className="fly-btn"
+                style={{ fontSize: 11 }}
+                title="Always show them as trusted"
+                onClick={() => onVerdict(p.author, 'trusted')}
+              >
                 Trust
               </button>{' '}
-              <button className="fly-btn" style={{ fontSize: 11 }} title="Always show them as blocked" onClick={() => onVerdict(p.author, 'blocked')}>
+              <button
+                className="fly-btn"
+                style={{ fontSize: 11 }}
+                title="Always show them as blocked"
+                onClick={() => onVerdict(p.author, 'blocked')}
+              >
                 Block
               </button>
             </>
@@ -1081,9 +1071,7 @@ export function Social({
             </button>
           )}
           <div style={{ wordBreak: 'break-word' }}>{p.body}</div>
-          {p.attachments && p.attachments.length > 0 && (
-            <AttachmentList service={service} refs={p.attachments} />
-          )}
+          {p.attachments && p.attachments.length > 0 && <AttachmentList service={service} refs={p.attachments} />}
           {caution && (
             <div style={{ fontSize: 11, color: '#b26b00', marginTop: 4 }} role="note">
               ⚠ {caution}.
@@ -1107,10 +1095,7 @@ export function Social({
   );
 
   // Timeline shows top-level posts; replies live in their threads.
-  const topLevelPosts = useMemo(
-    () => posts.filter((p) => normalizeParent(p.in_reply_to) === null),
-    [posts],
-  );
+  const topLevelPosts = useMemo(() => posts.filter((p) => normalizeParent(p.in_reply_to) === null), [posts]);
 
   // The Community section only exists while a portal is open: opening a
   // private link (Open) binds `service`, closing it unbinds. All hooks run
@@ -1118,10 +1103,24 @@ export function Social({
   if (!service) return null;
 
   return (
-    <section style={{ border: '1px solid var(--fly-line)', borderRadius: 0, padding: 12, marginBottom: 12, background: 'var(--fly-surface)' }}>
+    <section
+      style={{
+        border: '1px solid var(--fly-line)',
+        borderRadius: 0,
+        padding: 12,
+        marginBottom: 12,
+        background: 'var(--fly-surface)',
+      }}
+    >
       <h2 style={{ marginTop: 0, fontSize: 18 }}>Community</h2>
-      <button onClick={() => { void refreshFeed(); }} disabled={busy || !service} className='fly-btn'>
-          Refresh
+      <button
+        onClick={() => {
+          void refreshFeed();
+        }}
+        disabled={busy || !service}
+        className="fly-btn"
+      >
+        Refresh
       </button>
       <div style={{ fontSize: 13, marginBottom: 8 }}>
         {!identity ? (
@@ -1142,249 +1141,268 @@ export function Social({
           </div>
         ) : (
           <>
-          <div className="fly-identity-bar">
-            <span className="fly-identity-id" title={identity.pubHex}>
-              🪪 {identity.pubHex.slice(0, 12)}…
-            </span>
-            {(() => {
-              const trustedVoices = Object.entries(trustMap)
-                .filter(([, v]) => v === 'trusted')
-                .map(([author]) => author)
-                .slice(0, MAX_INVITE_VOUCHES);
-              return (
-                <>
-                  {trustedVoices.length > 0 && (
-                    <label style={{ fontSize: 11, marginRight: 8 }} title="Sign your explicit-trust list into the invite so the recipient sees who you vouch for">
-                      <input
-                        type="checkbox"
-                        checked={vouchOnCopy}
-                        onChange={(e) => setVouchOnCopy(e.target.checked)}
-                      />{' '}
-                      Vouch for {trustedVoices.length} trusted
-                    </label>
-                  )}
-            <button
-              style={{ fontSize: 11 }}
-              className='fly-btn fly-btn-primary'
-              title="Sign an invite link for this community and copy it"
-              onClick={() => {
-                if (!service) {
-                  append('open a private link first');
-                  return;
-                }
-                const id = identity ?? createIdentity();
-                setIdentity(id);
-                try {
-                  const invite = signInvite(
-                    id.privHex,
-                    service,
-                    `Join me here`,
-                    vouchOnCopy ? trustedVoices : [],
-                  );
-                  const link = `${service}#invite=${encodeInviteCompact(invite)}`;
-                  void copyText(link).then((ok) =>
-                    append(
-                      ok
-                        ? `invite link copied${invite.vouches ? ` (${invite.vouches.length} vouches)` : ''}`
-                        : `invite link (copy manually): ${link.slice(0, 80)}…`,
-                    ),
-                  );
-                } catch (err) {
-                  append(`invite failed: ${String(err)}`);
-                }
-              }}
-              disabled={busy || !service}
-            >
-              Copy invite link
-            </button>
-                </>
-              );
-            })()}
-            <button
-              className="fly-btn"
-              style={{ fontSize: 11 }}
-              aria-expanded={showIdentity}
-              aria-label="Identity options"
-              title="Identity options: ID, QR, move, backup"
-              onClick={() => setShowIdentity((v) => !v)}
-            >
-              ···
-            </button>
-          </div>
-          {showIdentity && (
-          <div className="fly-identity-panel">
-            <div>
-              Full ID: <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{identity.pubHex}</code>{' '}
-            <button
-              style={{ fontSize: 11 }}
-              className='fly-btn'
-              onClick={() => {
-                void copyText(identity.pubHex).then((ok) => {
-                  setIdCopied(ok);
-                  append(ok ? 'ID copied' : 'copy unavailable — see technical details');
-                  if (!ok) setShowSecret(false);
-                });
-              }}
-            >
-              {idCopied ? 'Copied' : 'Copy my ID'}
-            </button>{' '}
-            <button style={{ fontSize: 11 }} onClick={() => setShowIdQr((v) => !v)} aria-expanded={showIdQr} className='fly-btn'>
-              {showIdQr ? 'Hide QR' : 'Show QR'}
-            </button>{' '}
-            <button
-              style={{ fontSize: 11 }}
-              className='fly-btn'
-              onClick={() => {
-                const id = createIdentity();
-                setIdentity(id);
-                setIdCopied(false);
-                setShowIdQr(false);
-                append('new identity generated');
-              }}
-            >
-              New ID
-            </button>
+            <div className="fly-identity-bar">
+              <span className="fly-identity-id" title={identity.pubHex}>
+                🪪 {identity.pubHex.slice(0, 12)}…
+              </span>
+              {(() => {
+                const trustedVoices = Object.entries(trustMap)
+                  .filter(([, v]) => v === 'trusted')
+                  .map(([author]) => author)
+                  .slice(0, MAX_INVITE_VOUCHES);
+                return (
+                  <>
+                    {trustedVoices.length > 0 && (
+                      <label
+                        style={{ fontSize: 11, marginRight: 8 }}
+                        title="Sign your explicit-trust list into the invite so the recipient sees who you vouch for"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={vouchOnCopy}
+                          onChange={(e) => setVouchOnCopy(e.target.checked)}
+                        />{' '}
+                        Vouch for {trustedVoices.length} trusted
+                      </label>
+                    )}
+                    <button
+                      style={{ fontSize: 11 }}
+                      className="fly-btn fly-btn-primary"
+                      title="Sign an invite link for this community and copy it"
+                      onClick={() => {
+                        if (!service) {
+                          append('open a private link first');
+                          return;
+                        }
+                        const id = identity ?? createIdentity();
+                        setIdentity(id);
+                        try {
+                          const invite = signInvite(
+                            id.privHex,
+                            service,
+                            `Join me here`,
+                            vouchOnCopy ? trustedVoices : [],
+                          );
+                          const link = `${service}#invite=${encodeInviteCompact(invite)}`;
+                          void copyText(link).then((ok) =>
+                            append(
+                              ok
+                                ? `invite link copied${invite.vouches ? ` (${invite.vouches.length} vouches)` : ''}`
+                                : `invite link (copy manually): ${link.slice(0, 80)}…`,
+                            ),
+                          );
+                        } catch (err) {
+                          append(`invite failed: ${String(err)}`);
+                        }
+                      }}
+                      disabled={busy || !service}
+                    >
+                      Copy invite link
+                    </button>
+                  </>
+                );
+              })()}
+              <button
+                className="fly-btn"
+                style={{ fontSize: 11 }}
+                aria-expanded={showIdentity}
+                aria-label="Identity options"
+                title="Identity options: ID, QR, move, backup"
+                onClick={() => setShowIdentity((v) => !v)}
+              >
+                ···
+              </button>
             </div>
-            <details>
-              <summary>
-                Show technical details
-              </summary>{' '}
-              <code style={{ fontSize: 11 }}>{identity.pubHex}</code>
-            </details>
-        {identity && !profileName.trim() && (
-          <p className="fly-identity-tip">
-            Tip: set your display name under About → Your profile so others recognize you.
-          </p>
-        )}
-        {identity && showIdQr && (
-          <div style={{ marginTop: 8 }}>
-            {idQrUrl ? (
-              <img className="fly-qr" src={idQrUrl} alt="QR code for your private ID" width={220} height={220} />
-            ) : (
-              <p className="fly-muted" role="status">Making your QR code…</p>
-            )}
-            <p className="fly-muted">Others scan this to message you. The code is made on this device.</p>
-          </div>
-        )}
-        <details>
-          <summary>Move my ID to another device</summary>
-          <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
-            {identity
-              ? 'Step 1 — on this device, reveal and copy your secret key. Step 2 — on the other device, paste it below. Anyone with this key is you: never share it with another person.'
-              : 'Paste the secret key from your other device to bring your ID here.'}
-          </p>
-          {identity && (
-            <div style={{ marginBottom: 4 }}>
-              {!showSecret ? (
-                <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => { setShowSecret(true); setSecretCopied(false); }}>
-                  Reveal secret key
-                </button>
-              ) : (
-                <span style={{ wordBreak: 'break-all' }}>
-                  <code style={{ fontSize: 11 }}>{identity.privHex}</code>{' '}
+            {showIdentity && (
+              <div className="fly-identity-panel">
+                <div>
+                  Full ID: <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{identity.pubHex}</code>{' '}
                   <button
                     style={{ fontSize: 11 }}
-                    className='fly-btn'
+                    className="fly-btn"
                     onClick={() => {
-                      void copyText(identity.privHex).then((ok) => {
-                        setSecretCopied(ok);
-                        append(ok ? 'secret key copied' : 'copy unavailable — select it manually');
+                      void copyText(identity.pubHex).then((ok) => {
+                        setIdCopied(ok);
+                        append(ok ? 'ID copied' : 'copy unavailable — see technical details');
+                        if (!ok) setShowSecret(false);
                       });
                     }}
                   >
-                    {secretCopied ? 'Copied' : 'Copy secret'}
+                    {idCopied ? 'Copied' : 'Copy my ID'}
                   </button>{' '}
-                  <button style={{ fontSize: 11 }} onClick={() => setShowSecret(false)} className='fly-btn'>
-                    Hide
+                  <button
+                    style={{ fontSize: 11 }}
+                    onClick={() => setShowIdQr((v) => !v)}
+                    aria-expanded={showIdQr}
+                    className="fly-btn"
+                  >
+                    {showIdQr ? 'Hide QR' : 'Show QR'}
+                  </button>{' '}
+                  <button
+                    style={{ fontSize: 11 }}
+                    className="fly-btn"
+                    onClick={() => {
+                      const id = createIdentity();
+                      setIdentity(id);
+                      setIdCopied(false);
+                      setShowIdQr(false);
+                      append('new identity generated');
+                    }}
+                  >
+                    New ID
                   </button>
-                </span>
-              )}
-            </div>
-          )}
-          <input
-            style={{ marginLeft: 8, width: 200 }}
-            placeholder="paste secret key"
-            className='fly-input'
-            value={importKey}
-            onChange={(e) => setImportKey(e.target.value)}
-            spellCheck={false}
-          />
-          <button
-            style={{ fontSize: 11 }}
-            className="fly-btn"
-            onClick={() => {
-              try {
-                setIdentity(importIdentity(importKey));
-                setImportKey('');
-                append('identity imported');
-              } catch (err) {
-                append(`import failed: ${String(err)}`);
-              }
-            }}
-          >
-            Import
-          </button>
-        </details>
-        <details>
-          <summary>Back up / restore (encrypted file)</summary>
-          <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
-            Password-encrypted copy of your secret key — easier than raw hex on a new
-            device. Anyone with this file <em>and</em> the password is you: store
-            them separately.
-          </p>
-          {identity && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                type="password"
-                style={{ width: 200 }}
-                className="fly-input"
-                placeholder={`backup password (${BACKUP_MIN_PASSWORD_LENGTH}+ chars)`}
-                value={backupPw}
-                onChange={(e) => setBackupPw(e.target.value)}
-                autoComplete="new-password"
-                aria-label="Backup password"
-              />
-              <button
-                style={{ fontSize: 11 }}
-                className="fly-btn"
-                onClick={() => void onExportBackup()}
-                disabled={busy || backupPw.length < BACKUP_MIN_PASSWORD_LENGTH}
-              >
-                Download backup
-              </button>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              ref={restoreFileRef}
-              type="file"
-              accept=".json,application/json"
-              style={{ fontSize: 11 }}
-              aria-label="Backup file"
-              onChange={(e) => setRestoreFile(e.target.files?.[0] ?? null)}
-            />
-            <input
-              type="password"
-              style={{ width: 200 }}
-              className="fly-input"
-              placeholder="backup password"
-              value={restorePw}
-              onChange={(e) => setRestorePw(e.target.value)}
-              autoComplete="current-password"
-              aria-label="Restore password"
-            />
-            <button
-              style={{ fontSize: 11 }}
-              className="fly-btn"
-              onClick={() => void onRestoreBackup()}
-              disabled={busy || !restoreFile || !restorePw}
-            >
-              Restore
-            </button>
-          </div>
-        </details>
-          </div>
-          )}
+                </div>
+                <details>
+                  <summary>Show technical details</summary> <code style={{ fontSize: 11 }}>{identity.pubHex}</code>
+                </details>
+                {identity && !profileName.trim() && (
+                  <p className="fly-identity-tip">
+                    Tip: set your display name under About → Your profile so others recognize you.
+                  </p>
+                )}
+                {identity && showIdQr && (
+                  <div style={{ marginTop: 8 }}>
+                    {idQrUrl ? (
+                      <img
+                        className="fly-qr"
+                        src={idQrUrl}
+                        alt="QR code for your private ID"
+                        width={220}
+                        height={220}
+                      />
+                    ) : (
+                      <p className="fly-muted" role="status">
+                        Making your QR code…
+                      </p>
+                    )}
+                    <p className="fly-muted">Others scan this to message you. The code is made on this device.</p>
+                  </div>
+                )}
+                <details>
+                  <summary>Move my ID to another device</summary>
+                  <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
+                    {identity
+                      ? 'Step 1 — on this device, reveal and copy your secret key. Step 2 — on the other device, paste it below. Anyone with this key is you: never share it with another person.'
+                      : 'Paste the secret key from your other device to bring your ID here.'}
+                  </p>
+                  {identity && (
+                    <div style={{ marginBottom: 4 }}>
+                      {!showSecret ? (
+                        <button
+                          className="fly-btn"
+                          style={{ fontSize: 11 }}
+                          onClick={() => {
+                            setShowSecret(true);
+                            setSecretCopied(false);
+                          }}
+                        >
+                          Reveal secret key
+                        </button>
+                      ) : (
+                        <span style={{ wordBreak: 'break-all' }}>
+                          <code style={{ fontSize: 11 }}>{identity.privHex}</code>{' '}
+                          <button
+                            style={{ fontSize: 11 }}
+                            className="fly-btn"
+                            onClick={() => {
+                              void copyText(identity.privHex).then((ok) => {
+                                setSecretCopied(ok);
+                                append(ok ? 'secret key copied' : 'copy unavailable — select it manually');
+                              });
+                            }}
+                          >
+                            {secretCopied ? 'Copied' : 'Copy secret'}
+                          </button>{' '}
+                          <button style={{ fontSize: 11 }} onClick={() => setShowSecret(false)} className="fly-btn">
+                            Hide
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <input
+                    style={{ marginLeft: 8, width: 200 }}
+                    placeholder="paste secret key"
+                    className="fly-input"
+                    value={importKey}
+                    onChange={(e) => setImportKey(e.target.value)}
+                    spellCheck={false}
+                  />
+                  <button
+                    style={{ fontSize: 11 }}
+                    className="fly-btn"
+                    onClick={() => {
+                      try {
+                        setIdentity(importIdentity(importKey));
+                        setImportKey('');
+                        append('identity imported');
+                      } catch (err) {
+                        append(`import failed: ${String(err)}`);
+                      }
+                    }}
+                  >
+                    Import
+                  </button>
+                </details>
+                <details>
+                  <summary>Back up / restore (encrypted file)</summary>
+                  <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
+                    Password-encrypted copy of your secret key — easier than raw hex on a new device. Anyone with this
+                    file <em>and</em> the password is you: store them separately.
+                  </p>
+                  {identity && (
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input
+                        type="password"
+                        style={{ width: 200 }}
+                        className="fly-input"
+                        placeholder={`backup password (${BACKUP_MIN_PASSWORD_LENGTH}+ chars)`}
+                        value={backupPw}
+                        onChange={(e) => setBackupPw(e.target.value)}
+                        autoComplete="new-password"
+                        aria-label="Backup password"
+                      />
+                      <button
+                        style={{ fontSize: 11 }}
+                        className="fly-btn"
+                        onClick={() => void onExportBackup()}
+                        disabled={busy || backupPw.length < BACKUP_MIN_PASSWORD_LENGTH}
+                      >
+                        Download backup
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      ref={restoreFileRef}
+                      type="file"
+                      accept=".json,application/json"
+                      style={{ fontSize: 11 }}
+                      aria-label="Backup file"
+                      onChange={(e) => setRestoreFile(e.target.files?.[0] ?? null)}
+                    />
+                    <input
+                      type="password"
+                      style={{ width: 200 }}
+                      className="fly-input"
+                      placeholder="backup password"
+                      value={restorePw}
+                      onChange={(e) => setRestorePw(e.target.value)}
+                      autoComplete="current-password"
+                      aria-label="Restore password"
+                    />
+                    <button
+                      style={{ fontSize: 11 }}
+                      className="fly-btn"
+                      onClick={() => void onRestoreBackup()}
+                      disabled={busy || !restoreFile || !restorePw}
+                    >
+                      Restore
+                    </button>
+                  </div>
+                </details>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -1405,420 +1423,456 @@ export function Social({
       </div>
 
       {tab === 'timeline' && (
-      <div role="tabpanel" aria-label="Timeline">
-      {replyTo && (
-        <div
-          style={{
-            border: '1px solid #ccc',
-            borderRadius: 0,
-            padding: '6px 10px',
-            marginBottom: 8,
-            fontSize: 12,
-            background: 'var(--fly-bg, #f7f5f2)',
-          }}
-        >
-          Replying to{' '}
-          <strong>
-            {authorLabel(replyTo.author, petnameMap[replyTo.author.toLowerCase()] ?? null, names[replyTo.author] ?? null)}
-          </strong>
-          : “{replyTo.body.slice(0, 80)}{replyTo.body.length > 80 ? '…' : ''}”{' '}
-          <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => setReplyTo(null)} aria-label="Cancel reply">
-            ✕
-          </button>
-        </div>
-      )}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        <input
-          ref={composerRef}
-          style={{ flex: 1 }}
-          placeholder={replyTo ? 'Write a reply…' : `Share something (max ${MAX_POST_BYTES} characters)`}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          maxLength={MAX_POST_BYTES}
-          className='fly-input'
-        />
-        <button onClick={onPost} disabled={busy || !service || !draft.trim()} className='fly-btn fly-btn-secondary'>
-          {replyTo ? 'Reply' : 'Post'}
-        </button>
-      </div>
-      <div style={{ marginBottom: 8 }}>
-        <AttachmentPicker
-          files={postFiles}
-          onChange={setPostFiles}
-          onError={append}
-          disabled={busy || !service}
-          inputId="fly-attach-post"
-        />
-      </div>
-
-      <h3 style={{ fontSize: 15 }}>Timeline</h3>
-      <p style={{ fontSize: 11, color: '#888' }}>
-        Global chronological timeline — every post is checked before it
-        appears, so fakes never show.
-      </p>
-      <div style={{ margin: '4px 0 8px' }}>
-        <button
-          className="fly-btn"
-          style={{ fontSize: 12 }}
-          aria-pressed={trustedOnly}
-          title="Hide posts from authors you have not trusted"
-          onClick={() => {
-            setTrustedOnly((prev) => {
-              const next = !prev;
-              saveTrustedOnly(next, defaultBooleanStorage());
-              return next;
-            });
-          }}
-        >
-          {trustedOnly ? 'Showing trusted only ✓' : 'Show: everyone'}
-        </button>
-      </div>
-      <p style={{ fontSize: 11, color: '#888', marginTop: -4 }} aria-label="Trust legend">
-        {(Object.keys(STANDING_META) as (keyof typeof STANDING_META)[])
-          .filter((s) => s !== 'unknown')
-          .map((s) => (
-            <span key={s} title={STANDING_META[s].blurb} style={{ marginRight: 10 }}>
-              <span
-                aria-hidden="true"
-                style={{
-                  display: 'inline-block',
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  backgroundColor: STANDING_META[s].color,
-                  marginRight: 4,
-                }}
-              />
-              {STANDING_META[s].label}
-            </span>
-          ))}
-        <span title="Your explicit call always wins over what was observed"> — your call wins</span>
-      </p>
-      {(() => {
-        const sync = describeSync(nowTick, { syncing, lastSyncedAt, error: feedError });
-        const tone = sync.tone === 'bad' ? '#b00020' : sync.tone === 'busy' ? '#b26b00' : '#888';
-        return (
-          <p style={{ fontSize: 11, color: tone }} role="status">
-            {sync.text}{' '}
-            {feedError && (
-              <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => void refreshFeed()} disabled={busy || !service}>
-                Retry
-              </button>
-            )}
-          </p>
-        );
-      })()}
-      {Number.isFinite(oldestSeq) && oldestSeq > 1 && (
-        <div style={{ marginBottom: 8 }}>
-          <button
-            className="fly-btn"
-            style={{ fontSize: 11 }}
-            onClick={() => void loadOlder()}
-            disabled={loadingOlder || busy || !service}
-          >
-            {loadingOlder ? 'Loading older…' : 'Load older posts'}
-          </button>
-        </div>
-      )}
-      {posts.length === 0 && !syncing && !feedError ? (
-        <div className="fly-empty">
-          <span className="fly-empty-glyph" aria-hidden="true">💬</span>
-          <strong>Nothing here yet</strong>
-          <p>
-            {service
-              ? 'This community is quiet. Say the first word — it stays signed by your ID.'
-              : 'Open a private link above to join a community, then come back here.'}
-          </p>
-          {service && (
-            <button
-              className='fly-btn fly-btn-primary'
-              onClick={() => {
-                onSelectTab('timeline');
-                composerRef.current?.focus();
+        <div role="tabpanel" aria-label="Timeline">
+          {replyTo && (
+            <div
+              style={{
+                border: '1px solid #ccc',
+                borderRadius: 0,
+                padding: '6px 10px',
+                marginBottom: 8,
+                fontSize: 12,
+                background: 'var(--fly-bg, #f7f5f2)',
               }}
             >
-              Be the first to post
-            </button>
-          )}
-        </div>
-      ) : (
-      openThreadId && activeThread ? (
-        <ThreadView
-          rootId={openThreadId}
-          root={activeThread.root}
-          replies={activeThread.replies}
-          missingIds={(() => {
-            const ids = new Set<string>(activeThread.missing);
-            for (const reply of activeThread.replies) {
-              for (const mid of missingAncestors([reply.id], threadNodes)) ids.add(mid);
-            }
-            return [...ids];
-          })()}
-          loadingIds={fetchingIds}
-          unavailableIds={unavailableIds}
-          onBack={() => closeThread()}
-          onShareLink={() => {
-            try {
-              const url = `${window.location.origin}${window.location.pathname}${formatThreadHash(openThreadId)}`;
-              void copyText(url).then((ok) =>
-                append(ok ? 'thread link copied' : 'copy unavailable — copy the URL manually'),
-              );
-            } catch {
-              append('thread link unavailable here');
-            }
-          }}
-          onReply={(postId) => {
-            const target = postsById.get(postId);
-            if (target) startReply(target);
-          }}
-          renderPost={(node) => {
-            const full = postsById.get(node.id);
-            return full ? renderPostBody(full) : null;
-          }}
-        />
-      ) : (
-      <ul className="fly-timeline-list">
-        {(trustedOnly
-          ? topLevelPosts.filter(
-              (p) =>
-                resolveStanding(
-                  trustMap[p.author.toLowerCase()] ?? null,
-                  repRef.current?.standing(p.author, currentDay()) ?? 'unknown',
-                ) === 'trusted',
-            )
-          : topLevelPosts
-        ).map((p) => {
-          const replyCount = countDescendants(p.id, threadNodes);
-          return (
-            <li key={p.seq}>
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={() => showThread(p.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') showThread(p.id);
-                }}
-                title="Open thread"
-                style={{ cursor: 'pointer', display: 'block' }}
+              Replying to{' '}
+              <strong>
+                {authorLabel(
+                  replyTo.author,
+                  petnameMap[replyTo.author.toLowerCase()] ?? null,
+                  names[replyTo.author] ?? null,
+                )}
+              </strong>
+              : “{replyTo.body.slice(0, 80)}
+              {replyTo.body.length > 80 ? '…' : ''}”{' '}
+              <button
+                className="fly-btn"
+                style={{ fontSize: 11 }}
+                onClick={() => setReplyTo(null)}
+                aria-label="Cancel reply"
               >
-                {renderPostBody(p)}
-              </span>
-              <div style={{ marginTop: 4, display: 'flex', gap: 8 }}>
-                {replyCount > 0 && (
+                ✕
+              </button>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <input
+              ref={composerRef}
+              style={{ flex: 1 }}
+              placeholder={replyTo ? 'Write a reply…' : `Share something (max ${MAX_POST_BYTES} characters)`}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              maxLength={MAX_POST_BYTES}
+              className="fly-input"
+            />
+            <button onClick={onPost} disabled={busy || !service || !draft.trim()} className="fly-btn fly-btn-secondary">
+              {replyTo ? 'Reply' : 'Post'}
+            </button>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <AttachmentPicker
+              files={postFiles}
+              onChange={setPostFiles}
+              onError={append}
+              disabled={busy || !service}
+              inputId="fly-attach-post"
+            />
+          </div>
+
+          <h3 style={{ fontSize: 15 }}>Timeline</h3>
+          <p style={{ fontSize: 11, color: '#888' }}>
+            Global chronological timeline — every post is checked before it appears, so fakes never show.
+          </p>
+          <div style={{ margin: '4px 0 8px' }}>
+            <button
+              className="fly-btn"
+              style={{ fontSize: 12 }}
+              aria-pressed={trustedOnly}
+              title="Hide posts from authors you have not trusted"
+              onClick={() => {
+                setTrustedOnly((prev) => {
+                  const next = !prev;
+                  saveTrustedOnly(next, defaultBooleanStorage());
+                  return next;
+                });
+              }}
+            >
+              {trustedOnly ? 'Showing trusted only ✓' : 'Show: everyone'}
+            </button>
+          </div>
+          <p style={{ fontSize: 11, color: '#888', marginTop: -4 }} aria-label="Trust legend">
+            {(Object.keys(STANDING_META) as (keyof typeof STANDING_META)[])
+              .filter((s) => s !== 'unknown')
+              .map((s) => (
+                <span key={s} title={STANDING_META[s].blurb} style={{ marginRight: 10 }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      display: 'inline-block',
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      backgroundColor: STANDING_META[s].color,
+                      marginRight: 4,
+                    }}
+                  />
+                  {STANDING_META[s].label}
+                </span>
+              ))}
+            <span title="Your explicit call always wins over what was observed"> — your call wins</span>
+          </p>
+          {(() => {
+            const sync = describeSync(nowTick, { syncing, lastSyncedAt, error: feedError });
+            const tone = sync.tone === 'bad' ? '#b00020' : sync.tone === 'busy' ? '#b26b00' : '#888';
+            return (
+              <p style={{ fontSize: 11, color: tone }} role="status">
+                {sync.text}{' '}
+                {feedError && (
                   <button
                     className="fly-btn"
                     style={{ fontSize: 11 }}
-                    onClick={() => showThread(p.id)}
-                    aria-label={`View thread with ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`}
+                    onClick={() => void refreshFeed()}
+                    disabled={busy || !service}
                   >
-                    {replyCount} {replyCount === 1 ? 'reply' : 'replies'} · View thread
+                    Retry
                   </button>
                 )}
-                <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => startReply(p)}>
-                  Reply
+              </p>
+            );
+          })()}
+          {Number.isFinite(oldestSeq) && oldestSeq > 1 && (
+            <div style={{ marginBottom: 8 }}>
+              <button
+                className="fly-btn"
+                style={{ fontSize: 11 }}
+                onClick={() => void loadOlder()}
+                disabled={loadingOlder || busy || !service}
+              >
+                {loadingOlder ? 'Loading older…' : 'Load older posts'}
+              </button>
+            </div>
+          )}
+          {posts.length === 0 && !syncing && !feedError ? (
+            <div className="fly-empty">
+              <span className="fly-empty-glyph" aria-hidden="true">
+                💬
+              </span>
+              <strong>Nothing here yet</strong>
+              <p>
+                {service
+                  ? 'This community is quiet. Say the first word — it stays signed by your ID.'
+                  : 'Open a private link above to join a community, then come back here.'}
+              </p>
+              {service && (
+                <button
+                  className="fly-btn fly-btn-primary"
+                  onClick={() => {
+                    onSelectTab('timeline');
+                    composerRef.current?.focus();
+                  }}
+                >
+                  Be the first to post
                 </button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      )
-      )}
-      </div>
-      )}
-
-      {tab === 'messages' && (() => {
-        const convos = groupConversations(dms, dmRead);
-        const totalUnread = convos.reduce((n, c) => n + c.unread, 0);
-        const activeConvo = convos.find((c) => c.peer === activeDmPeer) ?? null;
-        const peerLabel = (peer: string) =>
-          peer === 'unknown'
-            ? 'Unknown sender (legacy)'
-            : authorLabel(peer, petnameMap[peer.toLowerCase()] ?? null, names[peer] ?? null);
-        const openConvo = (peer: string) => {
-          setActiveDmPeer(peer);
-          if (peer !== 'unknown') setDmTo(peer);
-          setDmRead((prev) => {
-            const next = markConversationRead(prev, peer);
-            if (next !== prev) saveDmRead(next, localStorage);
-            return next;
-          });
-        };
-        return (
-      <div role="tabpanel" aria-label="Private messages">
-      <h3 style={{ fontSize: 15, marginTop: 0 }}>
-        Private messages{totalUnread > 0 && <span style={{ color: '#888' }}> ({totalUnread} unread)</span>}
-      </h3>
-      <p className="fly-note">
-        🔒 Messages vanish once read — even from the host.
-      </p>
-      <div className="fly-dm-composer">
-        <label className="fly-dm-to">
-          To:
-          <input
-            className="fly-input"
-            placeholder="Their 64-hex ID"
-            value={dmTo}
-            onChange={(e) => setDmTo(e.target.value)}
-            spellCheck={false}
-            aria-label="Recipient ID"
-          />
-          <QrScanButton
-            label="Scan ID"
-            onScanText={(text) => {
-              const id = text.trim().toLowerCase();
-              if (/^[0-9a-f]{64}$/.test(id)) setDmTo(id);
-              else append('that QR code is not an ID (64 hex characters)');
-            }}
-            onScanError={(message) => append(`qr scan: ${message}`)}
-          />
-        </label>
-        <textarea
-          className="fly-input fly-dm-message"
-          rows={2}
-          placeholder="Secret message"
-          value={dmDraft}
-          aria-label="Secret message"
-          onChange={(e) => setDmDraft(e.target.value)}
-          onInput={(e) => {
-            const el = e.currentTarget;
-            el.style.height = 'auto';
-            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-          }}
-        />
-        <div className="fly-dm-actions">
-          <AttachmentPicker
-            files={dmFiles}
-            onChange={setDmFiles}
-            onError={append}
-            disabled={busy || !service}
-            inputId="fly-attach-dm"
-          />
-          <button className="fly-btn fly-btn-primary" onClick={onSendDm} disabled={busy || !service || !dmTo || !dmDraft}>
-            Send
-          </button>
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-        <button
-          className="fly-btn fly-btn-quiet"
-          onClick={() => {
-            void pollDms();
-          }}
-          disabled={busy || !service || !identity}
-        >
-          Check for new messages
-        </button>
-        <span style={{ fontSize: 11, color: '#888' }}>Arrivals appear automatically.</span>
-      </div>
-      {convos.length > 0 && (
-        <>
-          <h3 style={{ fontSize: 15 }}>Conversations</h3>
-          <ul className="fly-conv-list">
-            {convos.map((c) => {
-              const last = c.messages[c.messages.length - 1];
-              return (
-                <li key={c.peer}>
-                  <button aria-current={activeDmPeer === c.peer} onClick={() => openConvo(c.peer)}>
-                    <strong>{peerLabel(c.peer)}</strong>
-                    {c.unread > 0 && <span> ({c.unread} new)</span>}{' '}
-                    <span className="fly-muted">
-                      {last ? last.text.slice(0, 60) : ''}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
-      {activeConvo ? (
-        <>
-          <h3 style={{ fontSize: 15 }}>Chat with {peerLabel(activeConvo.peer)}</h3>
-          <ul style={{ fontSize: 13, listStyle: 'none', padding: 0 }}>
-            {activeConvo.messages.map((m) => (
-              <li key={m.msgId} style={{ borderTop: '1px solid #eee', padding: '6px 0' }}>
-                {m.incoming ? (
-                  <span title="Only you can read this — it was deleted from the community when you picked it up">
-                    🔒
-                  </span>
-                ) : (
-                  <span title="Sent by you">✓ </span>
-                )}{' '}
-                <span style={{ wordBreak: 'break-word' }}>{m.text}</span>{' '}
-                <span style={{ color: '#888', fontSize: 11 }}>
-                  {new Date(m.ts).toLocaleTimeString()}
-                </span>
-                {m.attachments && m.attachments.length > 0 && (
-                  <AttachmentList service={service} refs={m.attachments} />
-                )}
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : (
-        <div className="fly-empty">
-          <span className="fly-empty-glyph" aria-hidden="true">✉️</span>
-          {convos.length === 0 ? (
-            <>
-              <strong>No messages yet</strong>
-              <p>When someone writes to your ID, it appears here automatically.</p>
-            </>
+              )}
+            </div>
+          ) : openThreadId && activeThread ? (
+            <ThreadView
+              rootId={openThreadId}
+              root={activeThread.root}
+              replies={activeThread.replies}
+              missingIds={(() => {
+                const ids = new Set<string>(activeThread.missing);
+                for (const reply of activeThread.replies) {
+                  for (const mid of missingAncestors([reply.id], threadNodes)) ids.add(mid);
+                }
+                return [...ids];
+              })()}
+              loadingIds={fetchingIds}
+              unavailableIds={unavailableIds}
+              onBack={() => closeThread()}
+              onShareLink={() => {
+                try {
+                  const url = `${window.location.origin}${window.location.pathname}${formatThreadHash(openThreadId)}`;
+                  void copyText(url).then((ok) =>
+                    append(ok ? 'thread link copied' : 'copy unavailable — copy the URL manually'),
+                  );
+                } catch {
+                  append('thread link unavailable here');
+                }
+              }}
+              onReply={(postId) => {
+                const target = postsById.get(postId);
+                if (target) startReply(target);
+              }}
+              renderPost={(node) => {
+                const full = postsById.get(node.id);
+                return full ? renderPostBody(full) : null;
+              }}
+            />
           ) : (
-            <>
-              <strong>No conversation open</strong>
-              <p>Pick a conversation above to read and reply.</p>
-            </>
+            <ul className="fly-timeline-list">
+              {(trustedOnly
+                ? topLevelPosts.filter(
+                    (p) =>
+                      resolveStanding(
+                        trustMap[p.author.toLowerCase()] ?? null,
+                        repRef.current?.standing(p.author, currentDay()) ?? 'unknown',
+                      ) === 'trusted',
+                  )
+                : topLevelPosts
+              ).map((p) => {
+                const replyCount = countDescendants(p.id, threadNodes);
+                return (
+                  <li key={p.seq}>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => showThread(p.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') showThread(p.id);
+                      }}
+                      title="Open thread"
+                      style={{ cursor: 'pointer', display: 'block' }}
+                    >
+                      {renderPostBody(p)}
+                    </span>
+                    <div style={{ marginTop: 4, display: 'flex', gap: 8 }}>
+                      {replyCount > 0 && (
+                        <button
+                          className="fly-btn"
+                          style={{ fontSize: 11 }}
+                          onClick={() => showThread(p.id)}
+                          aria-label={`View thread with ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`}
+                        >
+                          {replyCount} {replyCount === 1 ? 'reply' : 'replies'} · View thread
+                        </button>
+                      )}
+                      <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => startReply(p)}>
+                        Reply
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       )}
-      </div>
-        );
-      })()}
+
+      {tab === 'messages' &&
+        (() => {
+          const convos = groupConversations(dms, dmRead);
+          const totalUnread = convos.reduce((n, c) => n + c.unread, 0);
+          const activeConvo = convos.find((c) => c.peer === activeDmPeer) ?? null;
+          const peerLabel = (peer: string) =>
+            peer === 'unknown'
+              ? 'Unknown sender (legacy)'
+              : authorLabel(peer, petnameMap[peer.toLowerCase()] ?? null, names[peer] ?? null);
+          const openConvo = (peer: string) => {
+            setActiveDmPeer(peer);
+            if (peer !== 'unknown') setDmTo(peer);
+            setDmRead((prev) => {
+              const next = markConversationRead(prev, peer);
+              if (next !== prev) saveDmRead(next, localStorage);
+              return next;
+            });
+          };
+          return (
+            <div role="tabpanel" aria-label="Private messages">
+              <h3 style={{ fontSize: 15, marginTop: 0 }}>
+                Private messages{totalUnread > 0 && <span style={{ color: '#888' }}> ({totalUnread} unread)</span>}
+              </h3>
+              <p className="fly-note">🔒 Messages vanish once read — even from the host.</p>
+              <div className="fly-dm-composer">
+                <label className="fly-dm-to">
+                  To:
+                  <input
+                    className="fly-input"
+                    placeholder="Their 64-hex ID"
+                    value={dmTo}
+                    onChange={(e) => setDmTo(e.target.value)}
+                    spellCheck={false}
+                    aria-label="Recipient ID"
+                  />
+                  <QrScanButton
+                    label="Scan ID"
+                    onScanText={(text) => {
+                      const id = text.trim().toLowerCase();
+                      if (/^[0-9a-f]{64}$/.test(id)) setDmTo(id);
+                      else append('that QR code is not an ID (64 hex characters)');
+                    }}
+                    onScanError={(message) => append(`qr scan: ${message}`)}
+                  />
+                </label>
+                <textarea
+                  className="fly-input fly-dm-message"
+                  rows={2}
+                  placeholder="Secret message"
+                  value={dmDraft}
+                  aria-label="Secret message"
+                  onChange={(e) => setDmDraft(e.target.value)}
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    el.style.height = 'auto';
+                    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+                  }}
+                />
+                <div className="fly-dm-actions">
+                  <AttachmentPicker
+                    files={dmFiles}
+                    onChange={setDmFiles}
+                    onError={append}
+                    disabled={busy || !service}
+                    inputId="fly-attach-dm"
+                  />
+                  <button
+                    className="fly-btn fly-btn-primary"
+                    onClick={onSendDm}
+                    disabled={busy || !service || !dmTo || !dmDraft}
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                <button
+                  className="fly-btn fly-btn-quiet"
+                  onClick={() => {
+                    void pollDms();
+                  }}
+                  disabled={busy || !service || !identity}
+                >
+                  Check for new messages
+                </button>
+                <span style={{ fontSize: 11, color: '#888' }}>Arrivals appear automatically.</span>
+              </div>
+              {convos.length > 0 && (
+                <>
+                  <h3 style={{ fontSize: 15 }}>Conversations</h3>
+                  <ul className="fly-conv-list">
+                    {convos.map((c) => {
+                      const last = c.messages[c.messages.length - 1];
+                      return (
+                        <li key={c.peer}>
+                          <button aria-current={activeDmPeer === c.peer} onClick={() => openConvo(c.peer)}>
+                            <strong>{peerLabel(c.peer)}</strong>
+                            {c.unread > 0 && <span> ({c.unread} new)</span>}{' '}
+                            <span className="fly-muted">{last ? last.text.slice(0, 60) : ''}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
+              {activeConvo ? (
+                <>
+                  <h3 style={{ fontSize: 15 }}>Chat with {peerLabel(activeConvo.peer)}</h3>
+                  <ul style={{ fontSize: 13, listStyle: 'none', padding: 0 }}>
+                    {activeConvo.messages.map((m) => (
+                      <li key={m.msgId} style={{ borderTop: '1px solid #eee', padding: '6px 0' }}>
+                        {m.incoming ? (
+                          <span title="Only you can read this — it was deleted from the community when you picked it up">
+                            🔒
+                          </span>
+                        ) : (
+                          <span title="Sent by you">✓ </span>
+                        )}{' '}
+                        <span style={{ wordBreak: 'break-word' }}>{m.text}</span>{' '}
+                        <span style={{ color: '#888', fontSize: 11 }}>{new Date(m.ts).toLocaleTimeString()}</span>
+                        {m.attachments && m.attachments.length > 0 && (
+                          <AttachmentList service={service} refs={m.attachments} />
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <div className="fly-empty">
+                  <span className="fly-empty-glyph" aria-hidden="true">
+                    ✉️
+                  </span>
+                  {convos.length === 0 ? (
+                    <>
+                      <strong>No messages yet</strong>
+                      <p>When someone writes to your ID, it appears here automatically.</p>
+                    </>
+                  ) : (
+                    <>
+                      <strong>No conversation open</strong>
+                      <p>Pick a conversation above to read and reply.</p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       {tab === 'about' && (
-      <div role="tabpanel" aria-label="About this community">
-      <h3 style={{ fontSize: 15, marginTop: 0 }}>About this community</h3>
-      <p style={{ fontSize: 13 }}>
-        Metadata-minimal microblog + encrypted DMs, reachable only over the
-        private network.
-      </p>
-      <ul style={{ fontSize: 13 }}>
-        <li><code>GET /feed?since=&lt;seq&gt;&amp;limit=&lt;n&gt;</code> — global chronological timeline</li>
-        <li><code>POST /post</code> — signed micro-post (max {MAX_POST_BYTES} bytes; optional <code>in_reply_to</code> parent id for replies)</li>
-        <li><code>GET /post/&lt;id&gt;</code> — one post by id, for filling thread gaps</li>
-        <li><code>GET /profile/&lt;pubkey&gt;</code> / <code>POST /profile</code> — self-asserted profiles</li>
-        <li><code>POST /dm</code> / <code>GET /dm?for=&lt;pubkey&gt;</code> — sealed direct messages, self-destruct on read</li>
-      </ul>
-      <p style={{ fontSize: 13 }}>
-        No accounts, no follows, no likes, no read receipts. Your public key
-        is your name.
-      </p>
+        <div role="tabpanel" aria-label="About this community">
+          <h3 style={{ fontSize: 15, marginTop: 0 }}>About this community</h3>
+          <p style={{ fontSize: 13 }}>
+            Metadata-minimal microblog + encrypted DMs, reachable only over the private network.
+          </p>
+          <ul style={{ fontSize: 13 }}>
+            <li>
+              <code>GET /feed?since=&lt;seq&gt;&amp;limit=&lt;n&gt;</code> — global chronological timeline
+            </li>
+            <li>
+              <code>POST /post</code> — signed micro-post (max {MAX_POST_BYTES} bytes; optional <code>in_reply_to</code>{' '}
+              parent id for replies)
+            </li>
+            <li>
+              <code>GET /post/&lt;id&gt;</code> — one post by id, for filling thread gaps
+            </li>
+            <li>
+              <code>GET /profile/&lt;pubkey&gt;</code> / <code>POST /profile</code> — self-asserted profiles
+            </li>
+            <li>
+              <code>POST /dm</code> / <code>GET /dm?for=&lt;pubkey&gt;</code> — sealed direct messages, self-destruct on
+              read
+            </li>
+          </ul>
+          <p style={{ fontSize: 13 }}>
+            No accounts, no follows, no likes, no read receipts. Your public key is your name.
+          </p>
 
-      <h3 style={{ fontSize: 15 }}>Your profile</h3>
-      <p style={{ fontSize: 11, color: '#888' }}>
-        Self-asserted: the name and bio you set here are signed by your ID.
-      </p>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-        <input className="fly-input" style={{ flex: 1 }} placeholder="display name" value={profileName} onChange={(e) => setProfileName(e.target.value)} maxLength={40} />
-        <input className="fly-input" style={{ flex: 2 }} placeholder="bio" value={profileBio} onChange={(e) => setProfileBio(e.target.value)} maxLength={280} />
-        <button className="fly-btn fly-btn-primary" onClick={onSaveProfile} disabled={busy || !service}>
-          Save profile
-        </button>
-      </div>
+          <h3 style={{ fontSize: 15 }}>Your profile</h3>
+          <p style={{ fontSize: 11, color: '#888' }}>
+            Self-asserted: the name and bio you set here are signed by your ID.
+          </p>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <input
+              className="fly-input"
+              style={{ flex: 1 }}
+              placeholder="display name"
+              value={profileName}
+              onChange={(e) => setProfileName(e.target.value)}
+              maxLength={40}
+            />
+            <input
+              className="fly-input"
+              style={{ flex: 2 }}
+              placeholder="bio"
+              value={profileBio}
+              onChange={(e) => setProfileBio(e.target.value)}
+              maxLength={280}
+            />
+            <button className="fly-btn fly-btn-primary" onClick={onSaveProfile} disabled={busy || !service}>
+              Save profile
+            </button>
+          </div>
 
-      <details style={{ marginTop: 8 }}>
-        <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>
-          Technical log
-        </summary>
-        <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', marginTop: 8, color: '#888' }}>{log.join('\n')}</pre>
-      </details>
-      <p style={{ fontSize: 11, color: '#888' }}>
-        Your keys stay in this browser. Messages are sealed end-to-end; the
-        community stores only scrambled text. Messages disappear after being
-        read; the server keeps nothing else (no follows, likes, or receipts).
-      </p>
-      </div>
+          <details style={{ marginTop: 8 }}>
+            <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>Technical log</summary>
+            <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', marginTop: 8, color: '#888' }}>{log.join('\n')}</pre>
+          </details>
+          <p style={{ fontSize: 11, color: '#888' }}>
+            Your keys stay in this browser. Messages are sealed end-to-end; the community stores only scrambled text.
+            Messages disappear after being read; the server keeps nothing else (no follows, likes, or receipts).
+          </p>
+        </div>
       )}
     </section>
   );

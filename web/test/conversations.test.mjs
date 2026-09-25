@@ -62,7 +62,10 @@ test('groupConversations groups per peer, newest first, unread from watermark', 
   assert.equal(convos[0].peer, 'alice');
   assert.equal(convos[1].peer, 'bob');
   // Messages oldest first within a conversation.
-  assert.deepEqual(convos[0].messages.map((m) => m.msgId), ['m1', 'm3', 'm4']);
+  assert.deepEqual(
+    convos[0].messages.map((m) => m.msgId),
+    ['m1', 'm3', 'm4'],
+  );
   // Only incoming past the watermark counts (m4; m1 is read, m3 is ours).
   assert.equal(convos[0].unread, 1);
   assert.equal(convos[1].unread, 1);

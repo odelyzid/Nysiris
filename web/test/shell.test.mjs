@@ -38,10 +38,7 @@ test('recent portals round-trip and drop garbage', () => {
   assert.deepEqual(loadRecentPortals(s), ['a', 'b']);
   assert.deepEqual(loadRecentPortals(fakeStorage()), []);
   assert.deepEqual(loadRecentPortals(fakeStorage({ 'fly.portals.recent': 'nope' })), []);
-  assert.deepEqual(
-    loadRecentPortals(fakeStorage({ 'fly.portals.recent': '["ok", 7, "", null]' })),
-    ['ok'],
-  );
+  assert.deepEqual(loadRecentPortals(fakeStorage({ 'fly.portals.recent': '["ok", 7, "", null]' })), ['ok']);
 });
 
 test('context panel defaults to open', () => {

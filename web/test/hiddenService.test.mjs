@@ -31,14 +31,14 @@ test('encodeRequest rejects methods, paths and oversized bodies', () => {
   assert.throws(() => encodeRequest({ method: 'GET', path: 'https://evil/' }));
   assert.throws(() => encodeRequest({ method: 'GET', path: '/%2e%2e/x' }));
   assert.throws(() => encodeRequest({ method: 'GET', path: '' }));
-  assert.throws(() =>
-    encodeRequest({ method: 'POST', path: '/', bodyBase64: 'A'.repeat(100 * 1024) }),
-  );
+  assert.throws(() => encodeRequest({ method: 'POST', path: '/', bodyBase64: 'A'.repeat(100 * 1024) }));
   assert.doesNotThrow(() => encodeRequest({ path: '/' }));
 });
 
 test('decodeResponse validates the reply shape', () => {
-  const good = decodeResponse('{"status":200,"headers":{"content-type":"text/html"},"body_base64":"eA==","error":null}');
+  const good = decodeResponse(
+    '{"status":200,"headers":{"content-type":"text/html"},"body_base64":"eA==","error":null}',
+  );
   assert.equal(good.status, 200);
   assert.equal(good.bodyBase64, 'eA==');
   assert.equal(good.error, null);
@@ -167,17 +167,12 @@ test('correlation tags ride the envelope and echo back', () => {
   const plain = JSON.parse(encodeRequest({ method: 'GET', path: '/', headers: {}, bodyBase64: '' }));
   assert.equal('tag' in plain, false);
   // Tagged requests carry it; overlong tags are refused client-side.
-  const tagged = JSON.parse(
-    encodeRequest({ method: 'GET', path: '/', headers: {}, bodyBase64: '', tag: 'p1-2-abc' }),
-  );
+  const tagged = JSON.parse(encodeRequest({ method: 'GET', path: '/', headers: {}, bodyBase64: '', tag: 'p1-2-abc' }));
   assert.equal(tagged.tag, 'p1-2-abc');
   assert.throws(() => encodeRequest({ method: 'GET', path: '/', tag: '' }));
   assert.throws(() => encodeRequest({ method: 'GET', path: '/', tag: 'x'.repeat(65) }));
   // Responses default the tag to null (old providers) and accept echoes.
   assert.equal(decodeResponse('{"status":200,"body_base64":""}').tag, null);
-  assert.equal(
-    decodeResponse('{"status":200,"body_base64":"","tag":"p1-2-abc"}').tag,
-    'p1-2-abc',
-  );
+  assert.equal(decodeResponse('{"status":200,"body_base64":"","tag":"p1-2-abc"}').tag, 'p1-2-abc');
   assert.throws(() => decodeResponse('{"status":200,"body_base64":"","tag":42}'));
 });

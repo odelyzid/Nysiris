@@ -5,15 +5,7 @@ import type { ReactNode } from 'react';
  * Closing a panel never stops background work (tunnel, polling, inbox) — it
  * only hides the view. State is preserved while the page lives.
  */
-export function Panel({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
+export function Panel({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <section
       style={{

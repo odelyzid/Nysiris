@@ -127,11 +127,7 @@ export interface PackedDm {
  * Attachments ride inside the sealed envelope, so their file keys stay
  * confidential end-to-end.
  */
-export function packDmInner(
-  senderPrivHex: string,
-  body: Uint8Array,
-  atts: AttachmentRef[] = [],
-): PackedDm {
+export function packDmInner(senderPrivHex: string, body: Uint8Array, atts: AttachmentRef[] = []): PackedDm {
   const priv = hexToBytes(senderPrivHex.trim().toLowerCase());
   if (priv.length !== 32) throw new Error('sender private key must be 32 bytes hex');
   const from = bytesToHex(ed25519.getPublicKey(priv));

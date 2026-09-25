@@ -20,9 +20,7 @@ export function loadRecentPortals(storage?: ViewStorage | null): string[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (p): p is string => typeof p === 'string' && p.trim().length > 0,
-    );
+    return parsed.filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
   } catch {
     return [];
   }

@@ -12,12 +12,7 @@
  */
 import { requireCoverTraffic } from './enforcement.mjs';
 
-export type TunnelStateName =
-  | 'connecting'
-  | 'ready'
-  | 'shutting_down'
-  | 'shutdown'
-  | 'failed';
+export type TunnelStateName = 'connecting' | 'ready' | 'shutting_down' | 'shutdown' | 'failed';
 
 export interface TunnelStateView {
   state: TunnelStateName;
@@ -49,9 +44,7 @@ let spent = false;
  */
 export function ensureTunnel(opts?: SetupTunnelOpts): Promise<unknown> {
   if (spent) {
-    return Promise.reject(
-      new Error('mixnet tunnel was torn down; reload the page to create a new one'),
-    );
+    return Promise.reject(new Error('mixnet tunnel was torn down; reload the page to create a new one'));
   }
 
   // §5.8 guardrail: refuse a silent privacy downgrade.

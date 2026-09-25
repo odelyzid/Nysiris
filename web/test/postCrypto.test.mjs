@@ -45,12 +45,7 @@ test('legacy posts without the parent field still verify', { skip: !identity }, 
   const body = enc.encode('old post');
   const dayBytes = new Uint8Array(8);
   new DataView(dayBytes.buffer).setBigUint64(0, BigInt(DAY));
-  const legacy = new Uint8Array([
-    ...enc.encode('fly-social-v1/post'),
-    ...hexToBytes(id.pubHex),
-    ...dayBytes,
-    ...body,
-  ]);
+  const legacy = new Uint8Array([...enc.encode('fly-social-v1/post'), ...hexToBytes(id.pubHex), ...dayBytes, ...body]);
   const sig = bytesToHex(ed25519.sign(legacy, hexToBytes(id.privHex)));
   assert.equal(identity.verifyPostSignature(id.pubHex, DAY, body, sig), true);
 });

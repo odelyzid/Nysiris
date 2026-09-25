@@ -81,10 +81,7 @@ function keyOf(id: unknown): string | null {
  * Unknown root → `{ root: null, replies: [], missing: [rootId] }` so the
  * caller knows to fetch it.
  */
-export function buildThread<T extends ThreadNode>(
-  rootId: string,
-  byId: ReadonlyMap<string, T>,
-): BuiltThread<T> {
+export function buildThread<T extends ThreadNode>(rootId: string, byId: ReadonlyMap<string, T>): BuiltThread<T> {
   const root = byId.get(rootId) ?? null;
   if (!root) return { root: null, replies: [], missing: [rootId] };
 
@@ -126,10 +123,7 @@ export function directReplies<T extends ThreadNode>(parentId: string, posts: Ite
 }
 
 /** Transitive descendant count (what the timeline "N replies" pill shows). */
-export function countDescendants<T extends ThreadNode>(
-  parentId: string,
-  byId: ReadonlyMap<string, T>,
-): number {
+export function countDescendants<T extends ThreadNode>(parentId: string, byId: ReadonlyMap<string, T>): number {
   const seen = new Set<string>();
   let frontier = [parentId];
   for (let depth = 0; depth < MAX_THREAD_DEPTH && frontier.length > 0; depth += 1) {

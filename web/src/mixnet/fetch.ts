@@ -22,10 +22,7 @@ export async function mixnetFetch(input: string, init?: RequestInit): Promise<Re
   const response = (await mixFetch(input, init as never)) as Response;
   exitPolicy.recordRequest();
   if (exitPolicy.shouldRecommendReconnect()) {
-    console.warn(
-      `nym exit policy: ${exitPolicy.count} requests on one exit; ` +
-        ExitPolicy.reconnectNote,
-    );
+    console.warn(`nym exit policy: ${exitPolicy.count} requests on one exit; ` + ExitPolicy.reconnectNote);
   }
   return response;
 }
@@ -42,9 +39,7 @@ export function exitStatus(): { requests: number; recommendReconnect: boolean } 
  * Compare the source IP a service sees over clearnet vs over the mixnet.
  * A mismatch is the simplest positive proof that the tunnel carried the request.
  */
-export async function proveTunnel(
-  url: string,
-): Promise<{ clearnet: string; mixnet: string; differ: boolean }> {
+export async function proveTunnel(url: string): Promise<{ clearnet: string; mixnet: string; differ: boolean }> {
   const clearnetBody = (await (await fetch(url)).json()) as { ip?: string };
   const mixnetBody = (await (await mixnetFetch(url)).json()) as { ip?: string };
   const clearnet = String(clearnetBody.ip ?? '');

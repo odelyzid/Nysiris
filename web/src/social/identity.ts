@@ -279,11 +279,7 @@ export function verifyPostSignature(
  * Mirrors the provider, which binds the same preimage so a top-level proof
  * can't be replayed onto a reply — or across attachment swaps.
  */
-export function postPowPayload(
-  body: Uint8Array,
-  inReplyTo?: string | null,
-  attIds: string[] = [],
-): Uint8Array {
+export function postPowPayload(body: Uint8Array, inReplyTo?: string | null, attIds: string[] = []): Uint8Array {
   const parent = parseParentHex(inReplyTo);
   const ids = attIds.map((id) => hexToBytes(id.trim().toLowerCase()));
   const out = new Uint8Array((parent?.length ?? 0) + body.length + 32 * ids.length);
@@ -344,28 +340,18 @@ function parseVouchHex(vouch: unknown): Uint8Array {
  * links, which keep verifying). Stripping vouches breaks the signature, so
  * a tampered link is rejected, never silently downgraded.
  */
-export function signInvite(
-  privHex: string,
-  serviceUri: string,
-  note: string,
-  vouches: string[] = [],
-): SignedInvite {
+export function signInvite(privHex: string, serviceUri: string, note: string, vouches: string[] = []): SignedInvite {
   if (!note || note.length > 140) throw new Error('note must be 1-140 chars');
   const svc = parseNymAddress(serviceUri);
   const inviter = ed25519.getPublicKey(hexToBytes(privHex));
   const inviterHex = bytesToHex(inviter);
   // A self-vouch is meaningless: drop it rather than fail the whole invite.
-  const clean = [...new Set(vouches.map((v) => v.trim().toLowerCase()))].filter(
-    (v) => v !== inviterHex,
-  );
+  const clean = [...new Set(vouches.map((v) => v.trim().toLowerCase()))].filter((v) => v !== inviterHex);
   const vouchBytes = clean.map(parseVouchHex);
   if (vouchBytes.length > MAX_INVITE_VOUCHES) {
     throw new Error(`at most ${MAX_INVITE_VOUCHES} vouches per invite`);
   }
-  const tail =
-    vouchBytes.length === 0
-      ? []
-      : [new Uint8Array([0, vouchBytes.length]), ...vouchBytes];
+  const tail = vouchBytes.length === 0 ? [] : [new Uint8Array([0, vouchBytes.length]), ...vouchBytes];
   const msg = concat(
     enc.encode(INVITE_DOMAIN),
     base58Decode(svc.identity),
@@ -386,10 +372,7 @@ export function signInvite(
 }
 
 /** Verify an invite against the link address carrying it. Returns false on any defect. */
-export function verifyInvite(
-  invite: SignedInvite,
-  linkAddress: string,
-): boolean {
+export function verifyInvite(invite: SignedInvite, linkAddress: string): boolean {
   try {
     if (!invite.note || invite.note.length > 140) return false;
     const svc = parseNymAddress(invite.service);
@@ -400,10 +383,7 @@ export function verifyInvite(
     const rawVouches = invite.vouches ?? [];
     if (!Array.isArray(rawVouches) || rawVouches.length > MAX_INVITE_VOUCHES) return false;
     const vouchBytes = rawVouches.map(parseVouchHex);
-    const tail =
-      vouchBytes.length === 0
-        ? []
-        : [new Uint8Array([0, vouchBytes.length]), ...vouchBytes];
+    const tail = vouchBytes.length === 0 ? [] : [new Uint8Array([0, vouchBytes.length]), ...vouchBytes];
     const msg = concat(
       enc.encode(INVITE_DOMAIN),
       base58Decode(svc.identity),
@@ -497,7 +477,11 @@ export async function importIdentityBackup(json: string, password: string): Prom
   }
   const b = obj as Record<string, unknown>;
   if (b.v !== 1 || b.kdf !== 'argon2id') throw new Error('unsupported backup version');
-  for (const [field, min, max] of [['t', 1, 10], ['m', 8192, 131072], ['p', 1, 4]] as const) {
+  for (const [field, min, max] of [
+    ['t', 1, 10],
+    ['m', 8192, 131072],
+    ['p', 1, 4],
+  ] as const) {
     const value = b[field];
     if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
       throw new Error(`backup has an unsafe ${field} parameter`);

@@ -27,7 +27,10 @@ test('backup round-trips and adopts the identity', { skip: !identity }, async ()
 test('wrong password and tampered files fail closed', { skip: !identity }, async () => {
   const id = identity.createIdentity();
   const json = await identity.exportIdentityBackup(id.privHex, 'correct horse 123');
-  await assert.rejects(() => identity.importIdentityBackup(json, 'wrong password!'), /password wrong or file corrupted/);
+  await assert.rejects(
+    () => identity.importIdentityBackup(json, 'wrong password!'),
+    /password wrong or file corrupted/,
+  );
 
   const tampered = { ...JSON.parse(json), ctB64: Buffer.from('x'.repeat(48)).toString('base64') };
   await assert.rejects(() => identity.importIdentityBackup(JSON.stringify(tampered), 'correct horse 123'));
@@ -51,7 +54,11 @@ test('weak passwords and malformed backups are rejected', { skip: !identity }, a
   ];
   for (const [input, pattern] of cases) {
     await assert.rejects(
-      () => identity.importIdentityBackup(typeof input === 'string' ? input : JSON.stringify(input), 'long enough password'),
+      () =>
+        identity.importIdentityBackup(
+          typeof input === 'string' ? input : JSON.stringify(input),
+          'long enough password',
+        ),
       new RegExp(pattern),
     );
   }

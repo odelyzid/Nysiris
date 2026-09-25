@@ -30,9 +30,7 @@ export function FriendlyError({
           <summary className="fly-muted" style={{ cursor: 'pointer' }}>
             Technical details
           </summary>
-          <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {friendly.technical}
-          </pre>
+          <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{friendly.technical}</pre>
           <button
             className="fly-btn"
             style={{ fontSize: 13, minHeight: 36, padding: '6px 12px' }}

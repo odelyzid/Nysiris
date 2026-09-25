@@ -23,12 +23,7 @@ import {
 // for the values stays in `./attachments.mjs` (typed there via JSDoc).
 export { ALLOWED_MIMES };
 export type AllowedMime = (typeof ALLOWED_MIMES)[number];
-export {
-  ATTACHMENT_OVERHEAD_BYTES,
-  MAX_ATTACHMENT_BYTES,
-  MAX_ATTACHMENTS_PER_MESSAGE,
-  MAX_FILENAME_CHARS,
-};
+export { ATTACHMENT_OVERHEAD_BYTES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE, MAX_FILENAME_CHARS };
 
 /** Attachment metadata as carried in a post or (sealed) DM envelope. */
 export interface AttachmentRef {

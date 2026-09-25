@@ -79,9 +79,7 @@ test('ReplyBudget limits bursts and refills over time', () => {
 test('requireCoverTraffic fails closed on a downgrade without acknowledgement', () => {
   assert.throws(() => requireCoverTraffic({ coverTraffic: false, poissonPacing: true }, false));
   assert.throws(() => requireCoverTraffic({ coverTraffic: true, poissonPacing: false }, false));
-  assert.doesNotThrow(() =>
-    requireCoverTraffic({ coverTraffic: false, poissonPacing: false }, true),
-  );
+  assert.doesNotThrow(() => requireCoverTraffic({ coverTraffic: false, poissonPacing: false }, true));
   assert.doesNotThrow(() => requireCoverTraffic(undefined, false));
 });
 

@@ -16,15 +16,10 @@ import {
 } from '../src/social/attachments.mjs';
 
 test('MIME whitelist admits exactly the seven allowed types', () => {
-  assert.deepEqual([...ALLOWED_MIMES], [
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-    'image/gif',
-    'text/plain',
-    'text/markdown',
-    'application/pdf',
-  ]);
+  assert.deepEqual(
+    [...ALLOWED_MIMES],
+    ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'text/plain', 'text/markdown', 'application/pdf'],
+  );
   assert.equal(mimeAllowed('image/png'), true);
   assert.equal(mimeAllowed('application/octet-stream'), false);
   assert.equal(mimeAllowed('text/html'), false);
@@ -68,10 +63,7 @@ test('parseAttachmentRefs bounds count and fails closed', () => {
   };
   assert.equal(parseAttachmentRefs([ref]).length, 1);
   assert.throws(() => parseAttachmentRefs('nope'), /array/);
-  assert.throws(
-    () => parseAttachmentRefs([ref, ref, ref, ref]),
-    new RegExp(`at most ${MAX_ATTACHMENTS_PER_MESSAGE}`),
-  );
+  assert.throws(() => parseAttachmentRefs([ref, ref, ref, ref]), new RegExp(`at most ${MAX_ATTACHMENTS_PER_MESSAGE}`));
   assert.throws(() => parseAttachmentRef({ ...ref, mime: 'text/html' }), /not allowed/);
   assert.throws(() => parseAttachmentRef({ ...ref, id: 'zz' }), /hex/);
   assert.throws(() => parseAttachmentRef({ ...ref, size: MAX_ATTACHMENT_BYTES + 1 }), /too large/);

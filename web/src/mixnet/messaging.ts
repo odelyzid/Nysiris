@@ -157,9 +157,7 @@ export class NymAddressClient {
   async reply(senderTag: string, message: string): Promise<void> {
     this.assertStarted();
     if (typeof this.nym.client.replyWithSurb !== 'function') {
-      throw new Error(
-        'this SDK build does not expose replyWithSurb; anonymous SURB replies are unavailable',
-      );
+      throw new Error('this SDK build does not expose replyWithSurb; anonymous SURB replies are unavailable');
     }
     if (!this.replies.tryTake()) {
       throw new Error('reply budget exhausted; slow down to protect the shared send budget');

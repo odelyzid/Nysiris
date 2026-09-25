@@ -103,9 +103,7 @@ export function renderConfigSnippet(config: PortalConfig, os: PortalOs | null = 
     ['PORTAL_RATE_PER_DAY', String(config.ratePerDay)],
     ['PORTAL_DB', './portal.sqlite'],
   ];
-  return keys
-    .map(([k, v]) => (os === 'windows' ? `$env:${k} = "${v}"` : `export ${k}=${v}`))
-    .join('\n');
+  return keys.map(([k, v]) => (os === 'windows' ? `$env:${k} = "${v}"` : `export ${k}=${v}`)).join('\n');
 }
 
 /** The `nym://`-schemed invite link for a provider address. Empty passthrough. */
@@ -149,7 +147,10 @@ export function loadPortalRun(storage?: ViewStorage | null): PortalRunPrefs {
     const config = {
       powBits: numberOr(parsed.config?.powBits, DEFAULT_PORTAL_CONFIG.powBits),
       ratePerDay: numberOr(parsed.config?.ratePerDay, DEFAULT_PORTAL_CONFIG.ratePerDay),
-      dataDir: typeof parsed.config?.dataDir === 'string' && parsed.config.dataDir ? parsed.config.dataDir : DEFAULT_PORTAL_CONFIG.dataDir,
+      dataDir:
+        typeof parsed.config?.dataDir === 'string' && parsed.config.dataDir
+          ? parsed.config.dataDir
+          : DEFAULT_PORTAL_CONFIG.dataDir,
     };
     return {
       os,

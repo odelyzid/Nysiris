@@ -55,7 +55,12 @@ test('DM seal/open round-trips and is anonymous to the server', { skip: !noble }
   // Wrong key fails.
   assert.throws(() =>
     xchacha20poly1305(
-      kdf(x25519.getSharedSecret(ed25519.utils.toMontgomerySecret(alicePriv), Uint8Array.from(Buffer.from(stored.epub, 'hex')))),
+      kdf(
+        x25519.getSharedSecret(
+          ed25519.utils.toMontgomerySecret(alicePriv),
+          Uint8Array.from(Buffer.from(stored.epub, 'hex')),
+        ),
+      ),
       nonce,
     ).decrypt(Uint8Array.from(Buffer.from(stored.ct, 'base64'))),
   );

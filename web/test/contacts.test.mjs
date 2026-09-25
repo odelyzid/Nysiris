@@ -19,9 +19,7 @@ test('empty or missing storage means no contacts', () => {
 
 test('round-trips contacts', () => {
   const storage = fakeStorage();
-  const contacts = [
-    { name: 'shop', address: 'A.B@C', inviter: 'D', note: 'hi', addedAt: 1 },
-  ];
+  const contacts = [{ name: 'shop', address: 'A.B@C', inviter: 'D', note: 'hi', addedAt: 1 }];
   saveContacts(contacts, storage);
   assert.deepEqual(loadContacts(storage), contacts);
 });

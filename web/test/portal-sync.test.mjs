@@ -101,8 +101,14 @@ test('golden SIG0 verifies over entry bytes (needs node_modules)', { skip: !nobl
 test('entry bytes are the exact wire layout', () => {
   const bytes = portalEntryBytes(ALICE, 7, OBJ);
   assert.equal(bytes.length, enc.encode(LOG_ENTRY_DOMAIN).length + 32 + 8 + 32);
-  assert.equal(bytesToHex(bytes.subarray(0, enc.encode(LOG_ENTRY_DOMAIN).length)), bytesToHex(enc.encode(LOG_ENTRY_DOMAIN)));
-  assert.equal(bytesToHex(bytes.subarray(enc.encode(LOG_ENTRY_DOMAIN).length, enc.encode(LOG_ENTRY_DOMAIN).length + 32)), ALICE);
+  assert.equal(
+    bytesToHex(bytes.subarray(0, enc.encode(LOG_ENTRY_DOMAIN).length)),
+    bytesToHex(enc.encode(LOG_ENTRY_DOMAIN)),
+  );
+  assert.equal(
+    bytesToHex(bytes.subarray(enc.encode(LOG_ENTRY_DOMAIN).length, enc.encode(LOG_ENTRY_DOMAIN).length + 32)),
+    ALICE,
+  );
   const seqBytes = bytes.subarray(enc.encode(LOG_ENTRY_DOMAIN).length + 32, enc.encode(LOG_ENTRY_DOMAIN).length + 40);
   assert.deepEqual(seqBytes, u64be(7));
 });
@@ -113,7 +119,11 @@ test('log reply rejects gaps, mixed seq starts, and bad hex', () => {
   assert.throws(() => parsePortalLogReply(JSON.parse(base), 1), /expected first seq 1, got 0/);
   // Non-hex author.
   assert.throws(
-    () => parsePortalLogReply(JSON.parse(`{"entries":[{"author":"zz${ALICE.slice(2)}","obj_id":"${OBJ}","seq":0,"sig":"${SIG0}"}],"head":1}`), 0),
+    () =>
+      parsePortalLogReply(
+        JSON.parse(`{"entries":[{"author":"zz${ALICE.slice(2)}","obj_id":"${OBJ}","seq":0,"sig":"${SIG0}"}],"head":1}`),
+        0,
+      ),
     /must be 32 bytes hex/,
   );
   // Descending seq.
@@ -155,7 +165,10 @@ test('merge rejects a gap, a fork, mixed authors, and bad signature — atomical
   const ok = () => true;
 
   // Gap: next seq must be 1.
-  await assert.rejects(mergePortalEntries(replica, [{ author: ALICE, seq: 5, objId: OBJ, sig: SIG0 }], ok), /fork or gap/);
+  await assert.rejects(
+    mergePortalEntries(replica, [{ author: ALICE, seq: 5, objId: OBJ, sig: SIG0 }], ok),
+    /fork or gap/,
+  );
   // Mixed authors (first entry must clear continuity before the mismatch fires).
   await assert.rejects(
     mergePortalEntries(
@@ -172,7 +185,10 @@ test('merge rejects a gap, a fork, mixed authors, and bad signature — atomical
   assert.deepEqual(replica, { entriesByAuthor: base, objectsById: {} });
   // Forged signature.
   const forged = { author: ALICE, seq: 1, objId: OBJ, sig: 'ff'.repeat(64) };
-  await assert.rejects(mergePortalEntries(replica, [forged], (e) => e.sig === SIG1), /bad entry signature/);
+  await assert.rejects(
+    mergePortalEntries(replica, [forged], (e) => e.sig === SIG1),
+    /bad entry signature/,
+  );
   // Empty batch applies nothing.
   const empty = await mergePortalEntries(replica, [], ok);
   assert.equal(empty.applied, 0);

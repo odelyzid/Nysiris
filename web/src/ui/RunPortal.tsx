@@ -25,12 +25,7 @@ import {
   type PortalOs,
   type PortalProbe,
 } from '../social/runPortal';
-import {
-  createPortalIdentity,
-  importPortalIdentity,
-  loadPortalIdentity,
-  type Identity,
-} from '../social/identity';
+import { createPortalIdentity, importPortalIdentity, loadPortalIdentity, type Identity } from '../social/identity';
 import { copyText, shortenAddress } from './share';
 import { useQrCode } from './useQrCode';
 
@@ -110,8 +105,8 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
       <section className="fly-card" aria-label="Run a Portal">
         <h2>Run a Portal</h2>
         <p>
-          A Portal is a private site others can visit over the mixnet. The browser is only
-          the client — the actual service runs as a small program on a computer or server.
+          A Portal is a private site others can visit over the mixnet. The browser is only the client — the actual
+          service runs as a small program on a computer or server.
         </p>
       </section>
 
@@ -146,10 +141,7 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
             >
               {quickStartCommand(selectedOs)}
             </pre>
-            <button
-              className="fly-btn"
-              onClick={() => onCopy('quick-start', quickStartCommand(selectedOs))}
-            >
+            <button className="fly-btn" onClick={() => onCopy('quick-start', quickStartCommand(selectedOs))}>
               {copied === 'quick-start' ? 'Copied' : 'Copy command'}
             </button>{' '}
             <a
@@ -164,9 +156,8 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
           </div>
         )}
         <p className="fly-muted">
-          The release zip (from <code>./build.sh windows</code>) ships the launcher and PWA;
-          the portal provider binary is built from source with{' '}
-          <code>./build.sh services portal-provider</code>. See{' '}
+          The release zip (from <code>./build.sh windows</code>) ships the launcher and PWA; the portal provider binary
+          is built from source with <code>./build.sh services portal-provider</code>. See{' '}
           <code>docs/04-hosting-services.md</code> for the full story.
         </p>
       </section>
@@ -174,19 +165,16 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
       <section className="fly-card" aria-label="Portal identity">
         <h2>Portal identity</h2>
         <p>
-          A separate keypair from your social identity. The running provider derives its
-          full <code>nym://</code> address from its client keys — this identity is the one
-          you control directly, so you can re-publish from the same address.
+          A separate keypair from your social identity. The running provider derives its full <code>nym://</code>{' '}
+          address from its client keys — this identity is the one you control directly, so you can re-publish from the
+          same address.
         </p>
         {identity ? (
           <div className="fly-identity-bar">
             <span className="fly-identity-id" title={identity.pubHex}>
               ID {identity.pubHex.slice(0, 12)}…
             </span>
-            <button
-              className="fly-btn"
-              onClick={() => onCopy('identity', identity.pubHex)}
-            >
+            <button className="fly-btn" onClick={() => onCopy('identity', identity.pubHex)}>
               {copied === 'identity' ? 'Copied' : 'Copy public key'}
             </button>
             <button className="fly-btn" onClick={onGenerateIdentity}>
@@ -226,19 +214,10 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
             spellCheck={false}
             aria-label="Provider address"
           />
-          <button
-            className="fly-btn"
-            onClick={() => onCopy('invite', invite)}
-            disabled={!invite}
-          >
+          <button className="fly-btn" onClick={() => onCopy('invite', invite)} disabled={!invite}>
             {copied === 'invite' ? 'Copied' : 'Copy invite link'}
           </button>
-          <button
-            className="fly-btn"
-            aria-pressed={showQr}
-            onClick={() => setShowQr((v) => !v)}
-            disabled={!invite}
-          >
+          <button className="fly-btn" aria-pressed={showQr} onClick={() => setShowQr((v) => !v)} disabled={!invite}>
             QR
           </button>
         </div>
@@ -247,9 +226,7 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
             {invite}
           </p>
         )}
-        {showQr && qrUrl && (
-          <img src={qrUrl} alt={`QR invite ${shortenAddress(invite)}`} width={220} height={220} />
-        )}
+        {showQr && qrUrl && <img src={qrUrl} alt={`QR invite ${shortenAddress(invite)}`} width={220} height={220} />}
       </section>
 
       <section className="fly-card" aria-label="Status">
@@ -273,15 +250,17 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
             </span>
           )}
         </div>
-        {probeSummary && <p className="fly-muted" style={{ fontSize: 12 }}>{probeSummary}</p>}
+        {probeSummary && (
+          <p className="fly-muted" style={{ fontSize: 12 }}>
+            {probeSummary}
+          </p>
+        )}
       </section>
 
       <section className="fly-card" aria-label="Advanced configuration">
         <details>
           <summary>Advanced / Configuration</summary>
-          <p className="fly-muted">
-            These only render the environment the provider honors — nothing runs here.
-          </p>
+          <p className="fly-muted">These only render the environment the provider honors — nothing runs here.</p>
           <div className="fly-row">
             <label>
               PoW bits{' '}
@@ -322,10 +301,7 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
           <pre style={{ background: '#161616', color: '#d8f5a2', padding: 12, overflowX: 'auto', fontSize: 12 }}>
             {renderConfigSnippet(prefs.config, prefs.os)}
           </pre>
-          <button
-            className="fly-btn"
-            onClick={() => onCopy('config', renderConfigSnippet(prefs.config))}
-          >
+          <button className="fly-btn" onClick={() => onCopy('config', renderConfigSnippet(prefs.config))}>
             {copied === 'config' ? 'Copied' : 'Copy config'}
           </button>
         </details>

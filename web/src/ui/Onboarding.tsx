@@ -40,7 +40,9 @@ export function Onboarding({
         <p role="status">Connecting… finding the fastest private path. This usually takes a few seconds.</p>
       )}
       {error !== null && error !== undefined && (
-        <p className="fly-muted">If connecting keeps failing, you can still look around — your work is saved on this device.</p>
+        <p className="fly-muted">
+          If connecting keeps failing, you can still look around — your work is saved on this device.
+        </p>
       )}
     </section>
   );

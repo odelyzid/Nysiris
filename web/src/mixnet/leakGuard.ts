@@ -24,11 +24,7 @@ export interface LeakGuardOptions {
 
 let installed = false;
 
-export function installLeakGuard(
-  routedHosts: Set<string>,
-  failClosed: boolean,
-  onLeak?: (url: string) => void,
-): void {
+export function installLeakGuard(routedHosts: Set<string>, failClosed: boolean, onLeak?: (url: string) => void): void {
   if (installed) return;
   installed = true;
   const options: LeakGuardOptions = { routedHosts, failClosed, onLeak };
@@ -41,11 +37,7 @@ export function installLeakGuard(
   };
 
   const nativeOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function guardedOpen(
-    method: string,
-    url: string | URL,
-    ...rest: unknown[]
-  ) {
+  XMLHttpRequest.prototype.open = function guardedOpen(method: string, url: string | URL, ...rest: unknown[]) {
     const asString = String(url);
     if (check(asString, options)) throw new Error(`nym leak guard: blocked direct request to ${asString}`);
     // @ts-expect-error -- forwarding the full variadic signature.

@@ -3,13 +3,7 @@
 // (WebCrypto only, so this runs in browsers and Node alike).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  leadingZeros,
-  MAX_POW_BITS,
-  payloadHashBytes,
-  provePow,
-  verifyPow,
-} from '../src/mixnet/pow.mjs';
+import { leadingZeros, MAX_POW_BITS, payloadHashBytes, provePow, verifyPow } from '../src/mixnet/pow.mjs';
 
 const AUTHOR = new Uint8Array(32).fill(3);
 

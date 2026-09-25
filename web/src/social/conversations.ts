@@ -54,10 +54,7 @@ export function addDmRecord(records: DmRecord[], rec: DmRecord): DmRecord[] {
 }
 
 /** Group records per peer, conversations newest-first, messages oldest-first. */
-export function groupConversations(
-  records: DmRecord[],
-  readAt: Record<string, number>,
-): Conversation[] {
+export function groupConversations(records: DmRecord[], readAt: Record<string, number>): Conversation[] {
   const byPeer = new Map<string, DmRecord[]>();
   for (const rec of records) {
     const list = byPeer.get(rec.peer) ?? [];

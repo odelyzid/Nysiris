@@ -42,17 +42,12 @@ export function StatusPill({
             ? 'Not protected'
             : 'Something went wrong';
 
-  const raw = detail ?? (status.state === 'failed' ? status.reason ?? '' : '');
+  const raw = detail ?? (status.state === 'failed' ? (status.reason ?? '') : '');
   const friendly = raw ? friendlyError(raw) : null;
 
   return (
     <span style={{ marginLeft: 'auto', position: 'relative' }}>
-      <button
-        className="fly-status"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        title={title}
-      >
+      <button className="fly-status" onClick={() => setOpen((v) => !v)} aria-expanded={open} title={title}>
         <span className="fly-status-dot" aria-hidden="true" style={{ backgroundColor: tone }} />
         {pillLabel}
       </button>
@@ -99,12 +94,10 @@ export function StatusPill({
                 className="fly-btn"
                 style={{ fontSize: 13, minHeight: 36, padding: '6px 12px' }}
                 onClick={() => {
-                  void navigator.clipboard
-                    ?.writeText(raw)
-                    .then(
-                      () => setCopied(true),
-                      () => setCopied(false),
-                    );
+                  void navigator.clipboard?.writeText(raw).then(
+                    () => setCopied(true),
+                    () => setCopied(false),
+                  );
                 }}
               >
                 {copied ? 'Copied' : 'Copy error'}

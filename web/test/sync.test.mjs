@@ -29,10 +29,7 @@ test('merge caps kept history', () => {
 test('sync status reads friendly in every state', () => {
   const now = 1_000_000;
   assert.equal(describeSync(now, { syncing: true, lastSyncedAt: 0, error: null }).tone, 'busy');
-  assert.equal(
-    describeSync(now, { syncing: false, lastSyncedAt: null, error: null }).text,
-    'Not synced yet.',
-  );
+  assert.equal(describeSync(now, { syncing: false, lastSyncedAt: null, error: null }).text, 'Not synced yet.');
   assert.equal(
     describeSync(now, { syncing: false, lastSyncedAt: now - 5_000, error: null }).text,
     'Up to date — checked just now.',

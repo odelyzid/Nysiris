@@ -15,12 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { hexToBytes } from '@noble/hashes/utils.js';
 import { b64decode, b64encode } from '../lib/bytes';
 import { fetchNym, fetchNymParallel, type FetchNymRequest } from '../mixnet/fetchNym';
-import {
-  MAX_ATTACHMENTS_PER_MESSAGE,
-  parseAttachmentRefs,
-  validateFile,
-  type AttachmentRef,
-} from './attachments.mjs';
+import { MAX_ATTACHMENTS_PER_MESSAGE, parseAttachmentRefs, validateFile, type AttachmentRef } from './attachments.mjs';
 import { decryptAttachment, encryptAttachment, type AllowedMime, type PreparedAttachment } from './attachmentCrypto';
 
 export type { AttachmentRef, PreparedAttachment };
@@ -77,9 +72,7 @@ export async function uploadBlobs(
         const pow = await powFor(service, p.id, preimage);
         jobs.push({
           path: `/blob/part?id=${p.id}&part=${i}&of=${parts}`,
-          body: new TextEncoder().encode(
-            JSON.stringify({ bytes_b64: b64encode(chunk), ...(pow ? { pow } : {}) }),
-          ),
+          body: new TextEncoder().encode(JSON.stringify({ bytes_b64: b64encode(chunk), ...(pow ? { pow } : {}) })),
         });
       } catch (err) {
         onNote(`attachment proof failed: ${String(err)}`);

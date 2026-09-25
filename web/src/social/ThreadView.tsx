@@ -41,14 +41,17 @@ export function ThreadView({
           ← All posts
         </button>
         {onShareLink && (
-          <button className="fly-btn" style={{ fontSize: 12 }} onClick={onShareLink} title="Copy a link that opens this thread">
+          <button
+            className="fly-btn"
+            style={{ fontSize: 12 }}
+            onClick={onShareLink}
+            title="Copy a link that opens this thread"
+          >
             Copy link
           </button>
         )}
         <span style={{ fontSize: 11, color: '#888' }}>
-          {replies.length === 0
-            ? 'No replies yet'
-            : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
+          {replies.length === 0 ? 'No replies yet' : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
         </span>
       </div>
 

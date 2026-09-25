@@ -95,7 +95,10 @@ test('malformed inner envelopes are rejected', { skip: !dm }, () => {
     [{ ...good, atts: [{ ...goodAttRef(), mime: 'text/html' }] }, 'bad attachments'],
   ];
   for (const [input, pattern] of cases) {
-    assert.throws(() => dm.unpackDmInner(typeof input === 'string' ? input : JSON.stringify(input)), new RegExp(pattern));
+    assert.throws(
+      () => dm.unpackDmInner(typeof input === 'string' ? input : JSON.stringify(input)),
+      new RegExp(pattern),
+    );
   }
 });
 

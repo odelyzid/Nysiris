@@ -2,11 +2,7 @@
 // Local reputation: same weights/thresholds/decay as the Rust implementation.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  createReputation,
-  DECAY_HALF_LIFE_DAYS,
-  standingOf,
-} from '../src/mixnet/reputation.mjs';
+import { createReputation, DECAY_HALF_LIFE_DAYS, standingOf } from '../src/mixnet/reputation.mjs';
 
 test('thresholds match the documented bands', () => {
   assert.equal(standingOf(20), 'trusted');

@@ -2,13 +2,7 @@
 // Verifies panel open-state persistence without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  PANEL_META,
-  PANEL_ORDER,
-  defaultStorage,
-  loadOpenPanels,
-  saveOpenPanels,
-} from '../src/ui/panels.ts';
+import { PANEL_META, PANEL_ORDER, defaultStorage, loadOpenPanels, saveOpenPanels } from '../src/ui/panels.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));
@@ -38,9 +32,7 @@ test('round-trips the open set', () => {
 });
 
 test('drops unknown or malformed entries', () => {
-  assert.deepEqual(loadOpenPanels(fakeStorage({ 'fly.panels.open': '["messages","nope",42]' })), [
-    'messages',
-  ]);
+  assert.deepEqual(loadOpenPanels(fakeStorage({ 'fly.panels.open': '["messages","nope",42]' })), ['messages']);
   assert.deepEqual(loadOpenPanels(fakeStorage({ 'fly.panels.open': 'not json' })), []);
   assert.deepEqual(loadOpenPanels(fakeStorage({ 'fly.panels.open': '{"a":1}' })), []);
 });

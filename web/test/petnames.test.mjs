@@ -48,10 +48,7 @@ test('empty name clears the petname', () => {
 
 test('bad keys and names never stick', () => {
   assert.deepEqual(withPetname({}, 'not-hex', 'Maya'), {});
-  assert.deepEqual(
-    loadPetnames(fakeStorage({ 'fly.social.petnames': JSON.stringify({ [HEX]: '', nope: 'x' }) })),
-    {},
-  );
+  assert.deepEqual(loadPetnames(fakeStorage({ 'fly.social.petnames': JSON.stringify({ [HEX]: '', nope: 'x' }) })), {});
   assert.deepEqual(loadPetnames(fakeStorage({ 'fly.social.petnames': 'garbage' })), {});
   assert.deepEqual(loadPetnames(null), {});
 });

@@ -28,13 +28,19 @@ test('tagged replies route by tag, never to the serial waiter', async (t) => {
   // Out of order delivery still matches correctly.
   dispatchReply(reply('p2'), parallel, serial);
   dispatchReply(reply('p1'), parallel, serial);
-  assert.deepEqual(got.map(([k]) => k), ['p2', 'p1']);
+  assert.deepEqual(
+    got.map(([k]) => k),
+    ['p2', 'p1'],
+  );
 
   // Unknown tag: dropped, resolves nothing.
   dispatchReply(reply('p9'), parallel, serial);
   // Untagged reply: goes to the serial waiter only.
   dispatchReply(reply(null), parallel, serial);
-  assert.deepEqual(got.map(([k]) => k), ['p2', 'p1', 'serial']);
+  assert.deepEqual(
+    got.map(([k]) => k),
+    ['p2', 'p1', 'serial'],
+  );
 
   // Garbage: dropped silently.
   dispatchReply('not json', parallel, serial);

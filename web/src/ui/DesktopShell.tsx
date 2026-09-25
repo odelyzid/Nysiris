@@ -63,14 +63,7 @@ export function TopBar({
         ))}
       </nav>
       <StatusPill status={status} detail={statusDetail} onRetry={onRetry} busy={busy} />
-      {busy && (
-        <span
-          className="fly-ie-spinner"
-          role="status"
-          aria-label="Loading"
-          title="Loading…"
-        />
-      )}
+      {busy && <span className="fly-ie-spinner" role="status" aria-label="Loading" title="Loading…" />}
       <span className="fly-topbar-spacer" />
       <input
         className="fly-input uri-input"
@@ -124,14 +117,7 @@ export interface RosterThread {
 }
 
 function Dot({ color, title }: { color: string; title: string }) {
-  return (
-    <span
-      className="fly-dot"
-      title={title}
-      style={{ backgroundColor: color }}
-      aria-hidden="true"
-    />
-  );
+  return <span className="fly-dot" title={title} style={{ backgroundColor: color }} aria-hidden="true" />;
 }
 
 export function Roster({
@@ -155,9 +141,7 @@ export function Roster({
     <aside className="fly-roster" aria-label="Roster">
       <section aria-label="Portals">
         <h3>Portals</h3>
-        {portals.length === 0 && (
-          <p className="fly-muted">No portals yet — open a private link above.</p>
-        )}
+        {portals.length === 0 && <p className="fly-muted">No portals yet — open a private link above.</p>}
         <ul>
           {portals.map((p) => (
             <li key={p.address}>
@@ -178,9 +162,7 @@ export function Roster({
 
       <section aria-label="Contacts">
         <h3>Contacts</h3>
-        {contacts.length === 0 && (
-          <p className="fly-muted">Nobody saved yet — save an invite to grow this list.</p>
-        )}
+        {contacts.length === 0 && <p className="fly-muted">Nobody saved yet — save an invite to grow this list.</p>}
         <ul>
           {contacts.map((c) => (
             <li key={c.name}>
@@ -198,9 +180,7 @@ export function Roster({
 
       <section aria-label="Recent conversations">
         <h3>Recent</h3>
-        {threads.length === 0 && (
-          <p className="fly-muted">No conversations yet.</p>
-        )}
+        {threads.length === 0 && <p className="fly-muted">No conversations yet.</p>}
         <ul>
           {threads.map((t) => (
             <li key={t.key}>
@@ -289,7 +269,17 @@ export function ContextPanel({
   return (
     <aside className="fly-context" aria-label="Details">
       <div className="fly-context-head">
-        <h3>{view === 'portal' ? 'Portal' : view === 'service' ? 'Service' : view === 'messages' ? 'Conversation' : view === 'home' ? 'Connection' : 'Settings'}</h3>
+        <h3>
+          {view === 'portal'
+            ? 'Portal'
+            : view === 'service'
+              ? 'Service'
+              : view === 'messages'
+                ? 'Conversation'
+                : view === 'home'
+                  ? 'Connection'
+                  : 'Settings'}
+        </h3>
         <button className="fly-btn" onClick={onToggle} aria-label="Hide the info panel">
           »
         </button>

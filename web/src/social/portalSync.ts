@@ -406,7 +406,10 @@ export function trimReplica(replica: PortalReplica, maxObjects = MAX_KEPT_OBJECT
  * tested, and tensor-free — folding them into a shared helper would read as
  * over-clever for a three-clause status string).
  */
-export function describePortalSync(now: number, status: PortalSyncStatus): { text: string; tone: 'ok' | 'busy' | 'bad' | 'idle' } {
+export function describePortalSync(
+  now: number,
+  status: PortalSyncStatus,
+): { text: string; tone: 'ok' | 'busy' | 'bad' | 'idle' } {
   if (status.syncing) return { text: 'Syncing… fetching heads, logs, and objects.', tone: 'busy' };
   if (status.error) return { text: `Couldn't sync the portal replica. ${status.error}`, tone: 'bad' };
   if (status.lastSyncedAt === null) return { text: 'No portal sync yet.', tone: 'idle' };

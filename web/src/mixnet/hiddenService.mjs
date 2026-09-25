@@ -39,7 +39,9 @@ export function checkPath(path) {
  * @returns {string} JSON envelope
  */
 export function encodeRequest(req) {
-  const method = String(req?.method ?? 'GET').trim().toUpperCase();
+  const method = String(req?.method ?? 'GET')
+    .trim()
+    .toUpperCase();
   if (!ALLOWED_METHODS.has(method)) throw new Error(`method ${JSON.stringify(req?.method)} is not allowed`);
   const path = checkPath(req?.path);
   const headers = req?.headers ?? {};
@@ -81,7 +83,10 @@ export function decodeResponse(json) {
   if (!Number.isInteger(status) || status < 100 || status > 599) {
     throw new Error('response has no valid status');
   }
-  if (obj.headers !== undefined && (obj.headers === null || typeof obj.headers !== 'object' || Array.isArray(obj.headers))) {
+  if (
+    obj.headers !== undefined &&
+    (obj.headers === null || typeof obj.headers !== 'object' || Array.isArray(obj.headers))
+  ) {
     throw new Error('response headers must be an object');
   }
   if (typeof obj.body_base64 !== 'string') throw new Error('response has no body_base64 string');
@@ -263,9 +268,7 @@ export function decodeInviteCompact(compact) {
  * @returns {string}
  */
 export function encodeInviteCompact(invite) {
-  const decoded = decodeInviteCompact(
-    b64urlEncodeString(JSON.stringify(invite)),
-  );
+  const decoded = decodeInviteCompact(b64urlEncodeString(JSON.stringify(invite)));
   void decoded;
   return b64urlEncodeString(JSON.stringify(invite));
 }
@@ -310,7 +313,9 @@ export function parseInviteLink(input) {
  * @returns {string} a full address string
  */
 export function resolvePetname(input, registry = {}) {
-  const key = String(input ?? '').trim().toLowerCase();
+  const key = String(input ?? '')
+    .trim()
+    .toLowerCase();
   if (key && Object.prototype.hasOwnProperty.call(registry, key)) return registry[key];
   parseNymAddress(input); // throws on garbage
   return String(input).trim();

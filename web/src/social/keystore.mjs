@@ -35,16 +35,14 @@
  */
 function detectPlugin() {
   try {
-    const cap = /** @type {{ Capacitor?: { Plugins?: Record<string, unknown> } }} */ (
-      globalThis
-    ).Capacitor;
+    const cap = /** @type {{ Capacitor?: { Plugins?: Record<string, unknown> } }} */ (globalThis).Capacitor;
     const plugin = cap?.Plugins?.NysirisKeystore;
     if (
       plugin !== null &&
       typeof plugin === 'object' &&
-      typeof /** @type {KeystorePlugin} */ (plugin).get === 'function' &&
-      typeof /** @type {KeystorePlugin} */ (plugin).set === 'function' &&
-      typeof /** @type {KeystorePlugin} */ (plugin).remove === 'function'
+      typeof (/** @type {KeystorePlugin} */ (plugin).get) === 'function' &&
+      typeof (/** @type {KeystorePlugin} */ (plugin).set) === 'function' &&
+      typeof (/** @type {KeystorePlugin} */ (plugin).remove) === 'function'
     ) {
       return /** @type {KeystorePlugin} */ (plugin);
     }
