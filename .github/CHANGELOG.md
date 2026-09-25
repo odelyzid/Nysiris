@@ -5,6 +5,8 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 
 ## [Unreleased]
 
+## [0.1.26] — 2026-09-25
+
 ### Added
 
 - Encrypted attachments for posts and DMs: browser-encrypted files
@@ -55,6 +57,25 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
   an API-34 emulator): real Android Keystore round-trip, ciphertext-only
   storage assertion, tamper rejection; plus host-JVM framing tests
   (`KeystoreCryptoTest`, 5/5).
+- Project website at [nysiris.tribewarez.com](https://nysiris.tribewarez.com/)
+  and a **GitHub Wiki** mirror of `docs/` + README, republished automatically
+  when docs change (`scripts/publish-wiki.mjs`, `.github/workflows/wiki.yml`).
+- README screenshots for the Home / Messages / Portal tabs plus a preview card
+  (`docs/images/`).
+
+### Changed
+
+- Reorganized `web/src` by separation of concerns: `domain/` (pure rules),
+  `application/` (orchestration), `adapters/driving|driven/`, `shared/`.
+- Split the ~1,900-line `Social.tsx` into concern hooks and small presentational
+  components; it is now a thin orchestrator.
+- Community files moved: `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
+  `CHANGELOG.md` → `.github/`; `AGENTS.md` → `.agents/AGENTS.md`.
+
+### Fixed
+
+- Doc path references after the `web/src` reorg; invalid GitHub funding key
+  (`kofi` → `ko_fi`).
 
 ## [0.1.18] — 2026-09-21
 

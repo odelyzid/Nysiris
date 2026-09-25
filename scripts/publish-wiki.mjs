@@ -40,10 +40,12 @@ function titleOf(text, fallback) {
 }
 
 /**
- * Rewrite one markdown link target for the wiki.
- * `fromRepoRel` is the source file path relative to the repo root.
+ * Rewrite one markdown link/image target for the wiki.
+ * `fromRepoRel` is the source file path relative to the repo root. Repo images
+ * use raw.githubusercontent.com so they render inside the wiki (a `blob/` URL
+ * would render as an HTML page, not an image).
  */
-function transformTarget(target, fromRepoRel) {
+function transformTarget(target, fromRepoRel, isImage = false) {
   if (/^(https?:|mailto:|#)/.test(target)) return target;
   const hashAt = target.indexOf('#');
   const path = hashAt >= 0 ? target.slice(0, hashAt) : target;
@@ -60,14 +62,15 @@ function transformTarget(target, fromRepoRel) {
   const abs = join(ROOT, ...repoPath.split('/'));
   const isDir = repoPath.endsWith('/') || (existsSync(abs) && statSync(abs).isDirectory());
   const clean = repoPath.replace(/\/+$/, '');
+  if (isImage && !isDir) return `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${clean}${anchor}`;
   return `https://github.com/${REPO}/${isDir ? 'tree' : 'blob'}/${BRANCH}/${clean}${anchor}`;
 }
 
-function withTrimmedTarget(target, fromRepoRel) {
+function withTrimmedTarget(target, fromRepoRel, isImage) {
   const t = target.trim();
   const at = target.indexOf(t);
   if (at < 0) return target;
-  return target.slice(0, at) + transformTarget(t, fromRepoRel) + target.slice(at + t.length);
+  return target.slice(0, at) + transformTarget(t, fromRepoRel, isImage) + target.slice(at + t.length);
 }
 
 /**
@@ -97,7 +100,8 @@ function rewriteLinks(text, fromRepoRel) {
         if (parens === 0) {
           const label = text.slice(i, j);
           const target = text.slice(j + 1, k - 1);
-          out += `${label}(${withTrimmedTarget(target, fromRepoRel)})`;
+          const isImage = i > 0 && text[i - 1] === '!';
+          out += `${label}(${withTrimmedTarget(target, fromRepoRel, isImage)})`;
           i = k;
           continue;
         }

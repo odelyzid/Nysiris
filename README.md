@@ -16,6 +16,10 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 
 [![CI](https://github.com/odelyzid/Nysiris/actions/workflows/ci.yml/badge.svg)](https://github.com/odelyzid/Nysiris/actions)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/website-nysiris.tribewarez.com-blue)](https://nysiris.tribewarez.com/)
+[![Docs: Wiki](https://img.shields.io/badge/docs-GitHub%20Wiki-181717?logo=github)](https://github.com/odelyzid/Nysiris/wiki)
+
+🌐 **[nysiris.tribewarez.com](https://nysiris.tribewarez.com/)** · 📖 **[Documentation wiki](https://github.com/odelyzid/Nysiris/wiki)**
 
 > **Status:** foundations, hosting, browser client, social/DMs, trust
 > indicators, desktop packaging, and security analysis complete, with the
@@ -85,6 +89,10 @@ you choose to use, or timing correlation when cover traffic is thin. Full
 analysis: [`docs/05-security.md`](docs/05-security.md).
 
 ## Read in this order
+
+Prefer a rendered site? These docs are mirrored to the
+[GitHub Wiki](https://github.com/odelyzid/Nysiris/wiki); the project site is
+[nysiris.tribewarez.com](https://nysiris.tribewarez.com/).
 
 1. [`docs/01-architecture.md`](docs/01-architecture.md) — system overview, two
    traffic modes, trust boundaries, browser/WASM constraints.
@@ -268,14 +276,23 @@ extension/               MV3 desktop scaffold
 
 ## Screenshots
 
-No staged screenshots yet — the UI is best seen running: `./build.sh web`,
-serve `web/dist`, or install a release package. The onboarding, protection
-status, portal/community, and private-link cards are the tour. Contributions
-of honest screenshots (no real addresses, contacts, or messages pictured)
-are welcome.
+![Nysiris overview — private P2P portals and communication over the Nym mixnet](docs/images/nysiris-preview.jpg)
+
+### Tabs
+
+| Home | Messages |
+|---|---|
+| ![Home tab](docs/images/tab-home.png) | ![Messages tab](docs/images/tab-messages.png) |
+
+![Portal tab with the community timeline](docs/images/tab-portal.png)
+
+These contain no real addresses, contacts, or messages. Serve `web/dist` (or a
+release package) to click through it yourself — more honest screenshots welcome.
 
 ## Community & license
 
+- Site: [nysiris.tribewarez.com](https://nysiris.tribewarez.com/).
+- Docs: [`docs/`](docs) · [GitHub Wiki](https://github.com/odelyzid/Nysiris/wiki).
 - Contributing: [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) (start with `.agents/AGENTS.md`).
 - Security reports: [`.github/SECURITY.md`](.github/SECURITY.md) — private advisories only.
 - Conduct: [`.github/CODE_OF_CONDUCT.md`](.github/CODE_OF_CONDUCT.md).
