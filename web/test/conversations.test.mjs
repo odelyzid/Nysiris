@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   MAX_DM_RECORDS,
   addDmRecord,
+  defaultDmStore,
   groupConversations,
   loadDmCache,
   loadDmRead,
@@ -94,4 +95,8 @@ test('cache and watermarks round-trip and drop garbage', () => {
   assert.deepEqual(loadDmRead(fakeStorage({ 'fly.social.dmread': 'nope' })), {});
   assert.deepEqual(loadDmRead(fakeStorage({ 'fly.social.dmread': '{"a":"b"}' })), {});
   assert.deepEqual(loadDmCache(fakeStorage()), []);
+});
+
+test('defaultDmStore is null without a DOM', () => {
+  assert.equal(defaultDmStore(), null);
 });

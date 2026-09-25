@@ -70,7 +70,7 @@ Releases are cut from `v*` tags (CI builds `.deb` + Windows zip with
 checksums). `VERSION` is the source of truth; bump with
 `./build.sh bump <version>`.
 
-- Current counts: 100 Rust tests, 171 web tests, zero clippy warnings.
+- Current counts: 100 Rust tests, 191 web tests, zero clippy warnings.
 - Focused runs: `node --test web/test/<name>.test.mjs` (from repo root),
   `cargo test -p <crate>`, `./build.sh services social`.
 - CI (`check` job) runs `./build.sh check` on Node 24; `web-build`/`android`

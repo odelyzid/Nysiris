@@ -16,9 +16,10 @@ import {
 } from '../social/portalSync';
 import { syncPortalReplica, type PortalSyncSummary } from '../social/portalSyncIo';
 import { defaultPortalRunStorage, loadPortalRun } from '../social/runPortal';
+import { shortenAddress } from './share';
 
 function shortHex(hex: string): string {
-  return hex.length > 12 ? `${hex.slice(0, 6)}…${hex.slice(-4)}` : hex;
+  return shortenAddress(hex);
 }
 
 export function PortalSync() {

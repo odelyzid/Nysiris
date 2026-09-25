@@ -7,6 +7,10 @@
  *
  * Pure logic, tested with `node --test web/test`.
  */
+import { normalizeAuthor } from '../lib/address.ts';
+import { defaultStorage } from '../lib/storage.ts';
+
+export { normalizeAuthor };
 
 export interface PetnameStorage {
   getItem(key: string): string | null;
@@ -15,12 +19,6 @@ export interface PetnameStorage {
 
 const STORAGE_KEY = 'fly.social.petnames';
 export const MAX_PETNAME_LENGTH = 40;
-
-export function normalizeAuthor(author: unknown): string | null {
-  if (typeof author !== 'string') return null;
-  const key = author.trim().toLowerCase();
-  return /^[0-9a-f]{64}$/.test(key) ? key : null;
-}
 
 export function cleanPetname(name: unknown): string | null {
   if (typeof name !== 'string') return null;
@@ -54,6 +52,11 @@ export function savePetnames(petnames: Record<string, string>, storage?: Petname
   } catch {
     // Private mode: petnames just don't persist.
   }
+}
+
+/** `localStorage` when it exists, otherwise null (SSR/tests/workers). */
+export function defaultPetnameStorage(): PetnameStorage | null {
+  return defaultStorage();
 }
 
 /**

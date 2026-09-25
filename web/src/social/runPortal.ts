@@ -10,6 +10,8 @@
  * Dependency-free (no `@noble/*` at import time) so `node --test web/test`
  * covers it offline; key generation lives in `social/identity.ts`.
  */
+import { toPrivateLink } from '../ui/share.ts';
+import { defaultStorage } from '../lib/storage.ts';
 
 export type PortalOs = 'linux' | 'docker' | 'windows';
 
@@ -107,11 +109,7 @@ export function renderConfigSnippet(config: PortalConfig, os: PortalOs | null = 
 }
 
 /** The `nym://`-schemed invite link for a provider address. Empty passthrough. */
-export function inviteLinkFor(address: string): string {
-  const s = String(address ?? '').trim();
-  if (!s) return '';
-  return s.startsWith('nym://') ? s : `nym://${s}`;
-}
+export const inviteLinkFor = toPrivateLink;
 
 /** Probe state machine: `idle → checking → reachable|unreachable`. */
 export function advanceProbe(prev: PortalProbe, ok: boolean): PortalProbe {
@@ -176,10 +174,5 @@ function numberOr(value: unknown, fallback: number): number {
 
 /** `localStorage` when it exists, otherwise null (SSR/tests/workers). */
 export function defaultPortalRunStorage(): ViewStorage | null {
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    return localStorage;
-  } catch {
-    return null;
-  }
+  return defaultStorage();
 }

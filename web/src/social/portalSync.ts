@@ -17,6 +17,7 @@
  */
 
 import { b64decode, b64encode, bytesToHex, hexToBytes, u64be } from '../lib/bytes.ts';
+import { defaultStorage } from '../lib/storage.ts';
 
 /** Canonical signing domains — frozen, match `portal-data` exactly. */
 export const LOG_ENTRY_DOMAIN = 'fly-portal-v1/log-entry';
@@ -275,12 +276,7 @@ export async function verifyPortalObjectId(obj: PortalObject): Promise<boolean> 
  * Storage is injected everywhere else so portalSync stays importable offline.
  */
 export function defaultPortalSyncStorage(): PortalStorage | null {
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    return localStorage;
-  } catch {
-    return null;
-  }
+  return defaultStorage();
 }
 
 /** Persisted wire for one object: payload base64 (JSON cannot carry bytes). */

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   STANDING_META,
   cautionFor,
+  defaultTrustStorage,
   loadTrust,
   resolveStanding,
   saveTrust,
@@ -68,4 +69,8 @@ test('bad keys and verdicts never stick', () => {
   );
   assert.deepEqual(loadTrust(fakeStorage({ 'fly.social.trust': 'garbage' })), {});
   assert.deepEqual(loadTrust(null), {});
+});
+
+test('defaultTrustStorage is null without a DOM', () => {
+  assert.equal(defaultTrustStorage(), null);
 });

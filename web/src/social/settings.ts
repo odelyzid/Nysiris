@@ -6,6 +6,7 @@
  * `'0'`) is preserved — renaming the key or value format would reset the
  * toggle for existing users.
  */
+import { defaultStorage } from '../lib/storage.ts';
 export interface BooleanStore {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -33,9 +34,5 @@ export function saveTrustedOnly(value: boolean, storage: BooleanStore | null): v
 
 /** localStorage in browsers, null elsewhere. */
 export function defaultBooleanStorage(): BooleanStore | null {
-  try {
-    return typeof localStorage !== 'undefined' ? localStorage : null;
-  } catch {
-    return null;
-  }
+  return defaultStorage();
 }

@@ -10,6 +10,7 @@
  * Pure logic (no browser globals): unit-testable with `node --test web/test`.
  */
 import type { AttachmentRef } from './attachmentCrypto';
+import { defaultStorage } from '../lib/storage.ts';
 
 export interface DmRecord {
   /** Sender/recipient ed pubkey hex (lowercase), or 'unknown' for legacy plaintext DMs. */
@@ -144,4 +145,9 @@ export function saveDmRead(readAt: Record<string, number>, storage?: DmStore | n
   } catch {
     // Private mode: badges just reset.
   }
+}
+
+/** `localStorage` when it exists, otherwise null (SSR/tests/workers). */
+export function defaultDmStore(): DmStore | null {
+  return defaultStorage();
 }

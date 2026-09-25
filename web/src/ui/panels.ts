@@ -6,6 +6,10 @@
  * via `defaultStorage()`.
  */
 
+import { defaultStorage } from '../lib/storage.ts';
+
+export { defaultStorage };
+
 export type PanelId = 'connection' | 'messages' | 'fetch' | 'log' | 'contacts' | 'portal';
 
 export const PANEL_META: Record<PanelId, { title: string }> = {
@@ -48,15 +52,5 @@ export function saveOpenPanels(open: PanelId[], storage?: PanelStorage | null): 
     storage?.setItem(STORAGE_KEY, JSON.stringify(open));
   } catch {
     // Storage full or unavailable (private mode): panels just reset next load.
-  }
-}
-
-/** `localStorage` when it exists, otherwise null (SSR/tests/workers). */
-export function defaultStorage(): PanelStorage | null {
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    return localStorage;
-  } catch {
-    return null;
   }
 }

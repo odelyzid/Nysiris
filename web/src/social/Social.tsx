@@ -33,17 +33,14 @@ import {
 import { encodeInviteCompact } from '../mixnet/hiddenService.mjs';
 import { openDm, packDmInner, sealDm, unpackDmInner } from './dm';
 import { MAX_DM_CIPHERTEXT_BYTES, MAX_POST_BYTES } from './limits';
-import {
-  AttachmentList,
-  AttachmentPicker,
-  parseAttachmentRefs,
-  uploadBlobs,
-  type AttachmentRef,
-  type PreparedAttachment,
-} from './attachmentUi';
+import { JSON_HEADERS, b64decode, buildDmRequest, buildPostRequest, buildProfileRequest } from './api';
+import { AttachmentList, AttachmentPicker, type AttachmentRef, type PreparedAttachment } from './attachmentUi';
+import { uploadBlobs } from './blobUploadIo';
+import { parseAttachmentRefs } from './attachments.mjs';
 import type { DmRecord } from './conversations';
 import {
   addDmRecord,
+  defaultDmStore,
   groupConversations,
   loadDmCache,
   loadDmRead,
@@ -60,7 +57,14 @@ import {
   type SocialTab,
 } from './tabs';
 import { STANDING_META, cautionFor, resolveStanding, shouldCollapse, standingTitle, type Verdict } from './trust';
-import { authorLabel, duplicatePetnames, loadPetnames, savePetnames, withPetname } from './petnames';
+import {
+  authorLabel,
+  defaultPetnameStorage,
+  duplicatePetnames,
+  loadPetnames,
+  savePetnames,
+  withPetname,
+} from './petnames';
 import { describeSync, mergeFeedPosts } from './sync';
 import { defaultBooleanStorage, loadTrustedOnly, saveTrustedOnly } from './settings';
 import { copyText, shortenAddress } from '../ui/share';
@@ -137,8 +141,8 @@ export function Social({
   const [dmFiles, setDmFiles] = useState<PreparedAttachment[]>([]);
   // Local DM history: the dead-drop deletes on read, so every decrypted
   // record is cached on this device and grouped into 1:1 conversations.
-  const [dms, setDms] = useState<DmRecord[]>(() => loadDmCache(localStorage));
-  const [dmRead, setDmRead] = useState<Record<string, number>>(() => loadDmRead(localStorage));
+  const [dms, setDms] = useState<DmRecord[]>(() => loadDmCache(defaultDmStore()));
+  const [dmRead, setDmRead] = useState<Record<string, number>>(() => loadDmRead(defaultDmStore()));
   const [activeDmPeer, setActiveDmPeer] = useState<string | null>(null);
 
   // Community tabs (persisted): Timeline and Private messages are the
@@ -160,13 +164,7 @@ export function Social({
 
   // Local web-of-trust: explicit verdicts live in App (shared with the
   // invite banner); petnames stay here. Both stay on this device.
-  const [petnameMap, setPetnameMap] = useState<Record<string, string>>(() => {
-    try {
-      return loadPetnames(localStorage);
-    } catch {
-      return {};
-    }
-  });
+  const [petnameMap, setPetnameMap] = useState<Record<string, string>>(() => loadPetnames(defaultPetnameStorage()));
   const [namingAuthor, setNamingAuthor] = useState<string | null>(null);
   const [namingValue, setNamingValue] = useState('');
   // Posts collapsed by the spam gate, revealed per post id for this session.
@@ -229,11 +227,7 @@ export function Social({
   const savePetname = useCallback((author: string, name: string | null) => {
     setPetnameMap((prev) => {
       const next = withPetname(prev, author, name);
-      try {
-        savePetnames(next, localStorage);
-      } catch {
-        // Private mode: petnames just don't persist.
-      }
+      savePetnames(next, defaultPetnameStorage());
       return next;
     });
     setNamingAuthor(null);
@@ -704,7 +698,7 @@ export function Social({
         setDms((prev) => {
           let next = prev;
           for (const r of fresh) next = addDmRecord(next, r);
-          if (next !== prev) saveDmCache(next, localStorage);
+          if (next !== prev) saveDmCache(next, defaultDmStore());
           return next;
         });
         append(fresh.length === 1 ? 'DM received and decrypted' : `${fresh.length} DMs received and decrypted`);
@@ -764,21 +758,19 @@ export function Social({
             refs.map((r) => r.id),
           ),
         );
+        const req = buildPostRequest({
+          author: id.pubHex,
+          day,
+          body: new TextDecoder().decode(body),
+          parent,
+          refs,
+          sig,
+          pow,
+        });
         const res = await fetchNym(service, {
           method: 'POST',
-          path: '/post',
-          headers: { 'content-type': 'application/json' },
-          body: new TextEncoder().encode(
-            JSON.stringify({
-              author: id.pubHex,
-              day,
-              body: new TextDecoder().decode(body),
-              ...(parent ? { in_reply_to: parent } : {}),
-              ...(refs.length > 0 ? { attachments: refs } : {}),
-              sig,
-              ...(pow ? { pow } : {}),
-            }),
-          ),
+          ...req,
+          headers: JSON_HEADERS,
         });
         if (res.error) append(`post rejected: ${res.error}`);
         else {
@@ -806,20 +798,18 @@ export function Social({
         const sig = signProfile(id.privHex, id.pubHex, profileName, profileBio);
         const preimage = new TextEncoder().encode(`${profileName}\0${profileBio}`);
         const pow = await powFor(service, id.pubHex, preimage);
+        const req = buildProfileRequest({
+          author: id.pubHex,
+          name: profileName,
+          bio: profileBio,
+          day: currentDay(),
+          sig,
+          pow,
+        });
         const res = await fetchNym(service, {
           method: 'POST',
-          path: '/profile',
-          headers: { 'content-type': 'application/json' },
-          body: new TextEncoder().encode(
-            JSON.stringify({
-              author: id.pubHex,
-              name: profileName,
-              bio: profileBio,
-              day: currentDay(),
-              sig,
-              ...(pow ? { pow } : {}),
-            }),
-          ),
+          ...req,
+          headers: JSON_HEADERS,
         });
         append(res.error ? `profile rejected: ${res.error}` : 'profile saved');
       });
@@ -873,7 +863,7 @@ export function Social({
         // message, the provider cannot.
         const packed = packDmInner(id.privHex, new TextEncoder().encode(dmDraft), refs);
         const sealed = sealDm(recipient, new TextEncoder().encode(packed.json));
-        const ctBytes = Uint8Array.from(atob(sealed.ciphertextB64), (c) => c.charCodeAt(0));
+        const ctBytes = b64decode(sealed.ciphertextB64);
         if (ctBytes.length > MAX_DM_CIPHERTEXT_BYTES) {
           append(
             `dm too large sealed (${ctBytes.length}B > ${MAX_DM_CIPHERTEXT_BYTES}B); shorten the text or drop attachments`,
@@ -881,19 +871,17 @@ export function Social({
           return;
         }
         const pow = await powFor(service, recipient, ctBytes);
+        const req = buildDmRequest({
+          to: recipient,
+          epubHex: sealed.epubHex,
+          nonceHex: sealed.nonceHex,
+          ciphertextB64: sealed.ciphertextB64,
+          pow,
+        });
         const res = await fetchNym(service, {
           method: 'POST',
-          path: '/dm',
-          headers: { 'content-type': 'application/json' },
-          body: new TextEncoder().encode(
-            JSON.stringify({
-              to: recipient,
-              epub: sealed.epubHex,
-              nonce: sealed.nonceHex,
-              ciphertext: sealed.ciphertextB64,
-              ...(pow ? { pow } : {}),
-            }),
-          ),
+          ...req,
+          headers: JSON_HEADERS,
         });
         if (res.error) append(`dm rejected: ${res.error}`);
         else {
@@ -911,7 +899,7 @@ export function Social({
               msgId: packed.msgId,
               attachments: refs,
             });
-            saveDmCache(next, localStorage);
+            saveDmCache(next, defaultDmStore());
             return next;
           });
           setActiveDmPeer(recipient);
@@ -1673,7 +1661,7 @@ export function Social({
             if (peer !== 'unknown') setDmTo(peer);
             setDmRead((prev) => {
               const next = markConversationRead(prev, peer);
-              if (next !== prev) saveDmRead(next, localStorage);
+              if (next !== prev) saveDmRead(next, defaultDmStore());
               return next;
             });
           };

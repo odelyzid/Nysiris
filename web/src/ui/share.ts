@@ -80,3 +80,53 @@ export function threadLabel(key: string, contacts: { name: string; address: stri
   if (key.startsWith('tag:')) return `Chat ${shortenAddress(key.slice(4))}`;
   return 'Chat';
 }
+
+/** True when a thread key addresses a saved contact rather than a live sender tag. */
+export function isContactThread(key: string): boolean {
+  return key.startsWith('contact:');
+}
+
+/** The address embedded in a `contact:` thread key ('' for non-contact keys). */
+export function contactAddressOf(key: string): string {
+  return key.startsWith('contact:') ? key.slice('contact:'.length) : '';
+}
+
+/**
+ * The inbox's thread keys, in first-seen order: one key per distinct sender
+ * tag (falling back to a per-index direct key), then one `contact:` key per
+ * saved contact so a contact always starts a thread. Never mutates inputs.
+ */
+export function buildInboxThreads(inbox: { senderTag?: string }[], contacts: { address: string }[]): string[] {
+  const keys: string[] = [];
+  inbox.forEach((m, i) => {
+    const key = threadKeyFor(m, i);
+    if (!keys.includes(key)) keys.push(key);
+  });
+  for (const c of contacts) {
+    const key = `contact:${c.address}`;
+    if (!keys.includes(key)) keys.push(key);
+  }
+  return keys;
+}
+
+/** Unread count for a thread, never negative (missing read watermark = 0). */
+export function threadUnread(total: number, read: number): number {
+  return Math.max(0, total - read);
+}
+
+/**
+ * Displayable form of a fetched provider body: JSON is pretty-printed, other
+ * text is truncated to `maxChars`. HTML bodies are NOT reformatted here —
+ * they are sandboxed and rendered as-is by the caller.
+ */
+export function formatFetchedBody(text: string, contentType: string, maxChars = 2000): string {
+  let shown = text.slice(0, maxChars);
+  if (contentType.includes('json')) {
+    try {
+      shown = JSON.stringify(JSON.parse(text), null, 2).slice(0, maxChars);
+    } catch {
+      // Not valid JSON: keep the raw text.
+    }
+  }
+  return shown;
+}

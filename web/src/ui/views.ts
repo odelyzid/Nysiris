@@ -9,6 +9,7 @@
  * everyday IA (Home / Messages / Portal / Settings); the old technical
  * panels live inside Settings → Advanced and keep their own persistence.
  */
+import { defaultStorage } from '../lib/storage.ts';
 
 export type ViewId = 'home' | 'messages' | 'portal' | 'service' | 'settings';
 
@@ -93,10 +94,5 @@ export function saveOnboarded(done: boolean, storage?: ViewStorage | null): void
 
 /** `localStorage` when it exists, otherwise null (SSR/tests/workers). */
 export function defaultViewStorage(): ViewStorage | null {
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    return localStorage;
-  } catch {
-    return null;
-  }
+  return defaultStorage();
 }

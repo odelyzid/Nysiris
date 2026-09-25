@@ -11,6 +11,8 @@
  * and the technical log.
  */
 
+import { defaultStorage } from '../lib/storage.ts';
+
 export type SocialTab = 'timeline' | 'messages' | 'about';
 
 export const SOCIAL_TAB_META: Record<SocialTab, { title: string; blurb: string }> = {
@@ -53,10 +55,5 @@ export function saveSocialTab(tab: SocialTab, storage?: SocialTabStorage | null)
 
 /** `localStorage` when it exists, otherwise null (SSR/tests/workers). */
 export function defaultSocialTabStorage(): SocialTabStorage | null {
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    return localStorage;
-  } catch {
-    return null;
-  }
+  return defaultStorage();
 }

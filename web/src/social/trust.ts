@@ -10,6 +10,8 @@
  *
  * Pure logic, tested with `node --test web/test`.
  */
+import { normalizeAuthor } from '../lib/address.ts';
+import { defaultStorage } from '../lib/storage.ts';
 
 export type Standing = 'trusted' | 'neutral' | 'watch' | 'blocked' | 'unknown';
 
@@ -55,12 +57,6 @@ export interface TrustStorage {
 
 const STORAGE_KEY = 'fly.social.trust';
 
-function normalizeAuthor(author: unknown): string | null {
-  if (typeof author !== 'string') return null;
-  const key = author.trim().toLowerCase();
-  return /^[0-9a-f]{64}$/.test(key) ? key : null;
-}
-
 /** Explicit verdicts by author pubkey hex. Unknown/malformed entries dropped. */
 export function loadTrust(storage?: TrustStorage | null): Record<string, Verdict> {
   try {
@@ -85,6 +81,11 @@ export function saveTrust(verdicts: Record<string, Verdict>, storage?: TrustStor
   } catch {
     // Private mode: verdicts just don't persist.
   }
+}
+
+/** `localStorage` when it exists, otherwise null (SSR/tests/workers). */
+export function defaultTrustStorage(): TrustStorage | null {
+  return defaultStorage();
 }
 
 /** Set (or with `null`, clear) one author's explicit verdict. Never mutates. */

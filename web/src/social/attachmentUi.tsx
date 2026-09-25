@@ -7,104 +7,19 @@
  * - `AttachmentList`: renders refs under a post/message body. Blobs are
  *   fetched once per id (module cache), decrypted locally, and shown as
  *   thumbnails (blurred until clicked) or download chips.
- * - `uploadBlobs`: POSTs prepared blobs in 44 KiB chunks to
- *   `/blob/part` (request envelopes are capped at 64 KiB), each part with
- *   PoW bound to `id || index || bytes`, mirroring the provider.
+ *
+ * Rendering + effects only. Upload protocol lives in `./blobUpload.ts` /
+ * `./blobUploadIo.ts`, attachment crypto in `./attachmentCrypto.ts`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { hexToBytes } from '@noble/hashes/utils.js';
-import { b64decode, b64encode } from '../lib/bytes';
-import { fetchNym, fetchNymParallel, type FetchNymRequest } from '../mixnet/fetchNym';
+import { b64decode } from '../lib/bytes';
+import { fetchNym } from '../mixnet/fetchNym';
 import { MAX_ATTACHMENTS_PER_MESSAGE, parseAttachmentRefs, validateFile, type AttachmentRef } from './attachments.mjs';
 import { decryptAttachment, encryptAttachment, type AllowedMime, type PreparedAttachment } from './attachmentCrypto';
+import { formatBytes, isImageMime } from './blobUpload';
 
-export type { AttachmentRef, PreparedAttachment };
-export { parseAttachmentRefs };
-
-/** Upload chunk size: request envelopes are capped at 64 KiB, so blobs
- * travel as one envelope per chunk. Mirrors `attach::MAX_BLOB_PART_BYTES`. */
-export const BLOB_PART_BYTES = 45_056;
-export const BLOB_MAX_PARTS = 8;
-
-export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
-}
-
-export function isImageMime(mime: string): boolean {
-  return mime === 'image/jpeg' || mime === 'image/png' || mime === 'image/webp' || mime === 'image/gif';
-}
-
-/* ------------------------------------------------------------ uploading */
-
-/**
- * Store prepared blobs on the provider, one envelope per chunk (request
- * bodies are capped at 64 KiB). Parts upload in parallel (concurrency 3)
- * and are matched by echoed correlation tags; each part carries PoW bound
- * to `id || part || chunk`, mirroring the provider. Blobs are idempotent
- * (content-addressed), so re-uploads are harmless. Returns false when any
- * part fails — the caller must abort the send, never post a dangling ref.
- */
-export async function uploadBlobs(
-  service: string,
-  prepared: PreparedAttachment[],
-  powFor: (serviceAddr: string, keyHex: string, payload: Uint8Array) => Promise<unknown>,
-  onNote: (line: string) => void,
-): Promise<boolean> {
-  // Proofs first (CPU-local, fast): every part needs one, and proving up
-  // front keeps the network phase purely parallel.
-  const jobs: { path: string; body: Uint8Array }[] = [];
-  for (const p of prepared) {
-    const parts = Math.ceil(p.blob.length / BLOB_PART_BYTES);
-    if (parts > BLOB_MAX_PARTS) {
-      onNote('File too large (max 256 KB)');
-      return false;
-    }
-    const idBytes = hexToBytes(p.id);
-    for (let i = 0; i < parts; i += 1) {
-      const chunk = p.blob.slice(i * BLOB_PART_BYTES, (i + 1) * BLOB_PART_BYTES);
-      const preimage = new Uint8Array(idBytes.length + 4 + chunk.length);
-      preimage.set(idBytes, 0);
-      new DataView(preimage.buffer).setUint32(idBytes.length, i);
-      preimage.set(chunk, idBytes.length + 4);
-      try {
-        const pow = await powFor(service, p.id, preimage);
-        jobs.push({
-          path: `/blob/part?id=${p.id}&part=${i}&of=${parts}`,
-          body: new TextEncoder().encode(JSON.stringify({ bytes_b64: b64encode(chunk), ...(pow ? { pow } : {}) })),
-        });
-      } catch (err) {
-        onNote(`attachment proof failed: ${String(err)}`);
-        return false;
-      }
-    }
-  }
-  if (jobs.length === 0) return true;
-  let responses;
-  try {
-    responses = await fetchNymParallel(
-      service,
-      jobs.map((j) => ({
-        method: 'POST',
-        path: j.path,
-        headers: { 'content-type': 'application/json' },
-        body: j.body,
-      })),
-      { concurrency: 3 },
-    );
-  } catch (err) {
-    onNote(`attachment upload failed: ${String(err)}`);
-    return false;
-  }
-  for (const res of responses) {
-    if (res.error) {
-      onNote(`attachment upload rejected: ${res.error}`);
-      return false;
-    }
-  }
-  return true;
-}
+export type { AttachmentRef, PreparedAttachment } from './attachmentCrypto';
+export { parseAttachmentRefs } from './attachments.mjs';
 
 /* -------------------------------------------------------------- picker */
 

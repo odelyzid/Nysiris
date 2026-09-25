@@ -2,7 +2,7 @@
 // Verifies contacts persistence logic without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadContacts, saveContacts } from '../src/ui/contacts.ts';
+import { addContact, defaultContactStorage, loadContacts, saveContacts } from '../src/ui/contacts.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));
@@ -30,4 +30,27 @@ test('drops malformed entries', () => {
   });
   assert.deepEqual(loadContacts(storage), [{ name: 'ok', address: 'A' }]);
   assert.deepEqual(loadContacts(fakeStorage({ 'fly.contacts': 'nope' })), []);
+});
+
+test('addContact appends, dedupes by name, and always copies', () => {
+  const base = [{ name: 'ada', address: 'A.B@C', addedAt: 1 }];
+  const added = addContact(base, { name: 'bob', address: 'X.Y@Z', note: 'hi' });
+  assert.equal(added.length, 2);
+  assert.equal(added[1].name, 'bob');
+  assert.equal(added[1].addedAt >= 0, true);
+  assert.equal(added[0], base[0]); // existing entry kept by reference
+  assert.notEqual(added, base); // but the array itself is fresh
+
+  // Duplicate name (case-insensitive) is a no-op returning a fresh copy.
+  const dup = addContact(base, { name: 'ADA', address: 'other@x' });
+  assert.equal(dup.length, 1);
+  assert.notEqual(dup, base);
+  assert.deepEqual(dup, base);
+
+  // Empty names are rejected outright.
+  assert.equal(addContact(base, { name: '   ', address: 'a@b' }).length, 1);
+});
+
+test('defaultContactStorage is null without a DOM', () => {
+  assert.equal(defaultContactStorage(), null);
 });

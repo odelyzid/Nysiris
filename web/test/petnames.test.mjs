@@ -5,8 +5,10 @@ import assert from 'node:assert/strict';
 import {
   authorLabel,
   cleanPetname,
+  defaultPetnameStorage,
   duplicatePetnames,
   loadPetnames,
+  normalizeAuthor,
   savePetnames,
   withPetname,
 } from '../src/social/petnames.ts';
@@ -51,6 +53,19 @@ test('bad keys and names never stick', () => {
   assert.deepEqual(loadPetnames(fakeStorage({ 'fly.social.petnames': JSON.stringify({ [HEX]: '', nope: 'x' }) })), {});
   assert.deepEqual(loadPetnames(fakeStorage({ 'fly.social.petnames': 'garbage' })), {});
   assert.deepEqual(loadPetnames(null), {});
+});
+
+test('normalizeAuthor canonicalizes or rejects', () => {
+  assert.equal(normalizeAuthor(HEX), HEX);
+  assert.equal(normalizeAuthor(HEX.toUpperCase()), HEX);
+  assert.equal(normalizeAuthor(`  ${HEX}  `), HEX);
+  assert.equal(normalizeAuthor('not-hex'), null);
+  assert.equal(normalizeAuthor(null), null);
+  assert.equal(normalizeAuthor(undefined), null);
+});
+
+test('defaultPetnameStorage is null without a DOM', () => {
+  assert.equal(defaultPetnameStorage(), null);
 });
 
 test('duplicate petnames group authors for disambiguation', () => {

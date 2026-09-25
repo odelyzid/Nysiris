@@ -14,6 +14,8 @@
  * @property {string} key file key, 32 bytes hex (cleartext in posts, sealed in DMs)
  */
 
+import { hexToBytes } from '../lib/bytes.ts';
+
 export const MAX_ATTACHMENT_BYTES = 262_144;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 3;
 export const MAX_FILENAME_CHARS = 80;
@@ -122,19 +124,6 @@ export function parseAttachmentRefs(value) {
 }
 
 /**
- * @param {string} hex
- * @returns {Uint8Array}
- */
-function hexToBytesLocal(hex) {
-  const clean = hex.trim().toLowerCase();
-  const out = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < out.length; i += 1) {
-    out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
-}
-
-/**
  * Canonical bytes of an attachment list for signature binding. Empty when
  * there are none, so attachment-free messages sign byte-identically to the
  * pre-attachment layout. Mirror of `attach::canonical_attachments`.
@@ -151,13 +140,13 @@ export function canonicalAttachmentBytes(atts) {
     const size = new Uint8Array(8);
     new DataView(size.buffer).setBigUint64(0, BigInt(a.size));
     parts.push(
-      hexToBytesLocal(a.id),
+      hexToBytes(a.id),
       new Uint8Array([mime.length]),
       mime,
       new Uint8Array([name.length]),
       name,
       size,
-      hexToBytesLocal(a.key),
+      hexToBytes(a.key),
     );
   }
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));

@@ -6,12 +6,12 @@ import { fetchNym } from './mixnet/fetchNym';
 import { parseInviteLink } from './mixnet/hiddenService.mjs';
 import { Social } from './social/Social';
 import { verifyInvite } from './social/identity';
-import { loadTrust, saveTrust, withVerdict, type Verdict } from './social/trust';
+import { loadTrust, saveTrust, withVerdict, defaultTrustStorage, type Verdict } from './social/trust';
 import { Panel } from './ui/Panel';
 import { Toolbar } from './ui/Toolbar';
 import { ContactsPanel, type PendingInvite } from './ui/ContactsPanel';
 import { PortalSync } from './ui/PortalSync';
-import { defaultContactStorage, loadContacts, saveContacts, type Contact } from './ui/contacts';
+import { addContact, defaultContactStorage, loadContacts, saveContacts, type Contact } from './ui/contacts';
 import { defaultStorage, loadOpenPanels, saveOpenPanels, type PanelId } from './ui/panels';
 import { describeStatus } from './mixnet/status';
 import { AppNav } from './ui/AppNav';
@@ -31,7 +31,16 @@ import {
   type ViewId,
 } from './ui/views';
 import { friendlyError } from './ui/friendlyErrors';
-import { shortenAddress, threadKeyFor, threadLabel } from './ui/share';
+import {
+  shortenAddress,
+  threadKeyFor,
+  threadLabel,
+  buildInboxThreads,
+  threadUnread,
+  isContactThread,
+  contactAddressOf,
+  formatFetchedBody,
+} from './ui/share';
 import { ContextPanel, Roster, TopBar } from './ui/DesktopShell';
 import {
   loadActiveThread,
@@ -91,22 +100,12 @@ export function App() {
   // Local web-of-trust: explicit Trust/Block verdicts per author. Owned here
   // (not in Social) so both the timeline and the invite banner can read and
   // write them. Everything stays on this device.
-  const [trustMap, setTrustMap] = useState<Record<string, Verdict>>(() => {
-    try {
-      return loadTrust(localStorage);
-    } catch {
-      return {};
-    }
-  });
+  const [trustMap, setTrustMap] = useState<Record<string, Verdict>>(() => loadTrust(defaultTrustStorage()));
 
   const onVerdict = useCallback((author: string, verdict: Verdict | null) => {
     setTrustMap((prev) => {
       const next = withVerdict(prev, author, verdict);
-      try {
-        saveTrust(next, localStorage);
-      } catch {
-        // Private mode: verdicts just don't persist.
-      }
+      saveTrust(next, defaultTrustStorage());
       return next;
     });
   }, []);
@@ -181,8 +180,8 @@ export function App() {
   const onSelectThread = useCallback(
     (key: string) => {
       setActiveThread(key);
-      if (key.startsWith('contact:')) {
-        setRecipient(key.slice('contact:'.length));
+      if (isContactThread(key)) {
+        setRecipient(contactAddressOf(key));
       }
       onSelectView('messages');
     },
@@ -347,15 +346,7 @@ export function App() {
           setPageHtml(text);
           setHsResult(`status=${res.status} body=${res.body.length}B (rendered below)`);
         } else {
-          let shown = text.slice(0, 2000);
-          if (contentType.includes('json')) {
-            try {
-              shown = JSON.stringify(JSON.parse(text), null, 2).slice(0, 2000);
-            } catch {
-              // fall back to raw text
-            }
-          }
-          setHsResult(`status=${res.status}\n${shown}`);
+          setHsResult(`status=${res.status}\n${formatFetchedBody(text, contentType)}`);
         }
         append(`nym:// done: status=${res.status} body=${res.body.length}B`);
       } catch (err) {
@@ -422,21 +413,16 @@ export function App() {
       return;
     }
     setContacts((prev) => {
-      const name = petname.trim().toLowerCase();
-      if (prev.some((c) => c.name === name)) {
-        append(`contact ${name} already saved`);
+      const next = addContact(prev, {
+        name: petname,
+        address: pendingInvite.address,
+        inviter: pendingInvite.inviter,
+        note: pendingInvite.note,
+      });
+      if (next.length === prev.length) {
+        append(`contact ${petname.trim().toLowerCase()} already saved`);
         return prev;
       }
-      const next = [
-        ...prev,
-        {
-          name,
-          address: pendingInvite.address,
-          inviter: pendingInvite.inviter,
-          note: pendingInvite.note,
-          addedAt: Date.now(),
-        },
-      ];
       saveContacts(next, defaultContactStorage());
       return next;
     });
@@ -468,22 +454,11 @@ export function App() {
   const { label, tone } = describeStatus(status);
 
   // Messages: group the inbox into threads by sender; contacts start new ones.
-  const threads = useMemo(() => {
-    const keys: string[] = [];
-    inbox.forEach((m, i) => {
-      const key = threadKeyFor(m, i);
-      if (!keys.includes(key)) keys.push(key);
-    });
-    for (const c of contacts) {
-      const key = `contact:${c.address}`;
-      if (!keys.includes(key)) keys.push(key);
-    }
-    return keys;
-  }, [inbox, contacts]);
+  const threads = useMemo(() => buildInboxThreads(inbox, contacts), [inbox, contacts]);
 
   const activeMessages = useMemo(() => {
     if (!activeThread) return [];
-    if (activeThread.startsWith('contact:')) return [];
+    if (isContactThread(activeThread)) return [];
     return inbox.filter((m, i) => threadKeyFor(m, i) === activeThread);
   }, [inbox, activeThread]);
 
@@ -523,7 +498,7 @@ export function App() {
           key,
           label: threadLabel(key, contacts),
           active: key === activeThread,
-          unread: Math.max(0, total - (readCounts[key] ?? 0)),
+          unread: threadUnread(total, readCounts[key] ?? 0),
         };
       }),
     [threads, threadCounts, contacts, activeThread, readCounts],
@@ -531,7 +506,7 @@ export function App() {
 
   const activeThreadAddress = useMemo(() => {
     if (!activeThread) return null;
-    if (activeThread.startsWith('contact:')) return activeThread.slice('contact:'.length);
+    if (isContactThread(activeThread)) return contactAddressOf(activeThread);
     return null;
   }, [activeThread]);
 
@@ -744,8 +719,8 @@ export function App() {
                               aria-current={activeThread === key}
                               onClick={() => {
                                 setActiveThread(key);
-                                if (key.startsWith('contact:')) {
-                                  setRecipient(key.slice('contact:'.length));
+                                if (isContactThread(key)) {
+                                  setRecipient(contactAddressOf(key));
                                 }
                               }}
                             >

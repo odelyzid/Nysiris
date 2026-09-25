@@ -3,6 +3,8 @@
  * here ever touches the network, by construction.
  */
 
+import { defaultStorage } from '../lib/storage.ts';
+
 export interface Contact {
   name: string;
   address: string;
@@ -44,11 +46,18 @@ export function saveContacts(contacts: Contact[], storage?: ContactStorage | nul
   }
 }
 
+/**
+ * Add a contact to the list, deduped by normalized name. Always returns a
+ * fresh array (the caller may compare lengths to detect a no-op duplicate),
+ * never the input — callers must not rely on reference equality.
+ */
+export function addContact(contacts: Contact[], contact: Omit<Contact, 'addedAt'> & { addedAt?: number }): Contact[] {
+  const name = contact.name.trim().toLowerCase();
+  if (!name) return [...contacts];
+  if (contacts.some((c) => c.name.toLowerCase() === name)) return [...contacts];
+  return [...contacts, { ...contact, name, addedAt: contact.addedAt ?? Date.now() }];
+}
+
 export function defaultContactStorage(): ContactStorage | null {
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    return localStorage;
-  } catch {
-    return null;
-  }
+  return defaultStorage();
 }
