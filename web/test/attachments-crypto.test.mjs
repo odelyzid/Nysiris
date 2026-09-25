@@ -1,6 +1,6 @@
 // Run with: node --test web/test
-// Round-trip of the attachment envelope encryption (web/src/social/
-// attachments.ts). Skips cleanly when the noble packages are not installed
+// Round-trip of the attachment envelope encryption (web/src/domain/
+// attachmentCrypto.ts). Skips cleanly when the noble packages are not installed
 // (offline `./build.sh check`).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 let attach = null;
 let noble = null;
 try {
-  attach = await import('../src/social/attachmentCrypto.ts');
+  attach = await import('../src/domain/attachmentCrypto.ts');
   const utils = await import('@noble/hashes/utils.js');
   noble = { ...utils };
 } catch {
@@ -64,7 +64,7 @@ test('oversize plaintext is refused before encryption', async (t) => {
 
 test('TypeScript canonical bytes match the byte layout', async (t) => {
   if (!attach) return t.skip('noble not installed');
-  const { canonicalAttachmentBytes } = await import('../src/social/attachments.mjs');
+  const { canonicalAttachmentBytes } = await import('../src/domain/attachments.mjs');
   const ref = {
     id: 'ab'.repeat(32),
     name: 'a.png',

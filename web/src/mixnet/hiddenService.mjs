@@ -246,7 +246,7 @@ export function decodeInviteCompact(compact) {
   }
   if (obj.note.length > 140) throw new Error('invite note too long');
   // Vouches are optional; when present they must be a short list of pubkeys.
-  // Mirror of MAX_INVITE_VOUCHES in `social/identity.ts`.
+  // Mirror of MAX_INVITE_VOUCHES in `domain/identity.ts`.
   if (obj.vouches !== undefined) {
     if (
       !Array.isArray(obj.vouches) ||

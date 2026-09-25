@@ -1,9 +1,9 @@
 // Run with: node --test web/test
-// Verifies the keystore contract (web/src/social/keystore.mjs): detection,
+// Verifies the keystore contract (web/src/adapters/driven/keystore.mjs): detection,
 // namespacing, and graceful degradation without a Capacitor runtime.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isKeystoreAvailable, keystoreGet, keystoreRemove, keystoreSet } from '../src/social/keystore.mjs';
+import { isKeystoreAvailable, keystoreGet, keystoreRemove, keystoreSet } from '../src/adapters/driven/keystore.mjs';
 
 function setCapacitor(plugin) {
   if (plugin === undefined) {

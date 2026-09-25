@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 let dm = null;
 let ed25519 = null;
 try {
-  dm = await import('../src/social/dm.ts');
+  dm = await import('../src/application/dm.ts');
   ({ ed25519 } = await import('@noble/curves/ed25519.js'));
 } catch {
   dm = null;

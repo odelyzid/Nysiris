@@ -12,7 +12,7 @@ import {
   saveActiveView,
   saveAdvancedVisible,
   saveOnboarded,
-} from '../src/ui/views.ts';
+} from '../src/application/views.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));

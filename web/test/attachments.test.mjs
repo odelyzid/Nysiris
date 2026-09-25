@@ -1,6 +1,6 @@
 // Run with: node --test web/test
 // Validates attachment validation, filename sanitizing, and canonical
-// encoding (web/src/social/attachments.mjs). Dependency-free: runs offline.
+// encoding (web/src/domain/attachments.mjs). Dependency-free: runs offline.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -13,7 +13,7 @@ import {
   parseAttachmentRefs,
   sanitizeFilename,
   validateFile,
-} from '../src/social/attachments.mjs';
+} from '../src/domain/attachments.mjs';
 
 test('MIME whitelist admits exactly the seven allowed types', () => {
   assert.deepEqual(

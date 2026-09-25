@@ -12,7 +12,7 @@ import {
   saveActiveThread,
   saveContextOpen,
   saveRecentPortals,
-} from '../src/ui/shell.ts';
+} from '../src/application/shell.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));

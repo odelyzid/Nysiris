@@ -2,7 +2,7 @@
 // Verifies partial-replica merge and sync status text without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_KEPT_POSTS, describeSync, mergeFeedPosts } from '../src/social/sync.ts';
+import { MAX_KEPT_POSTS, describeSync, mergeFeedPosts } from '../src/application/sync.ts';
 
 test('merge dedupes by seq and keeps ascending order', () => {
   const prev = [{ seq: 1 }, { seq: 3 }];

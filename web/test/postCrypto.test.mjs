@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 let identity = null;
 try {
-  identity = await import('../src/social/identity.ts');
+  identity = await import('../src/application/identityStore.ts');
 } catch {
   identity = null;
 }

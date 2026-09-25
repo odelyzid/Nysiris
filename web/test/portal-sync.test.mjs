@@ -26,7 +26,7 @@ import {
   savePortalReplica,
   trimReplica,
   verifyPortalObjectId,
-} from '../src/social/portalSync.ts';
+} from '../src/application/portalReplicaStore.ts';
 import { bytesToHex, hexToBytes, u64be } from '../src/lib/bytes.ts';
 
 // Golden vectors (byte-exact strings from tests/golden.rs — do not rename).
@@ -77,7 +77,7 @@ test('golden log reply parses byte-exact', () => {
 
 test('golden SIG0 verifies over entry bytes (needs node_modules)', { skip: !noble }, async () => {
   const { ed25519 } = await import('@noble/curves/ed25519.js');
-  const { verifyLogEntrySig, verifyObjectSig } = await import('../src/social/portalVerify.ts');
+  const { verifyLogEntrySig, verifyObjectSig } = await import('../src/domain/portalVerify.ts');
   const msg = portalEntryBytes(ALICE, 0, OBJ);
   assert.equal(ed25519.verify(hexToBytes(SIG0), msg, hexToBytes(ALICE)), true);
   // Wrong seq breaks the message coverage.

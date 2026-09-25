@@ -11,7 +11,7 @@ import {
   normalizeAuthor,
   savePetnames,
   withPetname,
-} from '../src/social/petnames.ts';
+} from '../src/application/petnameStore.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));

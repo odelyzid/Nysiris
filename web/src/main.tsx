@@ -1,8 +1,8 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { App } from './App';
+import { App } from './adapters/driving/shell/App';
 import { installLeakGuard } from './mixnet/leakGuard';
-import './ui/theme.css';
+import './adapters/driving/shared/theme.css';
 
 // Hosts that must never be reached directly. In a real app these are the
 // services you route through the mixnet. Fail closed in development only.

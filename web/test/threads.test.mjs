@@ -11,7 +11,7 @@ import {
   missingAncestors,
   noteGapAttempt,
   parseThreadHash,
-} from '../src/social/threads.ts';
+} from '../src/domain/threads.ts';
 
 const node = (id, inReplyTo, seq) => ({ id, inReplyTo, seq });
 const byId = (list) => new Map(list.map((p) => [p.id, p]));

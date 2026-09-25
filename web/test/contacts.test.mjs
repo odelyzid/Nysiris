@@ -2,7 +2,7 @@
 // Verifies contacts persistence logic without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addContact, defaultContactStorage, loadContacts, saveContacts } from '../src/ui/contacts.ts';
+import { addContact, defaultContactStorage, loadContacts, saveContacts } from '../src/application/contacts.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));

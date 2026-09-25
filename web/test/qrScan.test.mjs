@@ -4,7 +4,7 @@
 // message instead of throwing platform errors.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isQrScanSupported, scanQrImage } from '../src/ui/qrScan.ts';
+import { isQrScanSupported, scanQrImage } from '../src/shared/qrScan.ts';
 
 test('scan support is honestly reported', () => {
   assert.equal(isQrScanSupported(), false);

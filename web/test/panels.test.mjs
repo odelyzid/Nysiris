@@ -2,7 +2,7 @@
 // Verifies panel open-state persistence without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PANEL_META, PANEL_ORDER, defaultStorage, loadOpenPanels, saveOpenPanels } from '../src/ui/panels.ts';
+import { PANEL_META, PANEL_ORDER, defaultStorage, loadOpenPanels, saveOpenPanels } from '../src/application/panels.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));

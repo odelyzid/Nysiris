@@ -8,7 +8,7 @@ import {
   defaultSocialTabStorage,
   loadSocialTab,
   saveSocialTab,
-} from '../src/social/tabs.ts';
+} from '../src/application/tabs.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));

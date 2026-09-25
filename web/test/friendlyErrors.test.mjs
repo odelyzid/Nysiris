@@ -2,7 +2,7 @@
 // Verifies human-readable error mapping without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { friendlyError, statusHeadline } from '../src/ui/friendlyErrors.ts';
+import { friendlyError, statusHeadline } from '../src/shared/friendlyErrors.ts';
 
 test('torn-down tunnel explains the reload', () => {
   const out = friendlyError(new Error('mixnet tunnel was torn down; reload the page'));

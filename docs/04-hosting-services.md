@@ -47,8 +47,8 @@ Portal) that keeps this section in sync with the UI:
 
 The provider address always comes from the provider's own startup output /
 `nym-address.txt` — the browser never invents one. See
-[`web/src/social/runPortal.ts`](../web/src/social/runPortal.ts) (pure logic)
-and [`web/src/ui/RunPortal.tsx`](../web/src/ui/RunPortal.tsx) (the tab).
+[`web/src/application/runPortal.ts`](../web/src/application/runPortal.ts) (pure logic)
+and [`web/src/adapters/driving/portal/RunPortal.tsx`](../web/src/adapters/driving/portal/RunPortal.tsx) (the tab).
 
 ---
 

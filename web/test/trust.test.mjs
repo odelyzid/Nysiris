@@ -12,7 +12,7 @@ import {
   shouldCollapse,
   standingTitle,
   withVerdict,
-} from '../src/social/trust.ts';
+} from '../src/application/trustStore.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));

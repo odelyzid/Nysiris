@@ -14,7 +14,7 @@ import {
   threadLabel,
   threadUnread,
   toPrivateLink,
-} from '../src/ui/share.ts';
+} from '../src/shared/share.ts';
 
 test('shortens long addresses, passes short ones through', () => {
   assert.equal(shortenAddress('ABCDEFGHIJ0123456789'), 'ABCDEF…6789');

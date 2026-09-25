@@ -10,7 +10,7 @@ import {
   blobPartPreimage,
   formatBytes,
   isImageMime,
-} from '../src/social/blobUpload.ts';
+} from '../src/domain/blobUpload.ts';
 
 const ID = 'aa'.repeat(32);
 

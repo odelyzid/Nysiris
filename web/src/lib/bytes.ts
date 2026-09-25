@@ -1,5 +1,5 @@
 /**
- * Dependency-free byte helpers shared across `mixnet/` and `social/`.
+ * Dependency-free byte helpers shared across the web client.
  * Pure TS (no noble, no browser globals beyond `btoa`/`atob`), so Node
  * type-stripping tests cover it directly.
  */

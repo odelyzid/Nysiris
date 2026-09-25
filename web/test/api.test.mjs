@@ -2,7 +2,7 @@
 // Pure wire builders for the nysiris-social provider.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDmRequest, buildPostRequest, buildProfileRequest, b64decode } from '../src/social/api.ts';
+import { buildDmRequest, buildPostRequest, buildProfileRequest, b64decode } from '../src/domain/api.ts';
 
 const A = 'ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c';
 const SIG = 'ff'.repeat(64);

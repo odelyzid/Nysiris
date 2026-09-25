@@ -17,7 +17,7 @@ import {
   quickStartCommand,
   renderConfigSnippet,
   savePortalRun,
-} from '../src/social/runPortal.ts';
+} from '../src/application/runPortal.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));

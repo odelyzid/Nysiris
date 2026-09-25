@@ -13,7 +13,7 @@ import {
   markConversationRead,
   saveDmCache,
   saveDmRead,
-} from '../src/social/conversations.ts';
+} from '../src/application/conversations.ts';
 
 function fakeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));
