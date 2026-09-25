@@ -18,7 +18,7 @@ Top-level navigation (always visible, mobile-friendly):
 **Advanced (hidden by default)** keeps the exact previous panels, untouched
 behaviour: pure mixnet messaging details, manual private-site fetch, topology /
 exit details, raw logs, key import/export, cover-traffic toggles. Nothing was
-removed — it moved one tap away. The old `PanelId` registry (`web/src/ui/panels.ts`)
+removed — it moved one tap away. The old `PanelId` registry (`web/src/application/panels.ts`)
 is preserved so existing tests and persisted state keep working.
 
 View switching is toolbar-controlled; background work (tunnel, inbox, feed
@@ -50,19 +50,19 @@ One "Open a private link" bar (same `parseInviteLink` → `fetchNym` → bind
 Successful navigation renders the private site and binds the community to it.
 Invite links show a friendly "Someone invited you" card with petname save.
 
-The community (`web/src/social/`) has three persisted tabs
-(`web/src/social/tabs.ts`, `fly.social.tab`):
+The community (`web/src/adapters/driving/social/`) has three persisted tabs
+(`web/src/application/tabs.ts`, `fly.social.tab`):
 
 - **Timeline** — composer + global chronological timeline
   (`GET /feed?since=<seq>&limit=<n>`, `POST /post`, max 1400 bytes).
   Opening a portal auto-pulls recent posts you don't have yet
-  (`web/src/social/sync.ts`: dedupe by `seq`, cap 200), even before an
+  (`web/src/application/sync.ts`: dedupe by `seq`, cap 200), even before an
   identity exists — reading needs no key. A sync-status line always shows
   freshness ("Up to date — checked just now" / "Syncing…" / error + Retry),
   and the empty state is a friendly "Nothing here yet" card with a
   "Be the first to post" call to action. Top-level posts show a reply-count
   pill; opening one switches to the dedicated thread view
-  (`web/src/social/ThreadView.tsx`: root on top, transitive replies
+  (`web/src/adapters/driving/social/ThreadView.tsx`: root on top, transitive replies
   chronological, missing ancestors auto-pulled via `GET /post/<id>`).
   Replying attaches `in_reply_to` with a parent preview chip in the composer.
   Threading model: `docs/09-social.md` §9.5a — the service stores + verifies
@@ -75,10 +75,10 @@ The community (`web/src/social/`) has three persisted tabs
 - **About** — profile editor (`GET /profile/<pubkey>`, `POST /profile`),
   the service description, and the technical log (logs hidden by default).
 
-Trust is two local layers, both in `web/src/social/trust.ts` (colours in one
+Trust is two local layers, both in `web/src/domain/trust.ts` (colours in one
 `STANDING_META` map, shown with a visible legend): first-hand observations
 from signature checks, plus your explicit per-author Trust/Block verdict,
-which always wins. Petnames (`web/src/social/petnames.ts`, "Name" button per
+which always wins. Petnames (`web/src/domain/petnames.ts`, "Name" button per
 post) beat profile names beat short hex for display. Everything — scores,
 verdicts, petnames — stays in `localStorage` and never leaves the device.
 
@@ -116,7 +116,7 @@ Persistent, discreet pill in the nav:
 Clicking the pill opens a popover with one friendly sentence, what to do next
 ("Try again"), and a collapsed "Technical details" + "Copy error" for reports.
 Raw SDK errors never reach the main view; `friendlyError()` in
-`web/src/ui/friendlyErrors.ts` maps them.
+`web/src/shared/friendlyErrors.ts` maps them.
 
 ## 4. Language map (main UI → advanced)
 
@@ -134,7 +134,7 @@ Advanced. Petnames are the primary label everywhere.
 
 ## 5. Sharing (petname / copy-link / QR)
 
-`ShareCard` (`web/src/ui/ShareCard.tsx`) shows:
+`ShareCard` (`web/src/adapters/driving/shared/ShareCard.tsx`) shows:
 
 1. Short label (`shop • ABC123…XYZ9`) — petname first.
 2. **Copy link** button (clipboard + fallback select).
@@ -145,7 +145,7 @@ Advanced. Petnames are the primary label everywhere.
 
 ## 6. Visual design
 
-- Calm light theme (`web/src/ui/theme.css`): system-ui, generous spacing,
+- Calm light theme (`web/src/adapters/driving/shared/theme.css`): system-ui, generous spacing,
   44px+ touch targets, AA contrast, single-column ≤ 860px, two-column chat on
   wider screens. Respects `prefers-color-scheme` and `prefers-reduced-motion`.
 - No new network or crypto code: all views reuse `ensureTunnel`,

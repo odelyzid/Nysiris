@@ -95,7 +95,7 @@ application, the service is data**:
 * navigating to a service **binds the Social client to its address**, so the
   timeline, composer, profile editor, and DMs below operate on what you just
   fetched — no address paste needed twice;
-* keys never leave the browser: signing happens in `web/src/social/`, the
+* keys never leave the browser: signing happens in `web/src/domain/`, the
   service only ever sees signatures it verifies.
 
 Constraint: requests are **one at a time per client** — the bridge answers each
@@ -143,7 +143,7 @@ Bulk transfer remains the weakest workload for anonymity (`05-security.md`
 | `crates/nym-hidden-service/` | `uri`, `envelope`, `service` (+ `dispatch`), `petnames`, `chunk`; 7 tests |
 | `web/src/mixnet/hiddenService.mjs` | pure envelope/address/petname helpers; 6 tests |
 | `web/src/mixnet/fetchNym.ts` | `fetchNym()`, base64 bytes helpers |
-| `web/src/App.tsx` | omnibox, toolbar, portal main view (page iframe + Social), panel composition |
-| `web/src/ui/panels.ts` | panel registry + persisted open-state (5 tests) |
-| `web/src/ui/Toolbar.tsx` | window menu + always-visible connection pill |
-| `web/src/ui/Panel.tsx` | panel window chrome (title bar + close; closing hides, never stops work) |
+| `web/src/adapters/driving/shell/App.tsx` | omnibox, toolbar, portal main view (page iframe + Social), panel composition |
+| `web/src/application/panels.ts` | panel registry + persisted open-state (5 tests) |
+| `web/src/adapters/driving/shell/Toolbar.tsx` | window menu + always-visible connection pill |
+| `web/src/adapters/driving/shared/Panel.tsx` | panel window chrome (title bar + close; closing hides, never stops work) |

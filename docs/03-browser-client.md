@@ -362,19 +362,19 @@ redirect allow-listed hosts into a mixnet-aware page/worker.
 
 | File | Responsibility |
 |---|---|
-| `web/src/App.tsx` | View switching (Home / Messages / Portal / Settings), URI-bar binding, panel composition |
-| `web/src/ui/views.ts` | Primary-view registry + persisted active view / Advanced visibility / onboarding flag |
-| `web/src/ui/AppNav.tsx` | Primary navigation + discreet protection pill |
-| `web/src/ui/StatusPill.tsx` | Protected / Connecting… / Not protected / Something-went-wrong pill with friendly details |
-| `web/src/ui/Onboarding.tsx` | Welcome → Connect privately → success first-run flow |
-| `web/src/ui/FriendlyError.tsx` | Human-readable error banner (Try again + Copy error + collapsed technical details) |
-| `web/src/ui/ShareCard.tsx` | Petname-first label, Copy link, local QR, Show-technical-details toggle |
-| `web/src/ui/share.ts` | Short labels, private-link building, petname lookup, clipboard helper |
-| `web/src/ui/friendlyErrors.ts` | Raw-error → calm headline/help/action mapping |
-| `web/src/ui/theme.css` | Calm light/dark responsive theme (PWA / desktop / Android) |
-| `web/src/ui/panels.ts` | Technical-panel registry + persisted open-state (Settings → Advanced) |
-| `web/src/ui/Toolbar.tsx` | Advanced window menu + technical connection pill |
-| `web/src/ui/Panel.tsx` | Panel window chrome (close hides, never stops work) |
+| `web/src/adapters/driving/shell/App.tsx` | View switching (Home / Messages / Portal / Settings), URI-bar binding, panel composition |
+| `web/src/application/views.ts` | Primary-view registry + persisted active view / Advanced visibility / onboarding flag |
+| `web/src/adapters/driving/shell/AppNav.tsx` | Primary navigation + discreet protection pill |
+| `web/src/adapters/driving/shared/StatusPill.tsx` | Protected / Connecting… / Not protected / Something-went-wrong pill with friendly details |
+| `web/src/adapters/driving/shell/Onboarding.tsx` | Welcome → Connect privately → success first-run flow |
+| `web/src/adapters/driving/shared/FriendlyError.tsx` | Human-readable error banner (Try again + Copy error + collapsed technical details) |
+| `web/src/adapters/driving/shared/ShareCard.tsx` | Petname-first label, Copy link, local QR, Show-technical-details toggle |
+| `web/src/shared/share.ts` | Short labels, private-link building, petname lookup, clipboard helper |
+| `web/src/shared/friendlyErrors.ts` | Raw-error → calm headline/help/action mapping |
+| `web/src/adapters/driving/shared/theme.css` | Calm light/dark responsive theme (PWA / desktop / Android) |
+| `web/src/application/panels.ts` | Technical-panel registry + persisted open-state (Settings → Advanced) |
+| `web/src/adapters/driving/shell/Toolbar.tsx` | Advanced window menu + technical connection pill |
+| `web/src/adapters/driving/shared/Panel.tsx` | Panel window chrome (close hides, never stops work) |
 | `web/src/mixnet/tunnel.ts` | Memoised one-shot tunnel bring-up/teardown, state, privacy guardrail |
 | `web/src/mixnet/fetch.ts` | `mixFetch` wrapper, source-IP proof, exit-rotation tracking |
 | `web/src/mixnet/messaging.ts` | `@nymproject/sdk-full-fat` send / SURB reply (deduped, rate-limited) |
@@ -382,7 +382,7 @@ redirect allow-listed hosts into a mixnet-aware page/worker.
 | `web/src/mixnet/routedHosts.mjs` | Pure leak-guard decisions |
 | `web/src/mixnet/leakGuard.ts` | Direct-request detection, fail-closed |
 | `web/src/mixnet/status.ts` | Derive UI status from tunnel state |
-| `web/src/App.tsx` | React UI |
+| `web/src/adapters/driving/shell/App.tsx` | React UI |
 | `web/capacitor.config.ts` | Capacitor/Android config |
 | `android/` | Manifest, network security config, release notes |
 | `extension/` | MV3 desktop scaffold |

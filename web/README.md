@@ -37,11 +37,11 @@ python3 ../scripts/gen-icons.py
 The CSP lives in `index.html`. Note that `frame-ancestors` is ignored in a
 `<meta>` CSP — it belongs in an HTTP response header (the desktop launcher
 sends `X-Frame-Options: DENY`).
-| `src/ui/views.ts` | Primary views (Home/Messages/Portal/Settings), Advanced visibility, onboarding flag |
-| `src/ui/StatusPill.tsx` | Discreet protection pill with friendly details popover |
-| `src/ui/ShareCard.tsx` | Petname-first label, Copy link, local QR (`qrcode` → data URL, no network) |
-| `src/ui/friendlyErrors.ts` | Raw-error → calm headline/help/action mapping |
-| `src/ui/theme.css` | Calm responsive theme (mobile-first, dark-mode aware) |
+| `src/application/views.ts` | Primary views (Home/Messages/Portal/Settings), Advanced visibility, onboarding flag |
+| `src/adapters/driving/shared/StatusPill.tsx` | Discreet protection pill with friendly details popover |
+| `src/adapters/driving/shared/ShareCard.tsx` | Petname-first label, Copy link, local QR (`qrcode` → data URL, no network) |
+| `src/shared/friendlyErrors.ts` | Raw-error → calm headline/help/action mapping |
+| `src/adapters/driving/shared/theme.css` | Calm responsive theme (mobile-first, dark-mode aware) |
 | `src/App.tsx` | React UI: view switching, URI-bar binding, panel composition |
 
 ## Android

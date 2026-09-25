@@ -305,7 +305,7 @@ account id. This is where real de-anonymisation usually happens.
 | **CSP misconfiguration** | Missing `worker-src 'self' blob:` blocks the WASM worker; missing bootstrap host fails with an unrelated error | `web/index.html` provides a correct CSP template |
 | **Supply chain** | The WASM/worker chunk is large and third-party | Pin Nym package versions; `script-src 'self'`; no remote code |
 | **Key storage (web)** | Messaging SDK keeps identity in **IndexedDB** — app-scoped, **not hardware-backed** | Documented; clear IndexedDB to rotate identity |
-| **Key storage (social identity)** | DM identity in `localStorage` readable by any origin script | **`NysirisKeystore` Capacitor plugin**: AES-256-GCM keys held in the hardware-backed Android Keystore, only ciphertext in SharedPreferences (`web/src/social/keystore.mjs`, `NysirisKeystorePlugin.java`); localStorage stays as fallback cache |
+| **Key storage (social identity)** | DM identity in `localStorage` readable by any origin script | **`NysirisKeystore` Capacitor plugin**: AES-256-GCM keys held in the hardware-backed Android Keystore, only ciphertext in SharedPreferences (`web/src/adapters/driven/keystore.mjs`, `NysirisKeystorePlugin.java`); localStorage stays as fallback cache |
 | **Key storage (Android)** | IndexedDB is not Keystore-backed | `android:allowBackup="false"`; social identity via the Keystore plugin above |
 | **Cleartext** | An accidental `http://` request leaks to the exit and the network | Android `usesCleartextTraffic="false"` + `network_security_config.xml`; use TLS everywhere |
 | **Background suspension** | Android Doze/App Standby suspend a long-lived tunnel | Foreground service with notification, or foreground-only + reconnect; one-shot WASM tunnel needs a page reload |
@@ -403,7 +403,7 @@ rather than prose. Run `./build.sh check` to verify all of them at once.
 | Reply budget (token bucket) | §5.3.4 | `crates/sphinx-core/src/enforcement.rs` | `reply_budget_limits_bursts` |
 | Exit rotation (P2) | §5.2.2/§5.4.3 | `crates/sphinx-core/src/enforcement.rs` | `exit_rotation_policies_behave` |
 | Exit reconnect jitter | §5.2.3 | `enforcement.mjs` (`ExitPolicy` ±10 jitter, wired in `fetch.ts`) | `web/test/enforcement.test.mjs` |
-| Keystore-backed identity | §5.6 | `web/src/social/keystore.mjs` + `NysirisKeystorePlugin.java` | `web/test/keystore.test.mjs` |
+| Keystore-backed identity | §5.6 | `web/src/adapters/driven/keystore.mjs` + `NysirisKeystorePlugin.java` | `web/test/keystore.test.mjs` |
 | Adversarial chaos harness | §5.3–§5.4 | `ReplyTracker`/`ReplyBudget` under replay storms, hoarding bursts, clock skew | `web/test/chaos-enforcement.test.mjs` (7 tests) |
 | Cover-traffic guardrail | §5.8 | `crates/sphinx-core/src/enforcement.rs` | `privacy_profile_guardrail` |
 | Bridge open-proxy guards | §5.10 | `crates/bridge-guard/src/lib.rs` | `tests/guard.rs` (8 tests) |
@@ -411,8 +411,8 @@ rather than prose. Run `./build.sh check` to verify all of them at once.
 | Browser reply dedupe + TTL | §5.3.1/§5.3.3 | `web/src/mixnet/enforcement.mjs` (`ReplyTracker`) | `web/test/enforcement.test.mjs` |
 | Browser reply rate limit | §5.3.4 | `web/src/mixnet/enforcement.mjs` (`ReplyBudget`) | `web/test/enforcement.test.mjs` |
 | Browser privacy guardrail | §5.8 | `enforcement.mjs` + `web/src/mixnet/tunnel.ts` | `web/test/enforcement.test.mjs` |
-| Attachment validation (client) | §9.5b | `web/src/social/attachments.mjs` (MIME/size/count/names) | `web/test/attachments.test.mjs` (5 tests) |
-| Attachment encryption round-trip | §9.5b | `web/src/social/attachmentCrypto.ts` (XChaCha, content address) | `web/test/attachments-crypto.test.mjs` (4 tests) |
+| Attachment validation (client) | §9.5b | `web/src/domain/attachments.mjs` (MIME/size/count/names) | `web/test/attachments.test.mjs` (5 tests) |
+| Attachment encryption round-trip | §9.5b | `web/src/domain/attachmentCrypto.ts` (XChaCha, content address) | `web/test/attachments-crypto.test.mjs` (4 tests) |
 | Attachment signature binding | §9.5b | `sig::post_message` + `attach::canonical_attachments`, DM inner v2 | `sig` + `service` attachment tests |
 | Blob content addressing + caps | §9.5b | `services/social` `/blob/part` + `GET /blob` (hash verify, 256 KiB, PoW/rate) | `blob_parts_*` + `blobs_round_trip` store tests |
 | Parser robustness (random/mutated bytes) | §5.1 | `crates/sphinx-core/tests/fuzz_parser.rs` | 6 fuzz tests |

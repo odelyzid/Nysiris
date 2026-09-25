@@ -14,8 +14,9 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
   `GET /blob/<id>`; attachment refs ride the post signature and the v2 DM
   inner envelope. Composer paperclip picker with chips, blurred-until-click
   thumbnails, download cards, "Attachment unavailable" fallback.
-  (`services/social/src/attach.rs`, `web/src/social/attachment{,Crypto}.mjs/ts`,
-  `attachmentUi.tsx`, docs §9.5b; 24 service tests, 135 web tests.)
+  (`services/social/src/attach.rs`, `web/src/domain/attachments.mjs`,
+  `web/src/domain/attachmentCrypto.ts`,
+  `web/src/adapters/driving/social/attachmentUi.tsx`, docs §9.5b; 24 service tests, 191 web tests.)
 - Parallel blob-part upload (concurrency 3) via echoed correlation tags
   (`Request`/`Response.tag`, `fetchNymParallel` with sequential fallback for
   pre-tag providers).
@@ -24,7 +25,7 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 - Keystore-backed social identity on Android: `NysirisKeystore` Capacitor
   plugin (AES-256-GCM keys in the hardware-backed Android Keystore,
   ciphertext-only in SharedPreferences) with a dependency-free JS contract
-  (`web/src/social/keystore.mjs`), secure load/persist/migrate helpers in
+  (`web/src/adapters/driven/keystore.mjs`), secure load/persist/migrate helpers in
   `identity.ts`, and `web/test/keystore.test.mjs`.
 - Exit-rotation reconnect jitter (±10 around the 50-request bound,
   `fetch.ts`) so rotation timing is not itself a signal (§5.2.3).

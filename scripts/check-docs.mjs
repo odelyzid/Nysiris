@@ -11,7 +11,7 @@ const docsDir = join(root, 'docs');
 for (const name of readdirSync(docsDir)) {
   if (name.endsWith('.md')) sources.push(join(docsDir, name));
 }
-for (const name of ['README.md', 'AGENTS.md']) {
+for (const name of ['README.md', 'AGENTS.md', '.agents/AGENTS.md']) {
   const path = join(root, name);
   if (existsSync(path)) sources.push(path);
 }

@@ -1,7 +1,7 @@
 # 9. nysiris-social: Metadata-Minimal Microblog + Encrypted DMs
 
 > A complete hidden-service application built on `08-hidden-services.md`:
-> `services/social/` (Rust provider) + `web/src/social/` (timeline UI).
+> `services/social/` (Rust provider) + `web/src/adapters/driving/social/` (timeline UI).
 > This document is also where the storage-security questions are answered.
 
 ---
@@ -85,7 +85,7 @@ profile: b"fly-social-v1/profile" || author(32) || name || 0x00 || bio
   (replay hygiene; clients re-sign with the current day).
 * Weak (small-order) keys are rejected at parse — their discrete logs are
   known, so anyone could sign as them.
-* Rust: `services/social/src/sig.rs`. Browser: `web/src/social/identity.ts`
+* Rust: `services/social/src/sig.rs`. Browser: `web/src/domain/identity.ts`
   (`@noble/curves`). Same bytes, verified by cross-implementation tests.
 
 ## 9.4 E2E DM construction (byte-exact)
@@ -129,7 +129,7 @@ A reply sets `in_reply_to` to the parent post's `id` (16 raw bytes as 32 hex
 chars); top-level posts omit the field. The provider verifies the signature
 covers the parent, rejects unknown or malformed parents with 400, binds PoW
 to `parent || body`, and stores the link opaquely — it never assembles
-threads. All structure is built in the browser (`web/src/social/threads.ts`):
+threads. All structure is built in the browser (`web/src/domain/threads.ts`):
 
 * Timeline shows top-level posts with a reply-count pill; clicking opens a
   dedicated thread view (root on top, transitive replies chronological).
@@ -186,7 +186,7 @@ upload for that service. A 256 KiB file needs 6 parts — slow over the mixnet,
 by design: attachments are occasional payloads, not a file-sync protocol. PoW is per part (sender-anonymous, like DMs) and rate
 budget per blob id; blobs never expire while posts referencing them persist.
 
-Client rules (`web/src/social/attachments.mjs` + `attachments.ts`, mirrored
+Client rules (`web/src/domain/attachments.mjs` + `web/src/domain/attachmentCrypto.ts`, mirrored
 in `services/social/src/attach.rs`): validate MIME + size *before*
 encryption, sanitize filenames (≤80 chars, no separators/controls), sign the
 canonical refs into the post/DM (stripping or swapping a ref breaks the
@@ -223,7 +223,9 @@ post — in that order.
 |---|---|
 | `services/social/` | `sig.rs` (domains/verify), `store.rs` (SQLite, parent column + lookup, 4 tests), `service.rs` (routes incl. `GET /post/<id>`, 6 tests), `main.rs` (provider loop) |
 | `services/social/README.md` | run/backup/operator notes |
-| `web/src/social/` | `identity.ts` (keys/sign, parent-bound), `dm.ts` (E2E seal/open), `threads.ts` (client thread assembly), `ThreadView.tsx` (thread view), `Social.tsx` (timeline UI) |
+| `web/src/adapters/driving/social/` | `Social.tsx` (timeline UI), concern hooks (`hooks/`) + presentational components (`components/`) |
+| `web/src/domain/` | `identity.ts` (keys/sign, parent-bound), `threads.ts` (client thread assembly) |
+| `web/src/application/` | `dm.ts` (E2E seal/open), `conversations.ts` (local DM cache), `petnameStore.ts` / `trustStore.ts` (local persistence) |
 | `web/test/dm-crypto.test.mjs` | E2E round-trip (skips offline) |
 | `web/test/threads.test.mjs` | thread assembly, counts, gaps, cycles |
 | `web/test/postCrypto.test.mjs` | post sign/verify incl. parent binding + legacy fallback (skips offline) |

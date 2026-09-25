@@ -99,9 +99,9 @@ checksums). `VERSION` is the source of truth; bump with
   `__wbg_init: using deprecated parameters`, `Failed to parse binary message`
   (worker emits `RawMessageReceived` first, then fails its mime attempt),
   `Client has not been initialised` (a `selfAddress` miss before connect).
-- DM stack, in order: sealed box (`social/dm.ts` seal/open) → signed inner
+- DM stack, in order: sealed box (`application/dm.ts` seal/open) → signed inner
   envelope (`packDmInner`/`unpackDmInner`, attribution for the recipient,
-  opaque to the provider) → conversation cache (`social/conversations.ts`).
+  opaque to the provider) → conversation cache (`application/conversations.ts`).
   Dead-drop reads are **destructive**: the local cache is the history, and
   only one device wins. Legacy plaintext DMs (no envelope) render under an
   `unknown` peer.

@@ -8,7 +8,7 @@
 ./build.sh services social   # one service crate (heavy first build)
 ```
 
-Read `AGENTS.md` first — it has the repo map, the exact commands, and the
+Read `.agents/AGENTS.md` first — it has the repo map, the exact commands, and the
 gotchas (SDK quirks, frozen identifiers, test conventions).
 
 ## Ground rules

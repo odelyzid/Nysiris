@@ -18,7 +18,7 @@ A portal is a *view* the browser computes, not a place the browser visits:
 * Protocol support is explicit and versioned: the client speaks exactly the
   envelope/object types in `portal-data`, nothing else.
 
-The windowed UI (`web/src/ui/`) is the physical expression of this: the main
+The windowed UI (`web/src/adapters/driving/`) is the physical expression of this: the main
 view is the portal context (page + Social), while transport machinery
 (Connection, Messages, Fetch, Log) lives in closable panels. New portal
 features arrive as **toolbar entries + panels + pure-logic modules**, never as
@@ -31,7 +31,7 @@ service-side code running in the browser.
 | Data model | `crates/portal-data` (objects, logs, LWW-map) | ✅ 4 tests |
 | Sync core | `crates/portal-replication` (heads, wants, verified apply) | ✅ 4 tests + 5 golden wire vectors |
 | Provider | `services/portal-provider/` (object/log store, 6 routes) | ✅ 5 tests |
-| Replication | client-driven gossip over the routes above | provider side ✅, browser TS port ✅ (`web/src/social/portalSync.ts` + `portalVerify.ts` + `portalSyncIo.ts`) |
+| Replication | client-driven gossip over the routes above | provider side ✅, browser TS port ✅ (`web/src/domain/portalSync.ts` + `portalVerify.ts` + `portalSyncIo.ts`) |
 | Discovery | signed invite links + local contacts + URI-bar binding | ✅ |
 | Reputation | client PoW + web-of-trust + local scores | ✅ (this section: PoW, local scores, rate limits) |
 
@@ -46,12 +46,12 @@ signed = domain || svc_identity || svc_encryption || svc_gateway || inviter || n
 
 * `crates/nym-hidden-service/src/invite.rs`: sign/verify/compact-codec, including
   a cross-implementation test (a TypeScript-signed vector verified in Rust).
-* Browser: `signInvite`/`verifyInvite` in `web/src/social/identity.ts` (byte-exact
+* Browser: `signInvite`/`verifyInvite` in `web/src/domain/identity.ts` (byte-exact
   mirror), pure codec in `hiddenService.mjs`, `parseInviteLink()` splitting
   address + path + invite.
 * URI bar: pasting an invite link fetches the service *and* raises a banner
   showing introducer + note. Accepting **verifies the signature first**, then
-  saves a petname into the local-only Contacts panel (`web/src/ui/`).
+  saves a petname into the local-only Contacts panel (`web/src/adapters/driving/shell/`).
   Bait-and-switch (invite naming another service) is refused twice:
   client-side shape check and signature verification.
 * The fragment never goes on the wire — invites authenticate the introducer to
@@ -104,16 +104,16 @@ LWW state locally. The serve shapes for the two read routes
 (`GET /heads`, `GET /log/<author>?since=`) live in
 `crates/portal-replication/src/serve.rs` and are pinned byte-for-byte by the
 golden vectors in `crates/portal-replication/tests/golden.rs`, which the
-browser TypeScript port mirrors exactly: `web/src/social/portalSync.ts`
+browser TypeScript port mirrors exactly: `web/src/domain/portalSync.ts`
 parses the same `GET /heads` / `GET /log/<author>?since=` JSON, reproduces
 `entry_bytes` and object signing bytes byte-for-byte, computes wants as the
 local log head per author, and applies batches atomically after verifying
-signatures (`web/src/social/portalVerify.ts`). The browser port is a
+signatures (`web/src/domain/portalVerify.ts`). The browser port is a
 read-side replica only — it never merges forks, enforces continuity, and
 persists under the frozen `fly.portal.sync.v1` key. Traffic rides
 `fetchNym` (serialized) / `fetchNymParallel` (tag-correlated) NYM requests
-via `web/src/social/portalSyncIo.ts`, surfaced in the Portal panel
-(`web/src/ui/PortalSync.tsx`). Discovery starts
+via `web/src/adapters/driven/portalSyncIo.ts`, surfaced in the Portal panel
+(`web/src/adapters/driving/portal/PortalSync.tsx`). Discovery starts
 where we already are — invite links
 (`nym://` URIs + petnames) and URI-bar binding — before any ambient mechanism.
 

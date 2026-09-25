@@ -7,7 +7,7 @@ Small project, simple rules:
 2. **Privacy is the product.** Do not post other users' Nym addresses,
    petnames, messages, or metadata in issues, chats, or screenshots
    without their explicit consent.
-3. **Good-faith security work is welcome.** Follow `SECURITY.md`: report
+3. **Good-faith security work is welcome.** Follow `.github/SECURITY.md`: report
    privately first, give maintainers time to patch.
 4. **Keep it usable.** Explain jargon, assume the reader is smart but new.
 

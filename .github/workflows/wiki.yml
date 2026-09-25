@@ -1,0 +1,43 @@
+name: Publish Wiki
+
+# Mirror docs/ + README.md into the GitHub wiki (separate `*.wiki.git` repo).
+# The wiki must be enabled once: Settings -> Features -> Wikis (create the
+# first page), otherwise the clone step fails with a clear message.
+#
+# Auth: the default GITHUB_TOKEN is used when it can write the wiki repo. If
+# your org blocks that, add a repo secret `WIKI_TOKEN` (a classic PAT with
+# `repo` scope, or a fine-grained token with Contents: read/write) — the script
+# prefers it automatically.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'scripts/publish-wiki.mjs'
+      - '.github/workflows/wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-wiki
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Render docs and push the wiki
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Publish docs to wiki
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/publish-wiki.mjs --push

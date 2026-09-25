@@ -24,7 +24,7 @@ public.
 
 - The interesting attack surface is: the mixnet message handling in
   `web/src/mixnet/` and `services/*/src/`, the envelope/signature code in
-  `crates/nym-hidden-service` and `web/src/social/`, and the open-proxy
+  `crates/nym-hidden-service` and `web/src/domain/identity.ts`, and the open-proxy
   guards in `crates/bridge-guard`.
 - `crates/sphinx-core` is a reference implementation, not production code —
   bugs there are documentation bugs unless they also affect the claims in
