@@ -15,6 +15,7 @@ import {
 import { Panel } from './ui/Panel';
 import { Toolbar } from './ui/Toolbar';
 import { ContactsPanel, type PendingInvite } from './ui/ContactsPanel';
+import { PortalSync } from './ui/PortalSync';
 import {
   defaultContactStorage,
   loadContacts,
@@ -1091,6 +1092,12 @@ export function App() {
                       petname={petname}
                       onPetnameChange={setPetname}
                     />
+                  </Panel>
+                )}
+
+                {openPanels.includes('portal') && (
+                  <Panel title="Portal replica (reads)" onClose={() => onClosePanel('portal')}>
+                    <PortalSync />
                   </Panel>
                 )}
               </div>

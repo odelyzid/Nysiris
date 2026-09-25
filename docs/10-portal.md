@@ -31,7 +31,7 @@ service-side code running in the browser.
 | Data model | `crates/portal-data` (objects, logs, LWW-map) | ✅ 4 tests |
 | Sync core | `crates/portal-replication` (heads, wants, verified apply) | ✅ 4 tests + 5 golden wire vectors |
 | Provider | `services/portal-provider/` (object/log store, 6 routes) | ✅ 5 tests |
-| Replication | client-driven gossip over the routes above | provider side ✅, browser TS port planned |
+| Replication | client-driven gossip over the routes above | provider side ✅, browser TS port ✅ (`web/src/social/portalSync.ts` + `portalVerify.ts` + `portalSyncIo.ts`) |
 | Discovery | signed invite links + local contacts + URI-bar binding | ✅ |
 | Reputation | client PoW + web-of-trust + local scores | ✅ (this section: PoW, local scores, rate limits) |
 
@@ -93,7 +93,7 @@ Deliberate omissions: no timestamps below day granularity, no global sequence,
 no delete propagation (tombstones are just newer values), no access control
 beyond signatures. Spam and Sybil are *not* solved here — see §10.5.
 
-## 10.4 Provider and replication (next steps)
+## 10.4 Provider and replication (implemented)
 
 The portal provider stores objects by id, appends to logs after verifying
 signatures and continuity, and answers `GET /obj/<id>`, `GET /log/<author>?since=`,
@@ -103,8 +103,17 @@ browsers exchange want-lists/have-lists through SURB replies and converge
 LWW state locally. The serve shapes for the two read routes
 (`GET /heads`, `GET /log/<author>?since=`) live in
 `crates/portal-replication/src/serve.rs` and are pinned byte-for-byte by the
-golden vectors in `crates/portal-replication/tests/golden.rs`, so the
-browser TypeScript port must reproduce the exact same JSON. Discovery starts
+golden vectors in `crates/portal-replication/tests/golden.rs`, which the
+browser TypeScript port mirrors exactly: `web/src/social/portalSync.ts`
+parses the same `GET /heads` / `GET /log/<author>?since=` JSON, reproduces
+`entry_bytes` and object signing bytes byte-for-byte, computes wants as the
+local log head per author, and applies batches atomically after verifying
+signatures (`web/src/social/portalVerify.ts`). The browser port is a
+read-side replica only — it never merges forks, enforces continuity, and
+persists under the frozen `fly.portal.sync.v1` key. Traffic rides
+`fetchNym` (serialized) / `fetchNymParallel` (tag-correlated) NYM requests
+via `web/src/social/portalSyncIo.ts`, surfaced in the Portal panel
+(`web/src/ui/PortalSync.tsx`). Discovery starts
 where we already are — invite links
 (`nym://` URIs + petnames) and URI-bar binding — before any ambient mechanism.
 

@@ -30,3 +30,28 @@ export function u64be(n: number): Uint8Array {
   new DataView(out.buffer).setBigUint64(0, BigInt(n));
   return out;
 }
+
+const HEX_RE = /^[0-9a-f]+$/i;
+
+/**
+ * Strict hex decode (lowercase canonical). Returns a *copy*. Throws on odd
+ * length or non-hex input rather than guessing — callers must validate first.
+ */
+export function hexToBytes(hex: string): Uint8Array {
+  const clean = String(hex).trim().toLowerCase();
+  if (clean.length % 2 !== 0 || !HEX_RE.test(clean)) {
+    throw new Error('invalid hex string');
+  }
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i += 1) {
+    out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+/** Lowercase hex encode of raw bytes (the canonical wire case). */
+export function bytesToHex(bytes: Uint8Array): string {
+  let out = '';
+  for (const b of bytes) out += b.toString(16).padStart(2, '0');
+  return out;
+}

@@ -50,7 +50,9 @@ reference Sphinx implementation (`crates/sphinx-core`). Live-network delivery
   not "fix" them: `fly-*` CSS classes, `fly.*` localStorage keys (identity
   and contacts live there; renaming loses user data), and the
   `fly-social-v1/*` / `fly-portal-v1/*` signature domains (renaming
-  invalidates existing signed posts, invites, and DMs).
+  invalidates existing signed posts, invites, and DMs), and the
+  `fly.portal.sync.v1` localStorage key (the read-side portal replica lives
+  there; renaming silently drops synced history).
 
 ## Verify
 

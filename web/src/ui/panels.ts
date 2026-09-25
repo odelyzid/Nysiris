@@ -6,7 +6,7 @@
  * via `defaultStorage()`.
  */
 
-export type PanelId = 'connection' | 'messages' | 'fetch' | 'log' | 'contacts';
+export type PanelId = 'connection' | 'messages' | 'fetch' | 'log' | 'contacts' | 'portal';
 
 export const PANEL_META: Record<PanelId, { title: string }> = {
   connection: { title: 'Connection' },
@@ -14,9 +14,10 @@ export const PANEL_META: Record<PanelId, { title: string }> = {
   fetch: { title: 'Fetch' },
   log: { title: 'Log' },
   contacts: { title: 'Contacts' },
+  portal: { title: 'Portal' },
 };
 
-export const PANEL_ORDER: PanelId[] = ['connection', 'messages', 'fetch', 'contacts', 'log'];
+export const PANEL_ORDER: PanelId[] = ['connection', 'messages', 'fetch', 'contacts', 'portal', 'log'];
 
 export interface PanelStorage {
   getItem(key: string): string | null;
