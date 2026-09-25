@@ -1,6 +1,9 @@
 //! Route plumbing shared by every nysiris provider: query parsing, JSON body
 //! serialization, and fixed-width hex decode, plus a test envelope builder.
 //! One copy with tests, instead of the same few functions in each service.
+//!
+//! `portal-data` keeps its own private `decode_32`/`decode_64` decoders: it is
+//! a leaf data model and must not depend on this crate.
 
 use std::collections::HashMap;
 
@@ -51,9 +54,11 @@ pub fn hex64(s: &str) -> Result<[u8; 64], String> {
 }
 
 /// A hidden-service request envelope (the JSON packet the pwa's `rawSend`
-/// produces). Used by service tests to drive [`HiddenService`] handlers.
+/// produces). Used by service tests to drive [`HiddenService`] handlers; not
+/// part of the route API itself.
 ///
 /// [`HiddenService`]: nym_hidden_service::HiddenService
+#[doc(hidden)]
 pub fn envelope(method: &str, path: &str, body: &[u8]) -> Vec<u8> {
     let req = nym_hidden_service::Request::new(method, path, HashMap::new(), body)
         .expect("route test envelope is always well-formed");

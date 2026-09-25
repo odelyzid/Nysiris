@@ -5404,7 +5404,6 @@ dependencies = [
  "provider-runtime",
  "rand 0.8.8",
  "rusqlite",
- "serde",
  "serde_json",
  "social-format",
  "tokio",

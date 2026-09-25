@@ -10,7 +10,6 @@ description = "Portal data provider: object + log storage with signature verific
 nym-sdk = "1.21"
 nym-bin-common = { version = "1.22.0", features = ["basic_tracing"] }
 tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
 hex = "0.4"

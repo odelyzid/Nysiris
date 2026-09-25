@@ -180,7 +180,8 @@ export function diffPortalWants(local: Record<string, number>, peer: Record<stri
   const wants = Object.entries(peer)
     .filter(([author, peerSeq]) => peerSeq > (local[author] ?? 0))
     .map(([author]) => ({ author, fromSeq: local[author] ?? 0 }));
-  wants.sort((a, b) => a.author.localeCompare(b.author));
+  // Byte-order sort, matching the Rust `diff_wants` reference exactly.
+  wants.sort((a, b) => (a.author < b.author ? -1 : a.author > b.author ? 1 : 0));
   return wants;
 }
 
@@ -303,8 +304,38 @@ function deserializeObjects(value: unknown): Record<string, PortalObject> {
 }
 
 /**
- * Load a persisted replica under `PORTAL_SYNC_KEY`. Malformed or absent
- * data yields an empty replica — never a crash.
+ * Validate a persisted author log with the same wire assertions as
+ * `parsePortalLogReply`. Returns `null` (fail closed) if any entry is
+ * malformed, out of order, or authored by someone else — a corrupted or
+ * hand-edited replica must not seed continuity checks.
+ */
+function parsePersistedEntries(key: string, value: unknown): PortalLogEntry[] | null {
+  if (!Array.isArray(value)) return null;
+  const root = key as unknown;
+  const author = hexSize(root, 32, 'author key');
+  const entries: PortalLogEntry[] = [];
+  let prev = -1;
+  for (const item of value) {
+    try {
+      if (item === null || typeof item !== 'object') return null;
+      const raw = item as { author?: unknown; seq?: unknown; objId?: unknown; sig?: unknown };
+      const entryAuthor = hexSize(raw.author, 32, 'entry author');
+      const objId = hexSize(raw.objId, 32, 'entry objId');
+      const sig = hexSize(raw.sig, 64, 'entry sig');
+      const seq = uintSeq(raw.seq, 'entry seq');
+      if (entryAuthor !== author || seq <= prev) return null;
+      prev = seq;
+      entries.push({ author: entryAuthor, seq, objId: objId, sig });
+    } catch {
+      return null;
+    }
+  }
+  return entries;
+}
+
+/**
+ * Load a persisted replica under `PORTAL_SYNC_KEY`. Malformed, absent, or
+ * corrupted data yields an empty replica — never a crash.
  */
 export function loadPortalReplica(storage?: PortalStorage | null): PortalReplica {
   const fallback = emptyReplica();
@@ -314,8 +345,13 @@ export function loadPortalReplica(storage?: PortalStorage | null): PortalReplica
     const parsed = JSON.parse(raw) as { entriesByAuthor?: unknown; objectsById?: unknown };
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return fallback;
     if (typeof parsed.entriesByAuthor !== 'object' || parsed.entriesByAuthor === null) return fallback;
+    const entriesByAuthor: Record<string, PortalLogEntry[]> = {};
+    for (const [author, log] of Object.entries(parsed.entriesByAuthor)) {
+      const entries = parsePersistedEntries(author, log);
+      if (entries !== null) entriesByAuthor[author] = entries;
+    }
     return {
-      entriesByAuthor: parsed.entriesByAuthor as Record<string, PortalLogEntry[]>,
+      entriesByAuthor,
       objectsById: deserializeObjects(parsed.objectsById),
     };
   } catch {
@@ -364,7 +400,12 @@ export function trimReplica(replica: PortalReplica, maxObjects = MAX_KEPT_OBJECT
   return { entriesByAuthor, objectsById: objects };
 }
 
-/** One friendly line for the sync status under the portal panel. */
+/**
+ * One friendly line for the sync status under the portal panel.
+ * Mirrors `describeSync` in `./sync.ts` (deliberate parity: both are pure,
+ * tested, and tensor-free — folding them into a shared helper would read as
+ * over-clever for a three-clause status string).
+ */
 export function describePortalSync(now: number, status: PortalSyncStatus): { text: string; tone: 'ok' | 'busy' | 'bad' | 'idle' } {
   if (status.syncing) return { text: 'Syncing… fetching heads, logs, and objects.', tone: 'busy' };
   if (status.error) return { text: `Couldn't sync the portal replica. ${status.error}`, tone: 'bad' };

@@ -96,20 +96,24 @@ export async function syncPortalReplica(
 
   const resolved = new Map<string, PortalWant>();
   const parsedEntries = new Map<string, PortalLogEntry[]>();
-  const logResps = await parallel(
-    address,
-    wants.map((w) => ({ method: 'GET', path: `/log/${w.author}?since=${w.fromSeq}` })),
-    { timeoutMs },
-  );
-  for (let i = 0; i < wants.length; i += 1) {
-    const want = wants[i];
-    try {
-      const { entries } = parsePortalLogReply(bodyJson(logResps[i], `log ${want.author}`), want.fromSeq);
-      resolved.set(want.author, want);
-      parsedEntries.set(want.author, entries);
-    } catch (err) {
-      failedAdd(summary, want.author);
+  try {
+    const logResps = await parallel(
+      address,
+      wants.map((w) => ({ method: 'GET', path: `/log/${w.author}?since=${w.fromSeq}` })),
+      { timeoutMs },
+    );
+    for (let i = 0; i < wants.length; i += 1) {
+      const want = wants[i];
+      try {
+        const { entries } = parsePortalLogReply(bodyJson(logResps[i], `log ${want.author}`), want.fromSeq);
+        resolved.set(want.author, want);
+        parsedEntries.set(want.author, entries);
+      } catch {
+        failedAdd(summary, want.author);
+      }
     }
+  } catch {
+    for (const want of wants) failedAdd(summary, want.author);
   }
 
   const objectsById = { ...prev.objectsById };

@@ -5818,7 +5818,6 @@ dependencies = [
  "portal-reputation",
  "provider-runtime",
  "rusqlite",
- "serde",
  "serde_json",
  "tokio",
 ]

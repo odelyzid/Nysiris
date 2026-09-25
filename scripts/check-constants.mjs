@@ -27,6 +27,10 @@ const pairs = [
   { rust: ['crates/social-format/src/sig.rs', 'PROFILE_DOMAIN'], web: ['web/src/social/identity.ts', 'PROFILE_DOMAIN'], what: 'profile signature domain' },
   { rust: ['crates/portal-reputation/src/pow.rs', 'MAX_POW_BITS'], web: ['web/src/mixnet/pow.mjs', 'MAX_POW_BITS'], what: 'PoW difficulty cap' },
   { rust: ['crates/portal-reputation/src/pow.rs', 'POW_DOMAIN'], web: ['web/src/mixnet/pow.mjs', 'POW_DOMAIN'], what: 'PoW domain separator' },
+  { rust: ['crates/portal-data/src/log.rs', 'LOG_ENTRY_DOMAIN'], web: ['web/src/social/portalSync.ts', 'LOG_ENTRY_DOMAIN'], what: 'portal log-entry signature domain' },
+  { rust: ['crates/portal-data/src/object.rs', 'OBJECT_DOMAIN'], web: ['web/src/social/portalSync.ts', 'OBJECT_DOMAIN'], what: 'portal object signature domain' },
+  { rust: ['crates/portal-data/src/object.rs', 'MAX_OBJECT_BYTES'], web: ['web/src/social/portalSync.ts', 'MAX_OBJECT_BYTES'], what: 'portal object payload cap' },
+  { rust: ['crates/portal-data/src/object.rs', 'MAX_KIND_LEN'], web: ['web/src/social/portalSync.ts', 'MAX_KIND_LEN'], what: 'portal object kind length' },
   { rust: ['crates/bridge-guard/src/lib.rs', 'DEFAULT_MAX_BODY_BYTES'], web: ['web/src/mixnet/hiddenService.mjs', 'MAX_BODY_BYTES'], what: 'envelope body cap' },
   { rust: ['crates/nym-hidden-service/src/invite.rs', 'INVITE_DOMAIN'], web: ['web/src/social/identity.ts', 'INVITE_DOMAIN'], what: 'invite signature domain' },
 ];

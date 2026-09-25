@@ -6,6 +6,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  defaultPortalSyncStorage,
   describePortalSync,
   loadPortalReplica,
   portalHeads,
@@ -21,14 +22,14 @@ function shortHex(hex: string): string {
 }
 
 export function PortalSync() {
-  const [address, setAddress] = useState(() => loadPortalRun(defaultPortalRunStorage())?.providerAddress ?? '');
-  const [replica, setReplica] = useState<PortalReplica>(() => loadPortalReplica());
+  const [address, setAddress] = useState(() => loadPortalRun(defaultPortalRunStorage()).providerAddress);
+  const [replica, setReplica] = useState<PortalReplica>(() => loadPortalReplica(defaultPortalSyncStorage()));
   const [status, setStatus] = useState<PortalSyncStatus>({ syncing: false, lastSyncedAt: null, error: null });
   const [summary, setSummary] = useState<PortalSyncSummary | null>(null);
   const busyRef = useRef(false);
 
   useEffect(() => {
-    savePortalReplica(replica);
+    savePortalReplica(replica, defaultPortalSyncStorage());
   }, [replica]);
 
   const heads = useMemo(() => portalHeads(replica), [replica]);

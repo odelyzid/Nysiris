@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 import {
   LOG_ENTRY_DOMAIN,
   MAX_KEPT_OBJECTS,
+  MAX_OBJECT_BYTES,
+  OBJECT_DOMAIN,
   PORTAL_SYNC_KEY,
   describePortalSync,
   diffPortalWants,
@@ -75,10 +77,25 @@ test('golden log reply parses byte-exact', () => {
 
 test('golden SIG0 verifies over entry bytes (needs node_modules)', { skip: !noble }, async () => {
   const { ed25519 } = await import('@noble/curves/ed25519.js');
+  const { verifyLogEntrySig, verifyObjectSig } = await import('../src/social/portalVerify.ts');
   const msg = portalEntryBytes(ALICE, 0, OBJ);
   assert.equal(ed25519.verify(hexToBytes(SIG0), msg, hexToBytes(ALICE)), true);
   // Wrong seq breaks the message coverage.
   assert.equal(ed25519.verify(hexToBytes(SIG0), portalEntryBytes(ALICE, 1, OBJ), hexToBytes(ALICE)), false);
+  // The browser verifier itself accepts the golden entry and rejects a forged one.
+  assert.equal(verifyLogEntrySig({ author: ALICE, seq: 0, objId: OBJ, sig: SIG0 }), true);
+  assert.equal(verifyLogEntrySig({ author: ALICE, seq: 1, objId: OBJ, sig: SIG0 }), false);
+  // Object signature path: sign the object signing bytes, then verify.
+  const secret = ed25519.utils.randomSecretKey();
+  const pub = ed25519.getPublicKey(secret);
+  const author = bytesToHex(pub);
+  const payload = enc.encode('hello portal object');
+  const signing = portalObjectSigningBytes(author, 'post', payload);
+  const objSig = bytesToHex(ed25519.sign(signing, secret));
+  const obj = { id: '00'.repeat(32), kind: 'post', author, payload, sig: objSig };
+  assert.equal(verifyObjectSig(obj), true);
+  assert.equal(verifyObjectSig({ ...obj, payload: enc.encode('tampered') }), false);
+  assert.equal(verifyObjectSig({ ...obj, sig: 'ff'.repeat(64) }), false);
 });
 
 test('entry bytes are the exact wire layout', () => {
@@ -177,9 +194,9 @@ test('object reply parsing validates kind, hex, and payload shape', () => {
   assert.equal(parsePortalObjectReply({ ...good, kind: 'dm-chunk' }).kind, 'dm-chunk');
   // Bad kind charset.
   assert.throws(() => parsePortalObjectReply({ ...good, kind: 'Post!Kind' }), /chars of/);
-  // Oversized payload.
+  // Oversized payload: anything at or over the byte cap is rejected.
   assert.throws(
-    () => parsePortalObjectReply({ ...good, payload: Buffer.alloc(MAX_KEPT_OBJECTS * 100).toString('base64') }),
+    () => parsePortalObjectReply({ ...good, payload: Buffer.alloc(MAX_OBJECT_BYTES + 1).toString('base64') }),
     /size cap/,
   );
   // Short sig.
@@ -190,6 +207,8 @@ test('object content id is recomputed and self-checks (offline sha256)', async (
   const sigBytes = new Uint8Array(64).fill(0x11);
   const payload = enc.encode('hello portal');
   const signing = portalObjectSigningBytes(ALICE, 'post', payload);
+  // Signing bytes start with the frozen object domain.
+  assert.equal(new TextDecoder().decode(signing.subarray(0, OBJECT_DOMAIN.length)), OBJECT_DOMAIN);
   const toHash = new Uint8Array(signing.length + 64);
   toHash.set(signing, 0);
   toHash.set(sigBytes, signing.length);
@@ -216,6 +235,23 @@ test('replica persists under the frozen key and heals on corruption', () => {
   storage.setItem(PORTAL_SYNC_KEY, '{oops');
   assert.deepEqual(loadPortalReplica(storage), emptyReplica());
   assert.deepEqual(loadPortalReplica(null), emptyReplica());
+  // A malformed persisted log is dropped whole (fail closed), not trusted.
+  storage.setItem(
+    PORTAL_SYNC_KEY,
+    JSON.stringify({
+      entriesByAuthor: {
+        [ALICE]: [
+          { author: ALICE, seq: 0, objId: OBJ, sig: SIG0 },
+          { author: BOB, seq: 1, objId: OBJ, sig: SIG0 },
+        ],
+        [BOB]: [{ author: BOB, seq: 0, objId: OBJ, sig: SIG0 }],
+      },
+      objectsById: { [OBJ]: { id: OBJ, kind: 'post', author: ALICE, payload: 'eA==', sig: SIG0 } },
+    }),
+  );
+  const healed = loadPortalReplica(storage);
+  assert.deepEqual(healed.entriesByAuthor, { [BOB]: [{ author: BOB, seq: 0, objId: OBJ, sig: SIG0 }] });
+  assert.deepEqual(Object.keys(healed.objectsById), [OBJ]);
 });
 
 test('trim removes the smallest author first until the object cap fits', () => {

@@ -9,7 +9,7 @@
  */
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { hexToBytes } from '@noble/hashes/utils.js';
-import { portalEntryBytes, portalObjectSigningBytes, type PortalLogEntry, type PortalObject } from './portalSync';
+import { portalEntryBytes, portalObjectSigningBytes, type PortalLogEntry, type PortalObject } from './portalSync.ts';
 
 /** Verify an author's log-entry signature (mirror of `Log::append` in portal-data). */
 export function verifyLogEntrySig(entry: PortalLogEntry): boolean {

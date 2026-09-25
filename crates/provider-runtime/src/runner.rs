@@ -57,27 +57,20 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::collections::VecDeque;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Mutex;
 
-    use nym_hidden_service::{EchoService, Request};
+    use nym_hidden_service::EchoService;
 
     use super::*;
+    use crate::route::envelope;
     use crate::transport::SendError;
     use crate::SenderTag;
 
-    fn envelope(payload: &[u8]) -> Vec<u8> {
-        Request::new("GET", "/", HashMap::new(), payload)
-            .expect("test payloads pass the open-proxy guards")
-            .to_json()
-            .into_bytes()
-    }
-
     fn tagged(payload: &[u8], tag: u8) -> InboundMessage {
         InboundMessage {
-            message: envelope(payload),
+            message: envelope("GET", "/", payload),
             sender_tag: Some([tag; 16]),
         }
     }
