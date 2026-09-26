@@ -1,5 +1,8 @@
 ext {
-    minSdkVersion = 22
+    // 23 (not Capacitor's 22 floor): NysirisKeystorePlugin needs API 23 for
+    // AES/GCM in the Android Keystore — below that the plugin would reject
+    // every call and identities would silently fall back to localStorage.
+    minSdkVersion = 23
     compileSdkVersion = 34
     targetSdkVersion = 34
     androidxActivityVersion = '1.8.0'

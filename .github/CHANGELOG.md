@@ -7,6 +7,36 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 
 ### Fixed
 
+- **Android: the tagged-release APK was unsigned** — Android refuses to install
+  unsigned APKs ("App not installed"), so every release APK/AAB to date was
+  uninstallable. Release signing is now wired end to end: optional
+  `ANDROID_KEYSTORE_*` env vars / repository secrets drive
+  `signingConfigs.release` (`web/android/app/build.gradle`), CI decodes the
+  keystore and verifies the result with `apksigner`, and `./build.sh android
+  --release` fails loudly on a bad keystore path. Without a keystore a
+  **debug-signed** `nysiris_<version>_android-debug.apk` is staged as a
+  sideloadable fallback, and the script warns when the release output is
+  unsigned. Also: `cap sync` output is verified before gradle runs, and a
+  missing `twa-manifest.json` no longer shadows the Capacitor build when
+  bubblewrap happens to be installed.
+- **Android keystore identity round-trip was write-only**: the Java plugin
+  returns base64, but the JS read path parsed it as raw JSON — every load
+  silently fell back to the localStorage cache. `identityStore.ts` now decodes
+  before parsing; the round-trip is covered by `web/test/identity-keystore.test.mjs`.
+- Two extensionless relative imports (`domain/identity.ts`,
+  `application/dm.ts`) broke Node type-stripping resolution, silently skipping
+  **14 web tests that had never actually run** (identity backup, invite,
+  post crypto, DM inner envelope). They run and pass now; 199 web tests pass
+  with 0 skipped when `node_modules` are present.
+- Android `minSdkVersion` 22 → 23: the keystore plugin requires API 23 for
+  AES/GCM in the Android Keystore, so devices below that degraded silently.
+- Doc drift: `android/` manifest/README pointed at a nonexistent
+  `android/app/...` path (real: `web/android/app/...`), stale JS paths in the
+  plugin/`MainActivity` comments, and `web/README.md` claimed placeholder
+  icons were not committed.
+
+### Added
+
 - Community feed and DM polling no longer retry a lost portal forever:
   transport failures back off exponentially (30 s → ×2 per failure, 10 min
   cap) and a definitive service error (4xx except 429) pauses the automatic

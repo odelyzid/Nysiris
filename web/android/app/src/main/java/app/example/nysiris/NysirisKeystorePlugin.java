@@ -15,7 +15,9 @@ import javax.crypto.SecretKey;
 /**
  * Hardware-backed secret storage for the nysiris WebView.
  *
- * <p>JS contract: {@code web/src/social/keystore.mjs}. AES-256-GCM keys are
+ * <p>JS contract: {@code web/src/adapters/driven/keystore.mjs} (values are
+ * base64 bytes in both directions; identity persistence in
+ * {@code web/src/application/identityStore.ts}). AES-256-GCM keys are
  * generated and held inside the Android Keystore (hardware-backed on devices
  * with StrongBox / TEE); only ciphertext blobs are kept in SharedPreferences,
  * so a WebView compromise or a backup dump never exposes plaintext. Requires

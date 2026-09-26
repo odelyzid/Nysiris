@@ -34,8 +34,9 @@ npm --prefix ../web run android:sync
 npm --prefix ../web run android:open
 ```
 
-The generated manifest lives at `android/app/src/main/AndroidManifest.xml`.
-Merge the settings from `AndroidManifest.xml` in this directory:
+The generated manifest lives at `web/android/app/src/main/AndroidManifest.xml`
+(this repo ships that project under `web/android/`). Merge the settings from
+`AndroidManifest.xml` in this directory:
 
 * `INTERNET` permission.
 * `android:usesCleartextTraffic="false"`.
@@ -77,11 +78,47 @@ dist/nysiris_<version>_android.aab
 ```
 
 Without `--release` it builds a debug APK only (no `dist/` staging).
-The release APK/AAB is **unsigned** unless you configure signing. For a
-Play Store upload, create an upload key and add a `signingConfigs.release`
-block (or pass the keystore via `ANDROID_KEYSTORE_*` env vars in CI), then
-publish `assetlinks.json` / bump `versionCode` monotonically — the script
-derives it from `VERSION`, so `./build.sh bump` is all you need.
+
+### Signing
+
+An unsigned APK **cannot be installed** — Android rejects it with
+"App not installed". Signing is opt-in via environment variables, read
+directly by `web/android/app/build.gradle`:
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `ANDROID_KEYSTORE_PATH` | path to the `.jks`/`.keystore` (absolute, or relative to `web/android/app`) | — (unsigned) |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore password | required with a keystore |
+| `ANDROID_KEY_ALIAS` | key alias | `nysiris` |
+| `ANDROID_KEY_PASSWORD` | key password | keystore password |
+
+Create a key once:
+
+```sh
+keytool -genkeypair -v -keystore nysiris.keystore -alias nysiris \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+CI (`.github/workflows/release.yml`) reads the same values from repository
+secrets: `ANDROID_KEYSTORE_BASE64` (`base64 -w0 nysiris.keystore`) plus the
+three password/alias variables. With a keystore configured the release APK/AAB
+is signed and verified with `apksigner` before upload.
+
+Without one, `./build.sh android --release` also stages a **debug-signed**
+fallback that is installable for sideloading:
+
+```text
+dist/nysiris_<version>_android-debug.apk
+```
+
+> Bare `./gradlew` / Android Studio builds (outside `./build.sh android`) stamp
+> `versionCode 1` / `versionName "1.0"` — pass
+> `-PandroidVersionCode=… -PandroidVersionName=…` to override
+> (`web/android/app/build.gradle`).
+
+For a Play Store upload, publish `assetlinks.json` and bump `versionCode`
+monotonically — the script derives it from `VERSION`, so `./build.sh bump` is
+all you need.
 
 ## What this cannot do
 

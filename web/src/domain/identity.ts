@@ -13,7 +13,7 @@ import { argon2idAsync } from '@noble/hashes/argon2.js';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { base58Decode, parseNymAddress } from '../mixnet/hiddenService.mjs';
 import { canonicalAttachmentBytes } from './attachments.mjs';
-import { b64decode, b64encode, u64be } from '../lib/bytes';
+import { b64decode, b64encode, u64be } from '../lib/bytes.ts';
 import type { AttachmentRef } from './attachmentCrypto';
 
 const POST_DOMAIN = 'fly-social-v1/post';

@@ -20,7 +20,7 @@ import { blake2b } from '@noble/hashes/blake2.js';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { bytesToHex, hexToBytes, randomBytes } from '@noble/hashes/utils.js';
 import { canonicalAttachmentBytes, parseAttachmentRefs } from '../domain/attachments.mjs';
-import { b64decode, b64encode, u64be } from '../lib/bytes';
+import { b64decode, b64encode, u64be } from '../lib/bytes.ts';
 import type { AttachmentRef } from '../domain/attachmentCrypto';
 
 const DM_DOMAIN = new TextEncoder().encode('fly-social-v1/dm');
@@ -43,7 +43,7 @@ const DM_INNER_VERSION = 2;
  * Max DM ciphertext bytes enforced client-side before proving PoW
  * (`social_format::limits::MAX_DM_BYTES`).
  */
-export { MAX_DM_CIPHERTEXT_BYTES } from '../domain/limits';
+export { MAX_DM_CIPHERTEXT_BYTES } from '../domain/limits.ts';
 
 function kdf(shared: Uint8Array): Uint8Array {
   const input = new Uint8Array(DM_DOMAIN.length + shared.length);

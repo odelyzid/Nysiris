@@ -87,10 +87,30 @@ jobs:
       # already ships a full SDK (/usr/local/lib/android/sdk, licenses
       # accepted), and the action's sdkmanager 16 run fails on the removed
       # 'tools' package.
-      # Capacitor shell around the same web build. Unsigned release output
-      # (app-release-unsigned.apk / .aab); sign with an upload key for Play
-      # (see android/README.md). Staged as dist/nysiris_*_android.*.
+      # Optional signing: add the ANDROID_KEYSTORE_* repository secrets to
+      # produce an installable, signed APK/AAB (see android/README.md). Without
+      # them the build stays unsigned and a debug-signed APK is staged as a
+      # sideloadable fallback. Staged as dist/nysiris_*_android*.
+      - name: Decode signing keystore (optional)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nysiris.keystore"
+      - name: Export signing env (optional)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        run: |
+          {
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/nysiris.keystore"
+            echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+            echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"
+            echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"
+          } >> "$GITHUB_ENV"
       - run: ./build.sh android --release
+      - name: Verify APK signature (when signed)
+        if: ${{ env.ANDROID_KEYSTORE_PATH != '' }}
+        run: |
+          APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --print-certs dist/nysiris_*_android.apk
       - uses: actions/upload-artifact@v4
         with:
           name: android

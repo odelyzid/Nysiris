@@ -73,7 +73,7 @@ Releases are cut from `v*` tags (CI builds `.deb` + Windows zip with
 checksums). `VERSION` is the source of truth; bump with
 `./build.sh bump <version>`.
 
-- Current counts: 111 Rust tests, 195 web tests, zero clippy warnings.
+- Current counts: 111 Rust tests, 199 web tests, zero clippy warnings.
 - Focused runs: `node --test web/test/<name>.test.mjs` (from repo root),
   `cargo test -p <crate>`, `./build.sh services social`.
 - CI (`check` job) runs `./build.sh check` on Node 24; `web-build`/`android`
@@ -89,7 +89,10 @@ checksums). `VERSION` is the source of truth; bump with
 - Tests import `.ts` directly via Node type-stripping (CI pins Node 24).
   Tests needing `@noble/*` must use the dynamic-import skip pattern (see
   `web/test/dm-crypto.test.mjs`) so offline `check` passes without
-  `node_modules`.
+  `node_modules`. Any **src** module inside a test's import chain must use
+  explicit `.ts`/`.mjs` extensions on relative imports (`../lib/bytes.ts`) —
+  an extensionless one makes the import fail and the test silently *skips*
+  even with `node_modules` present (this hid 14 tests — see the CHANGELOG).
 - Pure logic lives in dependency-free `web/src/**/*.ts|.mjs` with a
   `web/test/*.test.mjs` in the same change. `withVerdict`/`withPetname`-style
   helpers always copy — never rely on reference equality.

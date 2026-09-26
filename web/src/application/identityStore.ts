@@ -4,7 +4,9 @@
  * Strategy: the keystore is authoritative when reachable; localStorage stays
  * as a fallback cache so desktop browsers (no plugin) keep working unchanged.
  * Every write goes to both; every read prefers the keystore. The stored value
- * is the same `{ privHex, pubHex }` JSON used by the social identity slot.
+ * is the same `{ privHex, pubHex }` JSON used by the social identity slot —
+ * carried over the plugin boundary as base64 bytes (the Java side base64-
+ * encodes on read, mirroring `keystoreSet`'s base64 input).
  *
  * Re-exports the pure identity rules (`../domain/identity`) so existing
  * importers keep a single entry point while signing/verification stays in the
@@ -113,6 +115,20 @@ function parseIdentityJson(raw: string | null): Identity | null {
   }
 }
 
+/**
+ * The keystore plugin speaks base64 bytes (the Java side base64-encodes on
+ * read, mirroring `keystoreSet`'s base64 input), so decode before parsing.
+ * Garbage, absence, and unavailability all degrade to `null`.
+ */
+function parseKeystoreIdentity(rawB64: string | null): Identity | null {
+  if (!rawB64) return null;
+  try {
+    return parseIdentityJson(atob(rawB64));
+  } catch {
+    return null;
+  }
+}
+
 /** Persist to keystore (when available) and always to the localStorage cache. */
 export async function persistIdentitySecure(id: Identity): Promise<{ keystore: boolean }> {
   kv().setItem(STORAGE_KEY, JSON.stringify(id));
@@ -127,7 +143,7 @@ export async function persistIdentitySecure(id: Identity): Promise<{ keystore: b
  * localStorage cache (and heals the keystore from it when reachable).
  */
 export async function loadIdentitySecure(): Promise<Identity | null> {
-  const fromKeystore = parseIdentityJson(await keystoreGet(KEYSTORE_NAME));
+  const fromKeystore = parseKeystoreIdentity(await keystoreGet(KEYSTORE_NAME));
   if (fromKeystore) {
     kv().setItem(STORAGE_KEY, JSON.stringify(fromKeystore));
     return fromKeystore;
@@ -146,7 +162,7 @@ export async function loadIdentitySecure(): Promise<Identity | null> {
  */
 export async function migrateIdentityToKeystore(): Promise<'migrated' | 'unavailable' | 'absent'> {
   if (!isKeystoreAvailable()) return 'unavailable';
-  if (parseIdentityJson(await keystoreGet(KEYSTORE_NAME))) return 'migrated';
+  if (parseKeystoreIdentity(await keystoreGet(KEYSTORE_NAME))) return 'migrated';
   const cached = loadIdentity();
   if (!cached) return 'absent';
   await persistIdentitySecure(cached);

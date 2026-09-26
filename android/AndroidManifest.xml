@@ -3,7 +3,7 @@
   ILLUSTRATIVE Android manifest for the Capacitor shell.
 
   `npx cap add android` generates the real file at
-  android/app/src/main/AndroidManifest.xml. Merge the three settings that
+  web/android/app/src/main/AndroidManifest.xml. Merge the three settings that
   matter for a mixnet client:
 
     1. INTERNET permission (required).

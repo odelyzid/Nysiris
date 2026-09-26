@@ -26,7 +26,8 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 > documented controls enforced in code and tests.
 > * Reference Rust workspace: **111 tests pass** (the soak test is ignored by
 >   default).
-> * Browser PWA + social logic: **195 `node --test` tests pass** (0 failures).
+> * Browser PWA + social logic: **199 `node --test` tests pass** (0 skipped
+>   when `node_modules` are present).
 > * Service hosting: runnable providers + `nysiris` CLI + hybrid compose +
 >   gateway assets.
 > * Build system: `./build.sh` for Rust / web / Android / services / desktop /
@@ -42,7 +43,7 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 | Community timeline, threads, E2E DMs, trust dots, petnames, invites, encrypted attachments | Works against a `nysiris-social` provider you run |
 | Providers, hybrid bridge, portal store, `nysiris` CLI | Works; you operate them (see `services/`) |
 | Linux `.deb`, Windows zip | Works; built by CI on every release tag |
-| Android (TWA/Capacitor), MV3 extension | Scaffolds — installable, not yet hardened |
+| Android (Capacitor), MV3 extension | Debug-signed APK per release (sideloadable) + opt-in release signing; extension is a scaffold |
 | `sphinx-core` crypto | Reference/educational only — never use in production |
 
 ## Quick start
@@ -54,7 +55,7 @@ browser client and its type-stripping tests).
 git clone https://github.com/odelyzid/Nysiris.git
 cd Nysiris
 
-./build.sh check     # toolchain sanity: fmt + clippy + 111 Rust + 195 web tests
+./build.sh check     # toolchain sanity: fmt + clippy + 111 Rust + 199 web tests
 ./build.sh web       # build the browser PWA into web/dist
 ```
 
@@ -166,7 +167,7 @@ Releases are cut from tags: `./build.sh bump <version>`, commit `VERSION`,
 `git push origin v<version>` — CI builds the `.deb` + Windows zip and
 publishes them with checksums (`.github/workflows/release.yml`).
 
-`./build.sh check` runs **111 Rust tests** and **195 web unit tests** with zero
+`./build.sh check` runs **111 Rust tests** and **199 web unit tests** with zero
 clippy warnings, validates the JSON manifests, and checks every relative link in
 the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 
@@ -200,7 +201,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
 | `services/nysiris-cli/` | `nysiris` CLI + nym-sdk transport adapter: `host echo`/`host files`, `address`, `fetch`, `petname`, `doctor` | 9 parser tests + `./build.sh services` |
 | `services/gateway/` | `nym-node` entry-gateway config, systemd, bonding notes | Templates + operator steps |
-| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 195 `node --test` tests + `npm run build` |
+| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 199 `node --test` tests + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
 | `desktop/launcher/` | std-only Linux launcher: loopback static server + Chromium app window | 6 tests |
 | `desktop/debian/` | `.deb` packaging (control, postinst, `.desktop`, icon) | Built + inspected; `./build.sh desktop` |

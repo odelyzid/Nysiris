@@ -1,3 +1,18 @@
+// Release signing is opt-in via the environment (see android/README.md):
+//   ANDROID_KEYSTORE_PATH       path to the .jks/.keystore (absolute, or
+//                               relative to this app module)
+//   ANDROID_KEYSTORE_PASSWORD   keystore password
+//   ANDROID_KEY_ALIAS           key alias (default: nysiris)
+//   ANDROID_KEY_PASSWORD        key password (default: keystore password)
+// Without a keystore the release output stays UNSIGNED (Android blocks its
+// install); scripts/cmd-android.sh then also stages a debug-signed APK as a
+// sideloadable fallback.
+def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+def keystoreReady = keystorePath != null && !keystorePath.isEmpty() && file(keystorePath).exists()
+if (keystorePath != null && !keystorePath.isEmpty() && !keystoreReady) {
+    logger.warn("ANDROID_KEYSTORE_PATH '$keystorePath' not found; building UNSIGNED release")
+}
+
 apply plugin: 'com.android.application'
 
 android {
@@ -16,12 +31,27 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            // Populated below only when ANDROID_KEYSTORE_PATH points at a file.
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystoreReady) {
+                signingConfig signingConfigs.release
+            }
         }
     }
+}
+
+if (keystoreReady) {
+    signingConfigs.release.storeFile = file(keystorePath)
+    signingConfigs.release.storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    signingConfigs.release.keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "nysiris"
+    signingConfigs.release.keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
 }
 
 repositories {

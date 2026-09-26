@@ -56,8 +56,9 @@ bubblewrap build
 ```
 
 You must also publish `/.well-known/assetlinks.json` for the app to open
-without a URL bar, and provide real icons at `public/icons/icon-192.png` and
-`public/icons/icon-512.png` (placeholders are not committed).
+without a URL bar. Placeholder icons are committed at
+`public/icons/icon-192.png` and `public/icons/icon-512.png`; regenerate real
+ones with `scripts/gen-icons.py` before shipping.
 
 ### Capacitor
 
