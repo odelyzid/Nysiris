@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchNym } from '../../../../mixnet/fetchNym';
 import { isDefinitiveServiceError, pollDelayMs } from '../../../../mixnet/backoff.mjs';
 import { openDm, packDmInner, sealDm, unpackDmInner } from '../../../../application/dm';
+import { currentDay, signDmRead } from '../../../../application/identityStore';
 import { MAX_DM_CIPHERTEXT_BYTES } from '../../../../domain/limits';
 import { JSON_HEADERS, b64decode, buildDmRequest } from '../../../../domain/api';
 import {
@@ -92,9 +93,14 @@ export function useDirectMessages({
         dmStoppedRef.current = false;
       }
       try {
+        // Reads are authenticated (docs/09 §9.5): the dead-drop deletes on
+        // read, so the provider requires proof of possession of the
+        // recipient key — otherwise anyone could drain the mailbox.
+        const day = currentDay();
+        const sig = signDmRead(identity.privHex, identity.pubHex, day);
         const res = await fetchNym(service, {
           method: 'GET',
-          path: `/dm?for=${identity.pubHex}`,
+          path: `/dm?for=${identity.pubHex}&day=${day}&sig=${sig}`,
         });
         if (res.error) {
           // Definitive client error (e.g. not a community endpoint): pause

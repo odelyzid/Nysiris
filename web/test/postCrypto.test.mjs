@@ -24,6 +24,18 @@ test('top-level post verifies, tampered body does not', { skip: !identity }, () 
   assert.equal(identity.verifyPostSignature(id.pubHex, DAY, enc.encode('hello mixneT'), sig), false);
 });
 
+test('dm-read signature matches the Rust cross-implementation vector', { skip: !identity }, () => {
+  // Fixed vector also asserted in crates/social-format/src/sig.rs
+  // (verifies_typescript_signed_dm_read): privkey [42; 32], `for` = its
+  // derived public key, day = 20400. ed25519 is deterministic, so both
+  // sides must produce exactly these bytes.
+  const privHex = '42'.repeat(32);
+  const forHex = '2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12';
+  const sig = identity.signDmRead(privHex, forHex, DAY);
+  assert.equal(sig, '38bc9f5a683047cc50f8b13f88d64cf563b40df2d02a72b19c6e76d754c45283ae623751c9c4b2f7333698978fc33a601dca69627287d9c120bebdc7d4fa5d02');
+  assert.match(sig, /^[0-9a-f]{128}$/);
+});
+
 test('reply parent is bound into the signature', { skip: !identity }, () => {
   const id = identity.createIdentity();
   const body = enc.encode('a reply');

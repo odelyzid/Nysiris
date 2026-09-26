@@ -24,9 +24,9 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 > **Status:** foundations, hosting, browser client, social/DMs, trust
 > indicators, desktop packaging, and security analysis complete, with the
 > documented controls enforced in code and tests.
-> * Reference Rust workspace: **111 tests pass** (the soak test is ignored by
+> * Reference Rust workspace: **113 tests pass** (the soak test is ignored by
 >   default).
-> * Browser PWA + social logic: **200 `node --test` tests pass** (0 skipped
+> * Browser PWA + social logic: **201 `node --test` tests pass** (0 skipped
 >   when `node_modules` are present).
 > * Service hosting: runnable providers + `nysiris` CLI + hybrid compose +
 >   gateway assets.
@@ -55,7 +55,7 @@ browser client and its type-stripping tests).
 git clone https://github.com/odelyzid/Nysiris.git
 cd Nysiris
 
-./build.sh check     # toolchain sanity: fmt + clippy + 111 Rust + 200 web tests
+./build.sh check     # toolchain sanity: fmt + clippy + 113 Rust + 201 web tests
 ./build.sh web       # build the browser PWA into web/dist
 ```
 
@@ -167,7 +167,7 @@ Releases are cut from tags: `./build.sh bump <version>`, commit `VERSION`,
 `git push origin v<version>` — CI builds the `.deb` + Windows zip and
 publishes them with checksums (`.github/workflows/release.yml`).
 
-`./build.sh check` runs **111 Rust tests** and **200 web unit tests** with zero
+`./build.sh check` runs **113 Rust tests** and **201 web unit tests** with zero
 clippy warnings, validates the JSON manifests, and checks every relative link in
 the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 
@@ -190,18 +190,18 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `crates/portal-replication/` | Sync core: heads, want-lists, verified atomic apply | 12 tests |
 | `crates/portal-reputation/` | PoW, local reputation scores, provider rate limits | 5 tests |
 | `crates/provider-runtime/` | Shared hidden-service runtime: transport seam, request loop, PoW + rate guards, route plumbing | 15 tests |
-| `crates/social-format/` | Byte-exact social wire format: signed envelope framing, attachment binding, size limits, PoW preimages | 13 tests |
+| `crates/social-format/` | Byte-exact social wire format: signed envelope framing, attachment binding, size limits, PoW preimages | 15 tests |
 | `crates/sphinx-core/tests/fuzz_parser.rs` | Deterministic mutation fuzzing of all parsers | 6 tests |
 | `crates/sphinx-core/tests/soak.rs` | Randomised route/message soak (release) | `./build.sh soak` |
 | `crates/sphinx-core/fuzz/` | Coverage-guided fuzzing targets (nightly) | `cargo +nightly fuzz run parse_packet` |
 | `services/echo-provider/` | Pure-mixnet service provider (`nym-sdk` 1.21.x messaging) | Written against documented API; build in place |
 | `services/acceptance/` | Live-network delivery + SURB reply harness | **Passed on mainnet**: delivery ≈7.6 s, SURB reply ≈7.1 s |
 | `services/hybrid-bridge/` | Nym↔HTTP bridge + Caddy + Docker Compose, using `bridge-guard` | `docker compose config` + guard tests |
-| `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); encrypted attachments (content-addressed blobs, chunked + parallel upload); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`) | 24 tests + `web/src/adapters/driving/social/` timeline UI |
+| `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); encrypted attachments (content-addressed blobs, chunked + parallel upload); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`); signed dead-drop reads | 17 tests + `web/src/adapters/driving/social/` timeline UI |
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
 | `services/nysiris-cli/` | `nysiris` CLI + nym-sdk transport adapter: `host echo`/`host files`, `address`, `fetch`, `petname`, `doctor` | 9 parser tests + `./build.sh services` |
 | `services/gateway/` | `nym-node` entry-gateway config, systemd, bonding notes | Templates + operator steps |
-| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 200 `node --test` tests + `npm run build` |
+| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, nysiris-social timeline, leak guard, runtime enforcement | 201 `node --test` tests + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
 | `desktop/launcher/` | std-only Linux launcher: loopback static server + Chromium app window | 6 tests |
 | `desktop/debian/` | `.deb` packaging (control, postinst, `.desktop`, icon) | Built + inspected; `./build.sh desktop` |

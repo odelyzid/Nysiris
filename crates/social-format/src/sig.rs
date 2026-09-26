@@ -10,6 +10,7 @@
 //! ```text
 //! post:    b"fly-social-v1/post"    || author(32) || day_be64 || parent(16) || body || attachments
 //! profile: b"fly-social-v1/profile" || author(32) || name || 0x00 || bio
+//! dm-read: b"fly-social-v1/dm-read"  || for(32)    || day_be64
 //! ```
 //!
 //! `attachments` is the canonical encoding from [`crate::attach`]
@@ -32,6 +33,7 @@ use ed25519_dalek::{Signer, SigningKey};
 
 pub const POST_DOMAIN: &[u8] = b"fly-social-v1/post";
 pub const PROFILE_DOMAIN: &[u8] = b"fly-social-v1/profile";
+pub const DM_READ_DOMAIN: &[u8] = b"fly-social-v1/dm-read";
 
 /// Current UTC day number (coarse time for posts/profiles).
 pub fn current_day() -> u64 {
@@ -68,6 +70,22 @@ pub fn profile_message(author: &[u8; 32], name: &str, bio: &str) -> Vec<u8> {
     m.extend_from_slice(name.as_bytes());
     m.push(0x00);
     m.extend_from_slice(bio.as_bytes());
+    m
+}
+
+/// Dead-drop read authorization: `domain || for_key(32) || day_be64`.
+///
+/// `GET /dm` deletes on read and the recipient key is public (it signs every
+/// post), so an unauthenticated read would let anyone drain a mailbox — a
+/// denial-of-delivery attack indistinguishable from the owner polling
+/// (`docs/09-social.md` §9.5). Requiring this signature means only the key
+/// holder can fetch. The day bounds a signature's usefulness to the same
+/// ±2-day freshness window the posts use.
+pub fn dm_read_message(for_key: &[u8; 32], day: u64) -> Vec<u8> {
+    let mut m = Vec::with_capacity(DM_READ_DOMAIN.len() + 32 + 8);
+    m.extend_from_slice(DM_READ_DOMAIN);
+    m.extend_from_slice(for_key);
+    m.extend_from_slice(&day.to_be_bytes());
     m
 }
 
@@ -180,5 +198,31 @@ mod tests {
         // 32 zero bytes are not a valid ed25519 point (low-order identity).
         assert!(parse_pubkey(&"00".repeat(32)).is_err());
         assert!(parse_sig(&"ab".repeat(63)).is_err());
+    }
+
+    #[test]
+    fn dm_read_signature_binds_key_and_day() {
+        let secret = [7u8; 32];
+        let who = SigningKey::from_bytes(&secret).verifying_key().to_bytes();
+        let msg = dm_read_message(&who, 20_400);
+        let (_, sig) = sign_with(&secret, &msg);
+        verify(&who, &msg, &sig).unwrap();
+        // A different mailbox key fails (can't read someone else's dead-drop).
+        let other = dm_read_message(&[9u8; 32], 20_400);
+        assert!(verify(&who, &other, &sig).is_err());
+        // A different day fails (replay into another day bucket fails).
+        let stale = dm_read_message(&who, 20_401);
+        assert!(verify(&who, &stale, &sig).is_err());
+    }
+
+    #[test]
+    fn verifies_typescript_signed_dm_read() {
+        // Signed by web/src/domain/identity.ts::signDmRead (noble) with
+        // privkey [42; 32] (so `for` is its derived public key), day = 20400.
+        // If this fails, the two signing layouts have diverged.
+        let for_key = parse_pubkey("2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12").unwrap();
+        let msg = dm_read_message(&for_key, 20_400);
+        let sig = parse_sig("38bc9f5a683047cc50f8b13f88d64cf563b40df2d02a72b19c6e76d754c45283ae623751c9c4b2f7333698978fc33a601dca69627287d9c120bebdc7d4fa5d02").unwrap();
+        verify(&for_key, &msg, &sig).unwrap();
     }
 }

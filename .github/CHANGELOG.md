@@ -3,10 +3,19 @@
 Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 (`./build.sh bump <version>`). Pre-1.0: anything may change.
 
-## [Unreleased]
+## [0.1.29] — 2026-09-26
 
 ### Fixed
 
+- **DM dead-drop drain attack closed (breaking)**: `GET /dm` now requires
+  proof of possession — an ed25519 signature over
+  `fly-social-v1/dm-read || for(32) || day_be64` (`sig::dm_read_message`,
+  `signDmRead`), accepted only within the posts' ±2-day freshness window.
+  The dead-drop deletes on read and the recipient key is public, so an
+  unauthenticated read let anyone on the mixnet empty another user's mailbox.
+  Cross-implementation byte-exactness pinned by a shared test vector
+  (`sig.rs` `verifies_typescript_signed_dm_read` ↔ `postCrypto.test.mjs`).
+  Pre-0.1.29 clients cannot read DMs against a 0.1.29+ provider.
 - **The Android Keystore path was never wired into the app**: identities lived
   only in plaintext WebView localStorage even on devices with the plugin.
   `useIdentitySession` now migrates once and loads via
@@ -23,6 +32,10 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 
 ### Changed
 
+- **Exit-rotation advisory surfaced in the UI**: the protection-status card
+  shows a warning when the exit-reuse threshold is crossed (the tunnel is
+  one-shot, so rotation means a reload), and the log records the crossing
+  once instead of the console-only warning.
 - **Docs honesty pass**: DM "per-message forward secrecy" requalified as
   *sender-side* only (a compromised recipient key decrypts their whole
   history — no ratchet) in `application/dm.ts` and `docs/09` §9.4; the

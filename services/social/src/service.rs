@@ -12,7 +12,8 @@
 //! GET  /profile/<hex64>                     -> {author,name,bio,day}
 //! POST /profile {author,name,bio,day,sig}   -> {ok}
 //! POST /dm     {to,nonce,ciphertext}        -> {id}   (opaque, E2E)
-//! GET  /dm?for=<hex64>                      -> {dms:[...]} (destructive read)
+//! GET  /dm?for=<hex64>&day=<n>&sig=<hex128>  -> {dms:[...]} (destructive read;
+//!                                             sig = proof of possession)
 //! ```
 //!
 //! Replies are plain posts with `in_reply_to` set to the parent post's id.
@@ -92,7 +93,7 @@ fn descriptor_json(pow_bits: u32) -> serde_json::Value {
             "GET /profile/<hex64>",
             "POST /profile",
             "POST /dm",
-            "GET /dm?for=<hex64>",
+            "GET /dm?for=<hex64>&day=<n>&sig=<hex128>",
             "POST /blob/part?id=<hex64>&part=<i>&of=<n>",
             "GET /blob/<hex64>",
         ],
@@ -126,7 +127,7 @@ padding:.1em .35em;border-radius:.3em}li{margin:.25em 0}</style></head><body>\
 </ul>\
 <h2>Private messages</h2>\
 <ul>\
-<li><code>POST /dm</code> / <code>GET /dm?for=&lt;pubkey&gt;</code> — sealed direct messages, self-destruct on read</li>\
+<li><code>POST /dm</code> / <code>GET /dm?for=&lt;pubkey&gt;&amp;day=&lt;n&gt;&amp;sig=…</code> — sealed direct messages, self-destruct on read (reads require a signature from the recipient key)</li>\
 </ul>\
 <p>No accounts, no follows, no likes, no read receipts. Your public key is your name.</p>\
 </body></html>";
@@ -462,6 +463,26 @@ impl HiddenService for SocialService {
                     Some(Ok(w)) => w,
                     _ => return Response::error(400, "missing ?for=<pubkey>"),
                 };
+                // Reads are authenticated (docs/09 §9.5): the dead-drop
+                // deletes on read and the recipient key is public, so an
+                // unauthenticated read would let anyone drain a mailbox. The
+                // signature covers `domain || for(32) || day_be64` with the
+                // same ±2-day freshness window as posts — only the key holder
+                // can fetch.
+                let day = match query.get("day").and_then(|d| d.trim().parse::<u64>().ok()) {
+                    Some(d) => d,
+                    None => return Response::error(400, "missing ?day=<n>"),
+                };
+                let signature = match query.get("sig").map(|s| sig::parse_sig(s)) {
+                    Some(Ok(s)) => s,
+                    _ => return Response::error(401, "dm read requires a signature (proof of possession)"),
+                };
+                if day.abs_diff(sig::current_day()) > 2 {
+                    return Response::error(401, "stale dm read (day outside the freshness window)");
+                }
+                if sig::verify(&who, &sig::dm_read_message(&who, day), &signature).is_err() {
+                    return Response::error(401, "dm read signature does not match the recipient key");
+                }
                 let store = match self.lock() {
                     Ok(s) => s,
                     Err(e) => return e,
@@ -847,15 +868,63 @@ mod tests {
         });
         let raw = envelope("POST", "/dm", dm.to_string().as_bytes());
         assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
-        let raw = envelope("GET", &format!("/dm?for={}", hex::encode(author)), &[]);
+        let raw = envelope("GET", &signed_dm_read(&sk, &author, sig::current_day()), &[]);
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
         let body: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
         assert_eq!(body["dms"].as_array().unwrap().len(), 1);
         assert_eq!(body["dms"][0]["ciphertext"], ct);
-        let raw = envelope("GET", &format!("/dm?for={}", hex::encode(author)), &[]);
+        let raw = envelope("GET", &signed_dm_read(&sk, &author, sig::current_day()), &[]);
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
         let body: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
         assert!(body["dms"].as_array().unwrap().is_empty());
+    }
+
+    /// A signed `GET /dm` path: proof of possession of the recipient key.
+    fn signed_dm_read(sk: &SigningKey, who: &[u8; 32], day: u64) -> String {
+        let signature = sk.sign(&sig::dm_read_message(who, day));
+        format!(
+            "/dm?for={}&day={}&sig={}",
+            hex::encode(who),
+            day,
+            hex::encode(signature.to_bytes())
+        )
+    }
+
+    #[test]
+    fn dm_read_requires_proof_of_possession() {
+        let svc = test_service();
+        let sk = SigningKey::from_bytes(&[3u8; 32]);
+        let who = sk.verifying_key().to_bytes();
+        let ct = base64::engine::general_purpose::STANDARD.encode(b"secret-bytes");
+        let dm = serde_json::json!({
+            "to": hex::encode(who),
+            "epub": hex::encode([5u8; 32]),
+            "nonce": hex::encode([4u8; 24]),
+            "ciphertext": ct,
+        });
+        let raw = envelope("POST", "/dm", dm.to_string().as_bytes());
+        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
+
+        // No signature: refused outright — the drain attack is closed.
+        let raw = envelope(
+            "GET",
+            &format!("/dm?for={}&day={}", hex::encode(who), sig::current_day()),
+            &[],
+        );
+        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 401);
+        // Another key's signature: refused (cannot read someone else's mailbox).
+        let attacker = SigningKey::from_bytes(&[9u8; 32]);
+        let raw = envelope("GET", &signed_dm_read(&attacker, &who, sig::current_day()), &[]);
+        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 401);
+        // A signature outside the ±2-day freshness window: refused.
+        let stale = sig::current_day().saturating_sub(5);
+        let raw = envelope("GET", &signed_dm_read(&sk, &who, stale), &[]);
+        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 401);
+        // The mailbox is untouched by all of the above — then the owner reads it.
+        let raw = envelope("GET", &signed_dm_read(&sk, &who, sig::current_day()), &[]);
+        let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
+        assert_eq!(body["dms"].as_array().unwrap().len(), 1);
     }
 
     fn signed_post_with_attachments(

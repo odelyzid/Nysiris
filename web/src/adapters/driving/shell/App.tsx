@@ -142,13 +142,23 @@ export function App() {
   );
 
   // Keep the UI status honest.
+  const exitWarnedRef = useRef(false);
   useEffect(() => {
     const id = window.setInterval(() => {
       void tunnelState().then(setStatus);
-      setExit(exitStatus());
+      const next = exitStatus();
+      // Surface the exit-rotation advisory once, at the threshold crossing —
+      // the policy itself can only warn (the tunnel is one-shot, §5.2.2).
+      if (next.recommendReconnect && !exitWarnedRef.current) {
+        exitWarnedRef.current = true;
+        append(
+          `exit reuse: ${next.requests} requests on one exit — reload the page to rotate your exit (§5.2.2)`,
+        );
+      }
+      setExit(next);
     }, 2000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [append]);
 
   const onSelectView = useCallback((next: ViewId) => {
     setView(next);
@@ -629,6 +639,21 @@ export function App() {
                     </>
                   )}
                 </div>
+                {exit.recommendReconnect && (
+                  <p
+                    style={{
+                      fontSize: 12,
+                      border: '1px solid var(--fly-line)',
+                      borderLeft: '4px solid var(--fly-warn)',
+                      padding: '8px 10px',
+                      margin: '10px 0 0',
+                    }}
+                    role="note"
+                  >
+                    Exit reuse limit reached ({exit.requests} requests on one exit). Reload the page to rotate your
+                    exit (§5.2.2) — a fixed exit is a linking key at the destinations you visit.
+                  </p>
+                )}
                 {(clearnetIp || mixnetIp) && (
                   <p className="fly-muted">
                     {clearnetIp && mixnetIp

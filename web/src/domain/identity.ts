@@ -18,6 +18,7 @@ import type { AttachmentRef } from './attachmentCrypto';
 
 const POST_DOMAIN = 'fly-social-v1/post';
 const PROFILE_DOMAIN = 'fly-social-v1/profile';
+const DM_READ_DOMAIN = 'fly-social-v1/dm-read';
 
 const enc = new TextEncoder();
 
@@ -135,6 +136,17 @@ export function signProfile(privHex: string, authorHex: string, name: string, bi
     new Uint8Array([0]),
     enc.encode(bio),
   );
+  return bytesToHex(ed25519.sign(msg, hexToBytes(privHex)));
+}
+
+/**
+ * Sign a dead-drop read: `domain || for(32) || day_be64`. Byte-exact mirror
+ * of `sig::dm_read_message`. `GET /dm` deletes on read and the recipient key
+ * is public, so the provider requires this proof of possession — only the
+ * key holder can fetch (docs/09 §9.5).
+ */
+export function signDmRead(privHex: string, forHex: string, day: number): string {
+  const msg = concat(enc.encode(DM_READ_DOMAIN), hexToBytes(forHex), u64be(day));
   return bytesToHex(ed25519.sign(msg, hexToBytes(privHex)));
 }
 

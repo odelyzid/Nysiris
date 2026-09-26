@@ -123,17 +123,17 @@ GET  /post/<hex32>                   one post by id (fills thread gaps)
 GET  /profile/<hex64>                {author,name,bio,day}
 POST /profile {author,name,bio,day,sig}  {ok}
 POST /dm      {to,epub,nonce,ciphertext} {id}
-GET  /dm?for=<hex64>                 {dms:[...]}  (fetch DELETES)
+GET  /dm?for=<hex64>&day=<n>&sig=<hex128>  {dms:[...]}  (fetch DELETES)
 ```
 
-> **Warning — the dead-drop read is unauthenticated and destructive.** `GET
-> /dm?for=<pubkey>` requires no proof of possession and **deletes on read**,
-> while the recipient's public key is public (it signs every post). Anyone on
-> the mixnet can therefore poll another user's dead-drop and **drain it** — a
-> denial-of-delivery attack a provider cannot distinguish from the legitimate
-> owner polling. Treat DM delivery as best-effort. Hardening options for
-> operators: require a signature or PoW bound to the recipient key on `GET
-> /dm`, or raise `SOCIAL_RATE_PER_DAY` for that route.
+`GET /dm` requires **proof of possession**: `sig` is ed25519 over
+`"fly-social-v1/dm-read" || for(32) || day_be64` (`sig::dm_read_message`,
+`signDmRead`), accepted only within the same ±2-day freshness window as
+posts. This closes the drain attack: the dead-drop deletes on read and the
+recipient key is public, so an *unauthenticated* read would have let anyone
+on the mixnet poll another user's mailbox and empty it — indistinguishable
+from the owner. (Pre-signature clients — ≤ 0.1.28 — cannot read DMs against
+a 0.1.29+ provider; this is a deliberate, breaking hardening change.)
 
 ## 9.5a Threaded replies (client-assembled)
 

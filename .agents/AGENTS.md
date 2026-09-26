@@ -73,7 +73,7 @@ Releases are cut from `v*` tags (CI builds `.deb` + Windows zip with
 checksums). `VERSION` is the source of truth; bump with
 `./build.sh bump <version>`.
 
-- Current counts: 111 Rust tests, 200 web tests, zero clippy warnings.
+- Current counts: 113 Rust tests, 201 web tests, zero clippy warnings.
 - Focused runs: `node --test web/test/<name>.test.mjs` (from repo root),
   `cargo test -p <crate>`, `./build.sh services social`.
 - CI (`check` job) runs `./build.sh check` on Node 24; `web-build`/`android`
@@ -123,7 +123,10 @@ checksums). `VERSION` is the source of truth; bump with
   `--locked` (lockfiles are committed). `nym-sdk` 1.21 messaging API:
   `wait_for_messages` / `send_reply`.
 - `POST /dm` is sender-anonymous with no `in_reply_to`; `GET /dm` deletes on
-  read and enforces TTL only on write. `MAX_DM_BYTES = 1800` on ciphertext —
+  read, enforces TTL only on write, and requires a **signature over
+  `fly-social-v1/dm-read || for || day`** (proof of possession — the pubkey is
+  public, so unauthenticated reads would let anyone drain a mailbox).
+  `MAX_DM_BYTES = 1800` on ciphertext —
   the web client checks this before proving PoW.
 - When you add a documented control, add the code and its test in the same
   change; enforcement controls are named after their `docs/05-security.md`
