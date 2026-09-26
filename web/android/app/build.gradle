@@ -4,9 +4,9 @@
 //   ANDROID_KEYSTORE_PASSWORD   keystore password
 //   ANDROID_KEY_ALIAS           key alias (default: nysiris)
 //   ANDROID_KEY_PASSWORD        key password (default: keystore password)
-// Without a keystore the release output stays UNSIGNED (Android blocks its
-// install); scripts/cmd-android.sh then also stages a debug-signed APK as a
-// sideloadable fallback.
+// Without a keystore no release APK is produced at all — the build script
+// (scripts/cmd-android.sh) ships the debug-signed APK instead, because an
+// unsigned APK is uninstallable.
 def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
 def keystoreReady = keystorePath != null && !keystorePath.isEmpty() && file(keystorePath).exists()
 if (keystorePath != null && !keystorePath.isEmpty() && !keystoreReady) {
@@ -33,7 +33,16 @@ android {
     }
     signingConfigs {
         release {
-            // Populated below only when ANDROID_KEYSTORE_PATH points at a file.
+            // Populated only when ANDROID_KEYSTORE_PATH points at a file.
+            // NOTE: everything referencing `signingConfigs` must stay inside
+            // this android { } block — it does not resolve as a project
+            // property outside it (Gradle: "unknown property 'signingConfigs'").
+            if (keystoreReady) {
+                storeFile file(keystorePath)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "nysiris"
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            }
         }
     }
     buildTypes {
@@ -45,13 +54,6 @@ android {
             }
         }
     }
-}
-
-if (keystoreReady) {
-    signingConfigs.release.storeFile = file(keystorePath)
-    signingConfigs.release.storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-    signingConfigs.release.keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "nysiris"
-    signingConfigs.release.keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
 }
 
 repositories {
