@@ -70,7 +70,13 @@ export function quickStartCommand(os: PortalOs): string {
   switch (os) {
     case 'windows':
       return [
-        '# from a terminal inside services\\portal-provider\\',
+        '# option A - the nysiris CLI (echo service or a static site):',
+        '#   build once from a Git Bash prompt at the repo root: ./build.sh services nysiris-cli',
+        'cd services\\nysiris-cli',
+        'cargo run --release -- host echo --data-dir .\\sp-storage',
+        '#   or host a folder as a hidden website:',
+        'cargo run --release -- host files --web-root .\\public',
+        '# option B - the full portal provider:',
         '.\\target\\release\\portal-provider.exe',
         '# set before starting (persistent identity + storage):',
         '$env:SP_DATA_DIR = ".\\sp-storage"',
@@ -85,7 +91,12 @@ export function quickStartCommand(os: PortalOs): string {
     case 'linux':
     default:
       return [
-        '# first build is heavy (pulls nym-sdk)',
+        '# option A — the nysiris CLI (echo service or a static site):',
+        './build.sh services nysiris-cli',
+        '(cd services/nysiris-cli && cargo run --release -- host echo)',
+        '#   or host a folder as a hidden website:',
+        '(cd services/nysiris-cli && cargo run --release -- host files --web-root ./public)',
+        '# option B — the full portal provider:',
         './build.sh services portal-provider',
         'scripts/run-provider.sh portal',
         '# address prints on startup and lands in services/portal-provider/nym-address.txt',

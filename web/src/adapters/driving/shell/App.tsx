@@ -877,7 +877,7 @@ export function App() {
                     height: 480,
                     border: '1px solid var(--fly-line)',
                     borderRadius: 0,
-                    background: '#fff',
+                    background: 'var(--fly-surface)',
                     marginBottom: 12,
                   }}
                 />

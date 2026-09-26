@@ -129,19 +129,13 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
         </div>
         {selectedOs !== null && (
           <div role="tabpanel" aria-label={PORTAL_OS_META[selectedOs].title}>
-            <pre
-              style={{
-                background: '#161616',
-                color: '#d8f5a2',
-                padding: 12,
-                overflowX: 'auto',
-                fontSize: 12,
-                maxHeight: 260,
-              }}
-            >
+            <pre className="fly-code" style={{ maxHeight: 260 }}>
               {quickStartCommand(selectedOs)}
             </pre>
-            <button className="fly-btn" onClick={() => onCopy('quick-start', quickStartCommand(selectedOs))}>
+            <button
+              className="fly-btn fly-btn-secondary"
+              onClick={() => onCopy('quick-start', quickStartCommand(selectedOs))}
+            >
               {copied === 'quick-start' ? 'Copied' : 'Copy command'}
             </button>{' '}
             <a
@@ -156,8 +150,10 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
           </div>
         )}
         <p className="fly-muted">
-          The release zip (from <code>./build.sh windows</code>) ships the launcher and PWA; the portal provider binary
-          is built from source with <code>./build.sh services portal-provider</code>. See{' '}
+          The simplest host is the <code>nysiris</code> CLI (<code>./build.sh services nysiris-cli</code>):{' '}
+          <code>nysiris host echo</code> or <code>nysiris host files --web-root ./public</code>. The release zip (from{' '}
+          <code>./build.sh windows</code>) ships the launcher and PWA; the portal provider binary is built from source
+          with <code>./build.sh services portal-provider</code>. See <code>docs/13-sdk-cli.md</code> and{' '}
           <code>docs/04-hosting-services.md</code> for the full story.
         </p>
       </section>
@@ -174,7 +170,7 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
             <span className="fly-identity-id" title={identity.pubHex}>
               ID {identity.pubHex.slice(0, 12)}…
             </span>
-            <button className="fly-btn" onClick={() => onCopy('identity', identity.pubHex)}>
+            <button className="fly-btn fly-btn-secondary" onClick={() => onCopy('identity', identity.pubHex)}>
               {copied === 'identity' ? 'Copied' : 'Copy public key'}
             </button>
             <button className="fly-btn" onClick={onGenerateIdentity}>
@@ -214,10 +210,15 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
             spellCheck={false}
             aria-label="Provider address"
           />
-          <button className="fly-btn" onClick={() => onCopy('invite', invite)} disabled={!invite}>
+          <button className="fly-btn fly-btn-secondary" onClick={() => onCopy('invite', invite)} disabled={!invite}>
             {copied === 'invite' ? 'Copied' : 'Copy invite link'}
           </button>
-          <button className="fly-btn" aria-pressed={showQr} onClick={() => setShowQr((v) => !v)} disabled={!invite}>
+          <button
+            className="fly-btn fly-btn-ghost"
+            aria-pressed={showQr}
+            onClick={() => setShowQr((v) => !v)}
+            disabled={!invite}
+          >
             QR
           </button>
         </div>
@@ -298,10 +299,8 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
               />
             </label>
           </div>
-          <pre style={{ background: '#161616', color: '#d8f5a2', padding: 12, overflowX: 'auto', fontSize: 12 }}>
-            {renderConfigSnippet(prefs.config, prefs.os)}
-          </pre>
-          <button className="fly-btn" onClick={() => onCopy('config', renderConfigSnippet(prefs.config))}>
+          <pre className="fly-code">{renderConfigSnippet(prefs.config, prefs.os)}</pre>
+          <button className="fly-btn fly-btn-secondary" onClick={() => onCopy('config', renderConfigSnippet(prefs.config))}>
             {copied === 'config' ? 'Copied' : 'Copy config'}
           </button>
         </details>
@@ -310,6 +309,8 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
       <section className="fly-card" aria-label="Help and docs">
         <h2>Help / Docs</h2>
         <p className="fly-muted">
+          <code>docs/13-sdk-cli.md</code> — hosting SDK and the <code>nysiris</code> CLI
+          <br />
           <code>docs/04-hosting-services.md</code> — hosting a service
           <br />
           <code>docs/08-hidden-services.md</code> — nym:// envelopes and dispatch

@@ -53,7 +53,7 @@ export function TimelineView({
       />
 
       <h3 className="section-title">Timeline</h3>
-      <p style={{ fontSize: 11, color: '#888' }}>
+      <p style={{ fontSize: 11, color: 'var(--fly-muted)' }}>
         Global chronological timeline — every post is checked before it appears, so fakes never show.
       </p>
       <div style={{ margin: '4px 0 8px' }}>

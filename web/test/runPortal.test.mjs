@@ -51,6 +51,13 @@ test('quick-start snippets are platform-specific and never invent an image', () 
   assert.ok(windows.includes('portal-provider.exe'));
   assert.ok(docker.includes('<your-portal-image>'));
   assert.ok(!docker.includes('docker run') || docker.includes('<your-portal-image>'));
+
+  // The nysiris CLI is the one-command path (docs/13) on both native platforms.
+  for (const snippet of [linux, windows]) {
+    assert.ok(snippet.includes('nysiris-cli'), 'snippet mentions the nysiris CLI');
+    assert.ok(snippet.includes('host echo'), 'snippet hosts the echo service');
+    assert.ok(snippet.includes('host files'), 'snippet hosts static files');
+  }
 });
 
 test('config snippet renders the provider env knobs', () => {

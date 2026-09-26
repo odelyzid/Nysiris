@@ -23,7 +23,7 @@ export function SyncLine({
   onRetry: () => void;
 }) {
   const sync = describeSync(nowTick, { syncing, lastSyncedAt, error, stopped });
-  const tone = sync.tone === 'bad' ? '#b00020' : sync.tone === 'busy' ? '#b26b00' : '#888';
+  const tone = sync.tone === 'bad' ? 'var(--fly-bad)' : sync.tone === 'busy' ? 'var(--fly-warn)' : 'var(--fly-muted)';
   return (
     <p style={{ fontSize: 11, color: tone }} role="status">
       {sync.text}{' '}

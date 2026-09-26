@@ -45,7 +45,7 @@ export function AboutView({
       <p style={{ fontSize: 13 }}>No accounts, no follows, no likes, no read receipts. Your public key is your name.</p>
 
       <h3 className="section-title">Your profile</h3>
-      <p style={{ fontSize: 11, color: '#888' }}>
+      <p style={{ fontSize: 11, color: 'var(--fly-muted)' }}>
         Self-asserted: the name and bio you set here are signed by your ID.
       </p>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -71,10 +71,10 @@ export function AboutView({
       </div>
 
       <details style={{ marginTop: 8 }}>
-        <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>Technical log</summary>
-        <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', marginTop: 8, color: '#888' }}>{log.join('\n')}</pre>
+        <summary style={{ fontSize: 11, color: 'var(--fly-muted)', cursor: 'pointer' }}>Technical log</summary>
+        <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', marginTop: 8, color: 'var(--fly-muted)' }}>{log.join('\n')}</pre>
       </details>
-      <p style={{ fontSize: 11, color: '#888' }}>
+      <p style={{ fontSize: 11, color: 'var(--fly-muted)' }}>
         Your keys stay in this browser. Messages are sealed end-to-end; the community stores only scrambled text.
         Messages disappear after being read; the server keeps nothing else (no follows, likes, or receipts).
       </p>

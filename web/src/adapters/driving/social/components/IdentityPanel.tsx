@@ -49,7 +49,7 @@ export function IdentityPanel({ session, busy }: { session: IdentitySession; bus
       )}
       <details>
         <summary>Move my ID to another device</summary>
-        <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
+        <p style={{ fontSize: 11, color: 'var(--fly-muted)', margin: '4px 0' }}>
           Step 1 — on this device, reveal and copy your secret key. Step 2 — on the other device, paste it below.
           Anyone with this key is you: never share it with another person.
         </p>
@@ -84,7 +84,7 @@ export function IdentityPanel({ session, busy }: { session: IdentitySession; bus
       </details>
       <details>
         <summary>Back up / restore (encrypted file)</summary>
-        <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
+        <p style={{ fontSize: 11, color: 'var(--fly-muted)', margin: '4px 0' }}>
           Password-encrypted copy of your secret key — easier than raw hex on a new device. Anyone with this file{' '}
           <em>and</em> the password is you: store them separately.
         </p>

@@ -143,11 +143,11 @@ function AttachmentCard({ service, ref }: { service: string; ref: AttachmentRef 
   }, [service, ref]);
 
   if (state.status === 'loading') {
-    return <span style={{ fontSize: 11, color: '#888' }}>Loading {ref.name}…</span>;
+    return <span style={{ fontSize: 11, color: 'var(--fly-muted)' }}>Loading {ref.name}…</span>;
   }
   if (state.status === 'missing' || !state.url) {
     return (
-      <span style={{ fontSize: 11, color: '#888' }} title="The blob is gone or undecryptable">
+      <span style={{ fontSize: 11, color: 'var(--fly-muted)' }} title="The blob is gone or undecryptable">
         📎 {ref.name} — Attachment unavailable
       </span>
     );
@@ -172,7 +172,7 @@ function AttachmentCard({ service, ref }: { service: string; ref: AttachmentRef 
             else window.open(url, '_blank', 'noopener');
           }}
         />
-        <span style={{ fontSize: 11, color: '#888' }}>
+        <span style={{ fontSize: 11, color: 'var(--fly-muted)' }}>
           {ref.name} · {formatBytes(ref.size)}
         </span>
       </span>

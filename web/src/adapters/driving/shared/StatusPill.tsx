@@ -24,12 +24,12 @@ export function StatusPill({
 
   const tone =
     status.state === 'ready'
-      ? '#0a7a4a'
+      ? 'var(--fly-good)'
       : status.state === 'shutdown'
-        ? '#6b7280'
+        ? 'var(--fly-muted)'
         : status.state === 'failed'
-          ? '#b91c1c'
-          : '#b45309';
+          ? 'var(--fly-bad)'
+          : 'var(--fly-warn)';
 
   const pillLabel =
     status.state === 'ready'

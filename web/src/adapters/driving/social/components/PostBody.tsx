@@ -58,8 +58,8 @@ export function PostBody({ post: p, ctx }: { post: Post; ctx: PostBodyContext })
           }}
         />
         <strong>{authorLabel(p.author, petname, profileName)}</strong>{' '}
-        <span style={{ color: '#888' }}>{dayLabel(p.day)}</span>{' '}
-        <span style={{ fontSize: 12, color: '#888' }}>Blocked author — post hidden.</span>{' '}
+        <span style={{ color: 'var(--fly-muted)' }}>{dayLabel(p.day)}</span>{' '}
+        <span style={{ fontSize: 12, color: 'var(--fly-muted)' }}>Blocked author — post hidden.</span>{' '}
         <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => ctx.onReveal(p.id)}>
           Show anyway
         </button>
@@ -84,14 +84,14 @@ export function PostBody({ post: p, ctx }: { post: Post; ctx: PostBodyContext })
       <strong>{authorLabel(p.author, petname, profileName)}</strong>
       {ctx.dupeAuthors.has(p.author.toLowerCase()) && (
         <span
-          style={{ fontSize: 11, color: '#888' }}
+          style={{ fontSize: 11, color: 'var(--fly-muted)' }}
           title="Same name as another author — the hex tells them apart"
         >
           {' '}
           ·{p.author.slice(0, 8)}…
         </span>
       )}{' '}
-      <span style={{ color: '#888' }}>{dayLabel(p.day)}</span>{' '}
+      <span style={{ color: 'var(--fly-muted)' }}>{dayLabel(p.day)}</span>{' '}
       {!profileName && !petname && !isNaming && (
         <>
           <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => ctx.onLookup(p.author)}>
@@ -165,7 +165,7 @@ export function PostBody({ post: p, ctx }: { post: Post; ctx: PostBodyContext })
       <div style={{ wordBreak: 'break-word' }}>{p.body}</div>
       {p.attachments && p.attachments.length > 0 && <AttachmentList service={ctx.service} refs={p.attachments} />}
       {caution && (
-        <div style={{ fontSize: 11, color: '#b26b00', marginTop: 4 }} role="note">
+        <div style={{ fontSize: 11, color: 'var(--fly-warn)', marginTop: 4 }} role="note">
           ⚠ {caution}.
         </div>
       )}

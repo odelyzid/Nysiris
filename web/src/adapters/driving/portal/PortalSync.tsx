@@ -75,7 +75,7 @@ export function PortalSync() {
           onChange={(e) => setAddress(e.target.value)}
           spellCheck={false}
         />
-        <button className="fly-btn" onClick={() => void onSync()} disabled={status.syncing}>
+        <button className="fly-btn fly-btn-primary" onClick={() => void onSync()} disabled={status.syncing}>
           {status.syncing ? 'Syncing…' : 'Sync'}
         </button>
       </div>
@@ -87,7 +87,9 @@ export function PortalSync() {
           {failed.length > 0 && ` · ${failed.length} flagged (${failed.map(shortHex).join(', ')})`}
         </p>
       )}
-      <h3 style={{ fontSize: 15, marginTop: 10 }}>Local replica</h3>
+      <h3 className="section-title" style={{ marginTop: 10 }}>
+        Local replica
+      </h3>
       {authors.length === 0 ? (
         <p style={{ fontSize: 13 }} className="fly-muted">
           Nothing synced yet.

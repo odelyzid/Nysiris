@@ -50,19 +50,19 @@ export function ThreadView({
             Copy link
           </button>
         )}
-        <span style={{ fontSize: 11, color: '#888' }}>
+        <span style={{ fontSize: 11, color: 'var(--fly-muted)' }}>
           {replies.length === 0 ? 'No replies yet' : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
         </span>
       </div>
 
       {!root ? (
-        <p style={{ fontSize: 13, color: '#888' }} role="status">
+        <p style={{ fontSize: 13, color: 'var(--fly-muted)' }} role="status">
           {unavailableIds.includes(rootId) ? 'Post not yet available.' : 'Loading post…'}
         </p>
       ) : (
         <div
           style={{
-            border: '1px solid #ddd',
+            border: '1px solid var(--fly-line)',
             borderRadius: 0,
             padding: '8px 12px',
             marginBottom: 4,
@@ -79,7 +79,7 @@ export function ThreadView({
       )}
 
       {missingIds.length > 0 && (
-        <p style={{ fontSize: 11, color: '#888' }} role="status">
+        <p style={{ fontSize: 11, color: 'var(--fly-muted)' }} role="status">
           {missingIds.some((id) => loadingIds.includes(id))
             ? 'Loading parent…'
             : 'Some earlier posts are not yet available.'}{' '}
@@ -92,7 +92,7 @@ export function ThreadView({
           <li
             key={reply.id}
             style={{
-              borderLeft: '3px solid #ccc',
+              borderLeft: '3px solid var(--fly-line)',
               padding: '6px 0 6px 12px',
               marginTop: 6,
             }}

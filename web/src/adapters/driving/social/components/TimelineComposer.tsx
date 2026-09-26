@@ -34,12 +34,12 @@ export function TimelineComposer({
       {replyTo && (
         <div
           style={{
-            border: '1px solid #ccc',
+            border: '1px solid var(--fly-line)',
             borderRadius: 0,
             padding: '6px 10px',
             marginBottom: 8,
             fontSize: 12,
-            background: 'var(--fly-bg, #f7f5f2)',
+            background: 'var(--fly-bg)',
           }}
         >
           Replying to <strong>{replyToLabel}</strong>: “{replyTo.body.slice(0, 80)}

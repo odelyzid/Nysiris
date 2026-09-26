@@ -57,7 +57,7 @@ export function DmView({
   return (
     <div role="tabpanel" aria-label="Private messages">
       <h3 className="section-title">
-        Private messages{totalUnread > 0 && <span style={{ color: '#888' }}> ({totalUnread} unread)</span>}
+        Private messages{totalUnread > 0 && <span style={{ color: 'var(--fly-muted)' }}> ({totalUnread} unread)</span>}
       </h3>
       <p className="fly-note">🔒 Messages vanish once read — even from the host.</p>
       <DmComposer
@@ -79,7 +79,7 @@ export function DmView({
         >
           Check for new messages
         </button>
-        <span style={{ fontSize: 11, color: '#888' }}>Arrivals appear automatically.</span>
+        <span style={{ fontSize: 11, color: 'var(--fly-muted)' }}>Arrivals appear automatically.</span>
       </div>
       {convos.length > 0 && (
         <ConversationList convos={convos} activeDmPeer={activeDmPeer} onOpen={onOpenConvo} peerLabel={peerLabel} />

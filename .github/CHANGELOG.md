@@ -3,10 +3,17 @@
 Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 (`./build.sh bump <version>`). Pre-1.0: anything may change.
 
-## [Unreleased]
+## [0.1.28] — 2026-09-26
 
 ### Fixed
 
+- Community feed and DM polling no longer retry a lost portal forever:
+  transport failures back off exponentially (30 s → ×2 per failure, 10 min
+  cap) and a definitive service error (4xx except 429) pauses the automatic
+  poller until an explicit Retry. Refresh / Retry / Check-for-messages force
+  through and clear the pause. Status line distinguishes "unreachable"
+  (backing off) from "isn't answering as a community" (paused)
+  (`web/src/mixnet/backoff.mjs`).
 - **Android: the tagged-release APK was unsigned** — Android refuses to install
   unsigned APKs ("App not installed"), so every release APK/AAB to date was
   uninstallable. Release signing is now wired end to end: optional
@@ -35,15 +42,19 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
   plugin/`MainActivity` comments, and `web/README.md` claimed placeholder
   icons were not committed.
 
-### Added
+### Changed
 
-- Community feed and DM polling no longer retry a lost portal forever:
-  transport failures back off exponentially (30 s → ×2 per failure, 10 min
-  cap) and a definitive service error (4xx except 429) pauses the automatic
-  poller until an explicit Retry. Refresh / Retry / Check-for-messages force
-  through and clear the pause. Status line distinguishes "unreachable"
-  (backing off) from "isn't answering as a community" (paused)
-  (`web/src/mixnet/backoff.mjs`; 195 web tests).
+- Portal surfaces aligned to the bevel theme: the Run a Portal command/config
+  blocks and the fetched-page iframe use theme tokens instead of hardcoded
+  colors (no more white flash in dark mode), Copy / QR-toggle / Sync buttons
+  follow the primary / secondary / ghost role mapping, and the Run a Portal
+  quick-start snippets lead with the `nysiris` CLI (`host echo` / `host
+  files`, `docs/13-sdk-cli.md`).
+- Colorscheme sweep: every hardcoded hex in the driving adapters (muted
+  `#888`/`#666`, borders `#eee`/`#ccc`/`#ddd`, warn/bad tones) now uses the
+  `--fly-*` tokens, and the status tones (`status.ts`, `StatusPill`,
+  `SyncLine`) return tokens instead of duplicating the palette as raw hex.
+  The palette itself is unchanged.
 
 ### Added
 

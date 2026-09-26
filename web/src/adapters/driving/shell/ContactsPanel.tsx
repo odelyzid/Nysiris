@@ -46,7 +46,7 @@ export function ContactsPanel({
       {pending && (
         <div
           style={{
-            border: '1px solid #bd5b4e',
+            border: '1px solid var(--fly-accent)',
             borderRadius: 0,
             padding: 8,
             marginBottom: 8,
@@ -56,10 +56,10 @@ export function ContactsPanel({
           <div>
             Invited by <code style={{ wordBreak: 'break-all' }}>{pending.inviter.slice(0, 20)}…</code>
           </div>
-          <div style={{ color: '#666' }}>“{pending.note}”</div>
+          <div style={{ color: 'var(--fly-muted)' }}>“{pending.note}”</div>
           {pending.invite.vouches && pending.invite.vouches.length > 0 && (
             <div
-              style={{ color: '#666' }}
+              style={{ color: 'var(--fly-muted)' }}
               title="IDs the inviter explicitly trusts. Signed into the invite — but verify out-of-band before trusting them yourself."
             >
               Vouched by inviter ({pending.invite.vouches.length}):{' '}
@@ -97,16 +97,16 @@ export function ContactsPanel({
         </div>
       )}
       {contacts.length === 0 && !pending && (
-        <p style={{ fontSize: 13, color: '#666' }}>
+        <p style={{ fontSize: 13, color: 'var(--fly-muted)' }}>
           No people yet. Open a private invite link — saving it adds the person here under a name you choose.
         </p>
       )}
       <ul style={{ fontSize: 13, listStyle: 'none', padding: 0, margin: 0 }}>
         {contacts.map((c) => (
-          <li key={c.name} style={{ borderTop: '1px solid #eee', padding: '6px 0' }}>
+          <li key={c.name} style={{ borderTop: '1px solid var(--fly-line)', padding: '6px 0' }}>
             <strong>{c.name}</strong>{' '}
             <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{c.address.slice(0, 24)}…</code>
-            {c.note && <div style={{ color: '#666' }}>“{c.note}”</div>}
+            {c.note && <div style={{ color: 'var(--fly-muted)' }}>“{c.note}”</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
               <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => onVisit(c.address)}>
                 Visit

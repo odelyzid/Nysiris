@@ -883,6 +883,22 @@ samp,
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* Command/config block: sunken bevel, token colors (was hardcoded
+   green-on-dark). Used by the Run a Portal quick-start and config snippets. */
+.fly-code {
+  background: var(--fly-bg);
+  color: var(--fly-ink);
+  border: 1px solid var(--fly-line);
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 0 rgba(0, 0, 0, 0.35),
+    inset -1px -1px 0 0 rgba(255, 255, 255, 0.25);
+  padding: 8px 10px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-size: 12px;
+}
+
 /* ---- density: chrome, lists, composers, empty states --------------------- */
 .fly-shell {
   font-family: system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif;
