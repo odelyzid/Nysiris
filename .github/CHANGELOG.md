@@ -3,6 +3,21 @@
 Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 (`./build.sh bump <version>`). Pre-1.0: anything may change.
 
+## [Unreleased]
+
+### Fixed
+
+- **Android releases no longer attach an uninstallable APK**: without signing
+  secrets the release build shipped an *unsigned* APK (installing it fails
+  with "App not installed as package appears to be invalid" — confirmed by
+  inspecting the v0.1.30 artifacts). `./build.sh android --release` now
+  attaches **only the debug-signed APK** as `dist/nysiris_<version>_android.apk`
+  when no keystore is configured (nothing unsigned is ever attached); with the
+  `ANDROID_KEYSTORE_*` secrets it ships the signed release APK + AAB as
+  before. Note: CI's debug key is ephemeral, so debug-signed releases need the
+  old app uninstalled before updating — add the secrets for stable, updatable
+  signatures (`android/README.md`).
+
 ## [0.1.30] — 2026-09-26
 
 ### Added

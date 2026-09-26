@@ -91,39 +91,43 @@ cmd_android() {
         fi
       fi
       if [[ -z "$keystore" ]]; then
-        warn "no ANDROID_KEYSTORE_PATH configured: the release APK/AAB will be UNSIGNED (Android refuses to install it)"
-        warn "  a debug-signed APK will also be staged as a sideloadable fallback"
+        # No signing configured: an unsigned release APK/AAB is dead weight —
+        # Android refuses to install it ("package appears to be invalid") and
+        # attaching it to a release only creates a trap. Build and attach ONLY
+        # the debug-signed APK, which installs fine.
+        warn "no ANDROID_KEYSTORE_PATH configured: building the debug-signed APK only"
+        warn "  (an unsigned release APK would be uninstallable; set the"
+        warn "   ANDROID_KEYSTORE_* secrets to ship signed release artifacts —"
+        warn "   see android/README.md)"
+        log "building Capacitor debug APK (versionName $vname, versionCode $code)"
+        (cd "$web/android" && ./gradlew assembleDebug "${gradle_args[@]}")
+        local out="$ROOT/dist"
+        mkdir -p "$out"
+        local debug_apk
+        debug_apk="$(find "$web/android/app/build/outputs/apk/debug" -maxdepth 1 -name '*.apk' -print | sort | head -n 1 || true)"
+        [[ -n "$debug_apk" ]] || die "gradle produced no debug APK"
+        cp "$debug_apk" "$out/nysiris_${version}_android.apk"
+        log "staged dist/nysiris_${version}_android.apk (debug-signed, installable)"
+        ok "android (Capacitor) debug-signed release complete"
+        return 0
       fi
+
       log "building Capacitor release APK + AAB (versionName $vname, versionCode $code)"
-      local gradle_targets=(assembleRelease bundleRelease)
-      if [[ -z "$keystore" ]]; then
-        gradle_targets+=(assembleDebug)
-      fi
-      (cd "$web/android" && ./gradlew "${gradle_targets[@]}" "${gradle_args[@]}")
+      (cd "$web/android" && ./gradlew assembleRelease bundleRelease "${gradle_args[@]}")
       local out="$ROOT/dist"
       mkdir -p "$out"
-      local apk aab debug_apk staged=0
+      local apk aab staged=0
       apk="$(find "$web/android/app/build/outputs/apk/release" -maxdepth 1 -name '*.apk' -print | sort | head -n 1 || true)"
       aab="$(find "$web/android/app/build/outputs/bundle/release" -maxdepth 1 -name '*.aab' -print | sort | head -n 1 || true)"
       if [[ -n "$apk" ]]; then
         cp "$apk" "$out/nysiris_${version}_android.apk"
         log "staged dist/nysiris_${version}_android.apk"
-        if [[ "$(basename "$apk")" == *unsigned* ]]; then
-          warn "the staged release APK is UNSIGNED — sideload the -debug APK instead"
-        fi
         staged=1
       fi
       if [[ -n "$aab" ]]; then
         cp "$aab" "$out/nysiris_${version}_android.aab"
         log "staged dist/nysiris_${version}_android.aab"
         staged=1
-      fi
-      if [[ -z "$keystore" ]]; then
-        debug_apk="$(find "$web/android/app/build/outputs/apk/debug" -maxdepth 1 -name '*.apk' -print | sort | head -n 1 || true)"
-        if [[ -n "$debug_apk" ]]; then
-          cp "$debug_apk" "$out/nysiris_${version}_android-debug.apk"
-          log "staged dist/nysiris_${version}_android-debug.apk (debug-signed, installable)"
-        fi
       fi
       [[ "$staged" == 1 ]] || die "gradle release build produced no APK/AAB"
       ok "android (Capacitor) release build complete"

@@ -88,9 +88,10 @@ jobs:
       # accepted), and the action's sdkmanager 16 run fails on the removed
       # 'tools' package.
       # Optional signing: add the ANDROID_KEYSTORE_* repository secrets to
-      # produce an installable, signed APK/AAB (see android/README.md). Without
-      # them the build stays unsigned and a debug-signed APK is staged as a
-      # sideloadable fallback. Staged as dist/nysiris_*_android*.
+      # produce a signed, updatable APK/AAB (see android/README.md). Without
+      # them the build attaches ONLY the debug-signed APK as
+      # dist/nysiris_*_android.apk — an unsigned release APK is never
+      # attached, because Android refuses to install it.
       - name: Prepare signing keystore (optional)
         id: keystore
         env:

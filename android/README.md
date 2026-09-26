@@ -82,12 +82,23 @@ Without `--release` it builds a debug APK only (no `dist/` staging).
 ### Signing
 
 An unsigned APK **cannot be installed** — Android rejects it with
-"App not installed". Signing is opt-in via environment variables, read
-directly by `web/android/app/build.gradle`:
+"App not installed / package appears to be invalid". Therefore:
+
+* **No secrets configured** (the default): the build produces *only* the
+  **debug-signed** APK and attaches it as
+  `dist/nysiris_<version>_android.apk`. It installs fine, but CI's debug key
+  is ephemeral — **each release is signed by a different key**, so uninstall
+  the old app before updating.
+* **Secrets configured**: the release APK **and** AAB are signed with your
+  stable key (updates install over each other) and the APK signature is
+  verified with `apksigner` before upload.
+
+Signing is read directly by `web/android/app/build.gradle` from the
+environment:
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `ANDROID_KEYSTORE_PATH` | path to the `.jks`/`.keystore` (absolute, or relative to `web/android/app`) | — (unsigned) |
+| `ANDROID_KEYSTORE_PATH` | path to the `.jks`/`.keystore` (absolute, or relative to `web/android/app`) | — (debug-signed only) |
 | `ANDROID_KEYSTORE_PASSWORD` | keystore password | required with a keystore |
 | `ANDROID_KEY_ALIAS` | key alias | `nysiris` |
 | `ANDROID_KEY_PASSWORD` | key password | keystore password |
@@ -101,15 +112,7 @@ keytool -genkeypair -v -keystore nysiris.keystore -alias nysiris \
 
 CI (`.github/workflows/release.yml`) reads the same values from repository
 secrets: `ANDROID_KEYSTORE_BASE64` (`base64 -w0 nysiris.keystore`) plus the
-three password/alias variables. With a keystore configured the release APK/AAB
-is signed and verified with `apksigner` before upload.
-
-Without one, `./build.sh android --release` also stages a **debug-signed**
-fallback that is installable for sideloading:
-
-```text
-dist/nysiris_<version>_android-debug.apk
-```
+three password/alias variables.
 
 > Bare `./gradlew` / Android Studio builds (outside `./build.sh android`) stamp
 > `versionCode 1` / `versionName "1.0"` — pass
