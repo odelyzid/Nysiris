@@ -7,6 +7,8 @@
 services:
   app:
     image: nginx:alpine
+    security_opt:
+      - no-new-privileges
     volumes:
       - ./public:/usr/share/nginx/html:ro
     expose:
@@ -25,6 +27,9 @@ services:
     depends_on:
       - app
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges
     # Deliberately no `ports:` — the bridge only dials out to its gateway.
 
   caddy:
@@ -39,6 +44,8 @@ services:
     depends_on:
       - app
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges
 
 volumes:
   bridge-data:

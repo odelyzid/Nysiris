@@ -3,6 +3,43 @@
 Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 (`./build.sh bump <version>`). Pre-1.0: anything may change.
 
+## [Unreleased]
+
+### Fixed
+
+- **The Android Keystore path was never wired into the app**: identities lived
+  only in plaintext WebView localStorage even on devices with the plugin.
+  `useIdentitySession` now migrates once and loads via
+  `loadIdentitySecure()` at startup, and every create/import/restore persists
+  to the Keystore. When the Keystore holds the identity, the localStorage
+  cache is rewritten as a **token-wrapped copy** (XChaCha under a random key
+  kept in the Keystore) — WebView storage alone no longer contains
+  `privHex` on Android; desktop (no plugin) keeps the plaintext cache and all
+  previous behaviour. A corrupted Keystore slot now heals from the wrapped
+  cache (`web/test/identity-keystore.test.mjs`, 5 tests).
+- `@nymproject/mix-fetch` and `@nymproject/sdk-full-fat` are **pinned** (2.1.1
+  / 1.4.1) — `docs/05-security.md` already listed version pinning as a
+  control; the carets contradicted it.
+
+### Changed
+
+- **Docs honesty pass**: DM "per-message forward secrecy" requalified as
+  *sender-side* only (a compromised recipient key decrypts their whole
+  history — no ratchet) in `application/dm.ts` and `docs/09` §9.4; the
+  **unauthenticated destructive dead-drop read** is now a documented
+  denial-of-delivery risk (`docs/09` §9.5, `.agents/AGENTS.md`); the §5.10
+  "mitigations actually present" table now separates the **reference-core**
+  rows (`enforcement.rs` — linked by no shipped binary) from the runtime
+  browser mirror, and marks exit rotation as advisory-only; `SECURITY.md`
+  names the threat-model actors correctly (L1/L2/L3L/L3G); stale test-count
+  text in `docs/02` fixed.
+- Pre-audit disclaimer surfaced to end users: warning banner in the PWA
+  About view and on first-run onboarding, and the GitHub wiki footer now
+  carries the full "no independent audit" wording (it used to drop it).
+- Classic hybrid `docker-compose.yml` gains `no-new-privileges` on all
+  services and `read_only` on the bridge (matching the hardened mixnet-only
+  variant).
+
 ## [0.1.28] — 2026-09-26
 
 ### Fixed

@@ -415,8 +415,9 @@ The two big divergences to state plainly:
 
 ```bash
 cargo test -p sphinx-core
-# 6 tests: address round-trip, 3-hop route + recovery, tamper rejection,
-#          SURB reply, oversized-message rejection
+# 24 tests: packet build/process/recover end-to-end, tamper rejection,
+#           SURB reply, enforcement policy (route/SURB/reply budget),
+#           address round-trip, mutation-fuzz parser robustness
 ```
 
 Continue to **[`06-roadmap.md`](06-roadmap.md)** for the implementation plan,

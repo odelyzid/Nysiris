@@ -21,6 +21,10 @@ export function Onboarding({
     <section className="panel" aria-label="Getting started">
       <h2 className="section-title">Welcome to Nysiris</h2>
       <p>Browse and chat privately. One tap connects you over the private network.</p>
+      <p className="fly-muted" style={{ margin: '0 0 4px' }} role="note">
+        ⚠️ Experimental software — pre-audit. No independent security audit yet; don't rely on
+        this for high-stakes anonymity.
+      </p>
       <div className="fly-steps" aria-hidden={step !== 'welcome'}>
         <span>1 · Welcome — nothing to set up yet.</span>
         <span>2 · Connect privately — we pick the fastest safe path for you.</span>

@@ -305,7 +305,7 @@ account id. This is where real de-anonymisation usually happens.
 | **CSP misconfiguration** | Missing `worker-src 'self' blob:` blocks the WASM worker; missing bootstrap host fails with an unrelated error | `web/index.html` provides a correct CSP template |
 | **Supply chain** | The WASM/worker chunk is large and third-party | Pin Nym package versions; `script-src 'self'`; no remote code |
 | **Key storage (web)** | Messaging SDK keeps identity in **IndexedDB** — app-scoped, **not hardware-backed** | Documented; clear IndexedDB to rotate identity |
-| **Key storage (social identity)** | DM identity in `localStorage` readable by any origin script | **`NysirisKeystore` Capacitor plugin**: AES-256-GCM keys held in the hardware-backed Android Keystore, only ciphertext in SharedPreferences (`web/src/adapters/driven/keystore.mjs`, `NysirisKeystorePlugin.java`); localStorage stays as fallback cache |
+| **Key storage (social identity)** | DM identity in `localStorage` readable by any origin script | **`NysirisKeystore` Capacitor plugin**: AES-256-GCM keys held in the hardware-backed Android Keystore, only ciphertext in SharedPreferences (`web/src/adapters/driven/keystore.mjs`, `NysirisKeystorePlugin.java`). When the Keystore is available the localStorage cache holds only a token-wrapped copy (wrap key inside the Keystore) — never plaintext; the plaintext cache exists only on devices without the plugin |
 | **Key storage (Android)** | IndexedDB is not Keystore-backed | `android:allowBackup="false"`; social identity via the Keystore plugin above |
 | **Cleartext** | An accidental `http://` request leaks to the exit and the network | Android `usesCleartextTraffic="false"` + `network_security_config.xml`; use TLS everywhere |
 | **Background suspension** | Android Doze/App Standby suspend a long-lived tunnel | Foreground service with notification, or foreground-only + reconnect; one-shot WASM tunnel needs a page reload |
@@ -389,23 +389,31 @@ payload, SURB key seeds, replay tags, and the framing/ack/cover machinery.
 These are **enforced in code and covered by tests**, so they are behaviour
 rather than prose. Run `./build.sh check` to verify all of them at once.
 
+**Scope note — reference core vs runtime.** The rows marked *(reference core)*
+live in `crates/sphinx-core/src/enforcement.rs`, which **no shipped binary
+links**: real traffic is carried by Nym's audited SDKs, and the runtime
+enforcement for the reply/privacy controls is the browser mirror in
+`web/src/mixnet/enforcement.mjs`. The reference-core rows verify the policy
+*design* (and are the spec if that core is ever adopted); they are not an
+operational control today.
+
 | Control | Section | Where | Test |
 |---|---|---|---|
 | Header MAC verified before decryption | §5.1.1 | `crates/sphinx-core/src/header.rs` | `tests/end_to_end.rs::tampered_header_is_rejected_by_the_mac` |
 | Lioness wide-block payload | §5.1.1 | `crates/sphinx-core/src/payload.rs` | plaintext-recovery test |
 | Random final-hop padding (Kuhn et al.) | §5.1.2 | `crates/sphinx-core/src/header.rs` | `build_final_hop` |
 | Per-hop α blinding | §5.1.1 | `crates/sphinx-core/src/header.rs` | 3-hop route test |
-| Distinct operator per path | §5.1.4 | `crates/sphinx-core/src/enforcement.rs` | `enforcement.rs::route_policy_rejects_repeated_operator` |
-| No entry+exit collusion | §5.1.4 | `crates/sphinx-core/src/enforcement.rs` | `route_policy_rejects_entry_exit_collusion` |
-| SURB single-use enforcement | §5.3.1 | `crates/sphinx-core/src/enforcement.rs` | `surb_pool_enforces_single_use` |
-| SURB expiry (~25 h) | §5.3.3 | `crates/sphinx-core/src/enforcement.rs` | `surb_pool_rejects_expired_surbs` |
-| Bounded SURB attachment | §5.3.2/§5.3.4 | `crates/sphinx-core/src/enforcement.rs` | `route_policy_bounds_surb_attachment` |
-| Reply budget (token bucket) | §5.3.4 | `crates/sphinx-core/src/enforcement.rs` | `reply_budget_limits_bursts` |
-| Exit rotation (P2) | §5.2.2/§5.4.3 | `crates/sphinx-core/src/enforcement.rs` | `exit_rotation_policies_behave` |
-| Exit reconnect jitter | §5.2.3 | `enforcement.mjs` (`ExitPolicy` ±10 jitter, wired in `fetch.ts`) | `web/test/enforcement.test.mjs` |
-| Keystore-backed identity | §5.6 | `web/src/adapters/driven/keystore.mjs` + `NysirisKeystorePlugin.java` | `web/test/keystore.test.mjs` |
+| Distinct operator per path | §5.1.4 | `crates/sphinx-core/src/enforcement.rs` *(reference core)* | `enforcement.rs::route_policy_rejects_repeated_operator` |
+| No entry+exit collusion | §5.1.4 | `crates/sphinx-core/src/enforcement.rs` *(reference core)* | `route_policy_rejects_entry_exit_collusion` |
+| SURB single-use enforcement | §5.3.1 | `crates/sphinx-core/src/enforcement.rs` *(reference core)* | `surb_pool_enforces_single_use` |
+| SURB expiry (~25 h) | §5.3.3 | `crates/sphinx-core/src/enforcement.rs` *(reference core)* | `surb_pool_rejects_expired_surbs` |
+| Bounded SURB attachment | §5.3.2/§5.3.4 | `crates/sphinx-core/src/enforcement.rs` *(reference core)* | `route_policy_bounds_surb_attachment` |
+| Reply budget (token bucket) | §5.3.4 | `crates/sphinx-core/src/enforcement.rs` *(reference core)*; browser mirror: `enforcement.mjs` `ReplyBudget` | `reply_budget_limits_bursts`; `web/test/enforcement.test.mjs` |
+| Exit rotation (P2) | §5.2.2/§5.4.3 | `crates/sphinx-core/src/enforcement.rs` *(reference core)*; browser mirror is **advisory only** (reload required) | `exit_rotation_policies_behave` |
+| Exit reconnect jitter | §5.2.3 | `enforcement.mjs` (`ExitPolicy` ±10 jitter, wired in `fetch.ts` — `console.warn` advisory, no auto-rotation) | `web/test/enforcement.test.mjs` |
+| Keystore-backed identity | §5.6 | `web/src/adapters/driven/keystore.mjs` + `NysirisKeystorePlugin.java`; wired in `useIdentitySession` (secure load + persist) | `web/test/keystore.test.mjs`, `identity-keystore.test.mjs` |
 | Adversarial chaos harness | §5.3–§5.4 | `ReplyTracker`/`ReplyBudget` under replay storms, hoarding bursts, clock skew | `web/test/chaos-enforcement.test.mjs` (7 tests) |
-| Cover-traffic guardrail | §5.8 | `crates/sphinx-core/src/enforcement.rs` | `privacy_profile_guardrail` |
+| Cover-traffic guardrail | §5.8 | `crates/sphinx-core/src/enforcement.rs` *(reference core)*; browser mirror: `enforcement.mjs` + `tunnel.ts` (fails closed) | `privacy_profile_guardrail`; `web/test/enforcement.test.mjs` |
 | Bridge open-proxy guards | §5.10 | `crates/bridge-guard/src/lib.rs` | `tests/guard.rs` (8 tests) |
 | Leak-guard decisions, fail-closed | §5.6 | `web/src/mixnet/routedHosts.mjs` + `leakGuard.ts` | `web/test/routedHosts.test.mjs` (7 tests) |
 | Browser reply dedupe + TTL | §5.3.1/§5.3.3 | `web/src/mixnet/enforcement.mjs` (`ReplyTracker`) | `web/test/enforcement.test.mjs` |

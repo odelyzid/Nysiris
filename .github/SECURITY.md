@@ -30,5 +30,5 @@ public.
   bugs there are documentation bugs unless they also affect the claims in
   `docs/`.
 - Social engineering, physical access, and the Nym network itself are out of
-  scope. See `docs/05-security.md` for the threat model (L1/L2/L3 actors)
+  scope. See `docs/05-security.md` for the threat model (L1/L2/L3L/L3G actors)
   before reporting anything "missing" that is a documented non-goal.

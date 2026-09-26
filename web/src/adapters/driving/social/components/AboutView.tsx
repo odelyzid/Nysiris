@@ -21,6 +21,20 @@ export function AboutView({
   return (
     <div role="tabpanel" aria-label="About this community">
       <h3 className="section-title">About this community</h3>
+      <p
+        style={{
+          fontSize: 12,
+          border: '1px solid var(--fly-line)',
+          borderLeft: '4px solid var(--fly-warn)',
+          padding: '8px 10px',
+          margin: '0 0 10px',
+        }}
+        role="note"
+      >
+        <strong>Experimental software — pre-audit.</strong> Nysiris has not had an independent
+        security audit yet; don't rely on it for high-stakes anonymity. Details:{' '}
+        <code>docs/05-security.md</code>.
+      </p>
       <p style={{ fontSize: 13 }}>
         Metadata-minimal microblog + encrypted DMs, reachable only over the private network.
       </p>

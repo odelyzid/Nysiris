@@ -98,8 +98,11 @@ key    = BLAKE2b-256("fly-social-v1/dm" || shared)
 ct     = XChaCha20-Poly1305(key, nonce).encrypt(plaintext)
 ```
 
-The ephemeral key gives per-message forward secrecy *and* keeps the sender
-anonymous — the envelope carries no sender identity. Envelope on the wire:
+The ephemeral key gives *sender-side* per-message forward secrecy *and* keeps
+the sender anonymous — the envelope carries no sender identity. Caveat: the
+recipient decrypts with their **long-term identity key**, so a future
+compromise of that key recovers the recipient's entire DM history (there is no
+ratchet). Email-shape confidentiality, not Signal-shape. Envelope on the wire:
 
 ```json
 {"to":"<hex64>","epub":"<hex64>","nonce":"<hex48>","ciphertext":"<b64>"}
@@ -122,6 +125,15 @@ POST /profile {author,name,bio,day,sig}  {ok}
 POST /dm      {to,epub,nonce,ciphertext} {id}
 GET  /dm?for=<hex64>                 {dms:[...]}  (fetch DELETES)
 ```
+
+> **Warning — the dead-drop read is unauthenticated and destructive.** `GET
+> /dm?for=<pubkey>` requires no proof of possession and **deletes on read**,
+> while the recipient's public key is public (it signs every post). Anyone on
+> the mixnet can therefore poll another user's dead-drop and **drain it** — a
+> denial-of-delivery attack a provider cannot distinguish from the legitimate
+> owner polling. Treat DM delivery as best-effort. Hardening options for
+> operators: require a signature or PoW bound to the recipient key on `GET
+> /dm`, or raise `SOCIAL_RATE_PER_DAY` for that route.
 
 ## 9.5a Threaded replies (client-assembled)
 

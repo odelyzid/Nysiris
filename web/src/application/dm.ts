@@ -11,8 +11,11 @@
  * ct    = XChaCha20-Poly1305(key, nonce).encrypt(plaintext)
  * ```
  *
- * The ephemeral key gives per-message forward secrecy and keeps the sender
- * anonymous: the envelope carries no sender identity. The provider stores
+ * Sender-side forward secrecy: the ephemeral key protects the *sender*, and
+ * the envelope carries no sender identity at all. Caveat — the recipient
+ * decrypts with their long-term identity key, so a future compromise of that
+ * key recovers the recipient's entire DM history (there is no ratchet); treat
+ * this as email-shape confidentiality, not Signal-shape. The provider stores
  * `{to, epub, nonce, ciphertext}` and learns nothing about the plaintext.
  */
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';

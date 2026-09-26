@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import {
   BACKUP_MIN_PASSWORD_LENGTH,
   MAX_INVITE_VOUCHES,
@@ -7,7 +7,9 @@ import {
   exportIdentityBackup,
   importIdentity,
   importIdentityBackup,
-  loadIdentity,
+  loadIdentitySecure,
+  migrateIdentityToKeystore,
+  persistIdentitySecure,
   signInvite,
   signProfile,
   type Identity,
@@ -80,7 +82,27 @@ export function useIdentitySession({
   powFor: PowFor;
   setBusy: (value: boolean) => void;
 }): IdentitySession {
-  const [identity, setIdentity] = useState<Identity | null>(() => loadIdentity());
+  const [identity, setIdentity] = useState<Identity | null>(null);
+
+  // The Keystore is authoritative when reachable: migrate the plaintext cache
+  // once, then prefer the secure load (wrapped cache on Android, plain on
+  // desktop). Runs after first paint; the session starts without an identity
+  // for one tick when the Keystore holds it.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        await migrateIdentityToKeystore();
+      } catch {
+        // Best-effort; the cache fallback below still applies.
+      }
+      const restored = await loadIdentitySecure().catch(() => null);
+      if (restored && !cancelled) setIdentity(restored);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [importKey, setImportKey] = useState('');
   const [profileName, setProfileName] = useState('');
   const [profileBio, setProfileBio] = useState('');
@@ -98,6 +120,7 @@ export function useIdentitySession({
   const authed = useCallback<Authed>(
     async (fn) => {
       const id = identity ?? createIdentity();
+      if (!identity) void persistIdentitySecure(id).catch(() => undefined);
       setIdentity(id);
       return fn(id);
     },
@@ -117,27 +140,40 @@ export function useIdentitySession({
   // Local QR for your public ID: generated on this device, never uploaded.
   const { url: idQrUrl } = useQrCode(showIdQr, identity ? identity.pubHex : null);
 
+  /** Adopt an identity into state and push it to the Keystore when reachable. */
+  const adoptIdentity = useCallback(
+    (id: Identity) => {
+      setIdentity(id);
+      void persistIdentitySecure(id)
+        .then(({ keystore }) => {
+          if (keystore) append('identity secured in the device keystore');
+        })
+        .catch(() => undefined);
+    },
+    [append],
+  );
+
   const onCreateIdentity = useCallback(() => {
-    setIdentity(createIdentity());
+    adoptIdentity(createIdentity());
     append('new identity generated');
-  }, [append]);
+  }, [adoptIdentity, append]);
 
   const onNewIdentity = useCallback(() => {
-    setIdentity(createIdentity());
+    adoptIdentity(createIdentity());
     setIdCopied(false);
     setShowIdQr(false);
     append('new identity generated');
-  }, [append]);
+  }, [adoptIdentity, append]);
 
   const onImportIdentity = useCallback(() => {
     try {
-      setIdentity(importIdentity(importKey));
+      adoptIdentity(importIdentity(importKey));
       setImportKey('');
       append('identity imported');
     } catch (err) {
       append(`import failed: ${String(err)}`);
     }
-  }, [importKey, append]);
+  }, [importKey, append, adoptIdentity]);
 
   const onCopyId = useCallback(() => {
     if (!identity) return;
@@ -203,7 +239,7 @@ export function useIdentitySession({
     setBusy(true);
     try {
       const json = await restoreFile.text();
-      setIdentity(await importIdentityBackup(json, restorePw));
+      adoptIdentity(await importIdentityBackup(json, restorePw));
       setRestorePw('');
       setRestoreFile(null);
       if (restoreFileRef.current) restoreFileRef.current.value = '';
@@ -213,7 +249,7 @@ export function useIdentitySession({
     } finally {
       setBusy(false);
     }
-  }, [restoreFile, restorePw, append, setBusy]);
+  }, [restoreFile, restorePw, adoptIdentity, append, setBusy]);
 
   const onSaveProfile = useCallback(async () => {
     if (!service) return;
@@ -253,7 +289,7 @@ export function useIdentitySession({
       return;
     }
     const id = identity ?? createIdentity();
-    setIdentity(id);
+    adoptIdentity(id);
     try {
       const invite = signInvite(id.privHex, service, `Join me here`, vouchOnCopy ? trustedVouches : []);
       const link = `${service}#invite=${encodeInviteCompact(invite)}`;
@@ -267,7 +303,7 @@ export function useIdentitySession({
     } catch (err) {
       append(`invite failed: ${String(err)}`);
     }
-  }, [service, identity, vouchOnCopy, trustedVouches, append]);
+  }, [service, identity, vouchOnCopy, trustedVouches, adoptIdentity, append]);
 
   return {
     identity,

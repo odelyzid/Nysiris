@@ -151,8 +151,10 @@ const sidebar = [
 write('_Sidebar.md', sidebar + '\n');
 
 const footer = [
-  '> ⚠️ **Experimental / pre-audit.** The `crates/` Sphinx core is a reference',
-  '> implementation, never production crypto.',
+  '> ⚠️ **Experimental / pre-audit.** This repository is under active development and has',
+  '> **not** had an independent security audit. The Sphinx core in `crates/` is a reference',
+  '> implementation, never production crypto. Do not rely on it for high-stakes anonymity',
+  `> yet — see the [threat model](https://github.com/${REPO}/blob/${BRANCH}/docs/05-security.md).`,
   `> [Apache-2.0](https://github.com/${REPO}/blob/${BRANCH}/LICENSE) © 2026 odelyzid (tribewarez).`,
   `> [Report a security issue](https://github.com/${REPO}/security/policy).`,
 ].join('\n');
