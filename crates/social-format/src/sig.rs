@@ -220,7 +220,9 @@ mod tests {
         // Signed by web/src/domain/identity.ts::signDmRead (noble) with
         // privkey [42; 32] (so `for` is its derived public key), day = 20400.
         // If this fails, the two signing layouts have diverged.
-        let for_key = parse_pubkey("2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12").unwrap();
+        let for_key =
+            parse_pubkey("2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12")
+                .unwrap();
         let msg = dm_read_message(&for_key, 20_400);
         let sig = parse_sig("38bc9f5a683047cc50f8b13f88d64cf563b40df2d02a72b19c6e76d754c45283ae623751c9c4b2f7333698978fc33a601dca69627287d9c120bebdc7d4fa5d02").unwrap();
         verify(&for_key, &msg, &sig).unwrap();
