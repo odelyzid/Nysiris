@@ -7,11 +7,15 @@
 import type { ViewStorage } from './views';
 
 const PORTALS_KEY = 'fly.portals.recent';
+const FAVORITES_KEY = 'fly.portals.favorites';
 const CONTEXT_KEY = 'fly.shell.context';
 const THREAD_KEY = 'fly.messages.activeThread';
 
 /** How many recently opened portals the roster remembers. */
 export const MAX_RECENT_PORTALS = 8;
+
+/** How many favourite portals the roster pins. */
+export const MAX_FAVORITE_PORTALS = 20;
 
 /** Portals opened via the URI bar, newest first. Unknown shapes dropped. */
 export function loadRecentPortals(storage?: ViewStorage | null): string[] {
@@ -39,6 +43,44 @@ export function rememberPortal(portals: string[], address: string): string[] {
   const clean = address.trim();
   if (!clean) return [...portals];
   return [clean, ...portals.filter((p) => p !== clean)].slice(0, MAX_RECENT_PORTALS);
+}
+
+/** Favourited portals, newest first. Unknown shapes dropped. */
+export function loadFavoritePortals(storage?: ViewStorage | null): string[] {
+  try {
+    const raw = storage?.getItem(FAVORITES_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
+  } catch {
+    return [];
+  }
+}
+
+export function saveFavoritePortals(portals: string[], storage?: ViewStorage | null): void {
+  try {
+    storage?.setItem(FAVORITES_KEY, JSON.stringify(portals.slice(0, MAX_FAVORITE_PORTALS)));
+  } catch {
+    // Private mode: favourites just don't persist.
+  }
+}
+
+/**
+ * Add or remove `address` from the favourites; returns the next list
+ * (newest first, deduplicated, capped). Never mutates the input.
+ */
+export function toggleFavoritePortal(portals: string[], address: string): string[] {
+  const clean = address.trim();
+  if (!clean) return [...portals];
+  if (portals.includes(clean)) return portals.filter((p) => p !== clean);
+  return [clean, ...portals].slice(0, MAX_FAVORITE_PORTALS);
+}
+
+/** Whether `address` is favourited (trims, empty is never favourited). */
+export function isFavoritePortal(portals: string[], address: string): boolean {
+  const clean = address.trim();
+  return clean.length > 0 && portals.includes(clean);
 }
 
 /** Context panel starts open; explicit close persists. */

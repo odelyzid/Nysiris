@@ -3,6 +3,18 @@
 Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 (`./build.sh bump <version>`). Pre-1.0: anything may change.
 
+## [0.1.30] — 2026-09-26
+
+### Added
+
+- **Portal favourites/bookmarks**: star the portal you are browsing from the
+  Portal view (☆/★ toggle), pinned in a dedicated "Favourites" section at the
+  top of the desktop roster above the recents (★ marker, own dot title).
+  Persisted locally under `fly.portals.favorites` (cap 20, newest first,
+  private to the device — same storage pattern as the recents). Pure logic in
+  `application/shell.ts` (`toggleFavoritePortal`/`isFavoritePortal`),
+  unit-tested in `web/test/shell.test.mjs`.
+
 ## [0.1.29] — 2026-09-26
 
 ### Fixed

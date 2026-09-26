@@ -41,15 +41,19 @@ import {
   contactAddressOf,
   formatFetchedBody,
 } from '../../../shared/share';
-import { ContextPanel, Roster, TopBar } from './DesktopShell';
+import { ContextPanel, Roster, TopBar, type RosterPortal } from './DesktopShell';
 import {
+  isFavoritePortal,
   loadActiveThread,
   loadContextOpen,
+  loadFavoritePortals,
   loadRecentPortals,
   rememberPortal,
   saveActiveThread,
   saveContextOpen,
+  saveFavoritePortals,
   saveRecentPortals,
+  toggleFavoritePortal,
 } from '../../../application/shell';
 
 const NYM_API_URL = 'https://validator.nymtech.net/api';
@@ -90,6 +94,8 @@ export function App() {
   const [socialService, setSocialService] = useState('');
   // Recently opened portals for the desktop roster, newest first.
   const [recentPortals, setRecentPortals] = useState<string[]>(() => loadRecentPortals(defaultViewStorage()));
+  // Favourited portals: pinned above the recents in the roster, persisted.
+  const [favorites, setFavorites] = useState<string[]>(() => loadFavoritePortals(defaultViewStorage()));
   // Desktop context panel visibility (persisted; narrow screens ignore it).
   const [contextOpen, setContextOpen] = useState(() => loadContextOpen(defaultViewStorage()));
 
@@ -490,15 +496,43 @@ export function App() {
   }, [activeThread, threadCounts]);
 
   // Desktop roster rows, derived from the same state as the main views.
+  // Favourites pin above recents; the open portal is always visible even if
+  // it was never starred or visited before this session.
   const rosterPortals = useMemo(() => {
-    const rows = recentPortals
-      .filter((a) => a !== socialService)
-      .map((address) => ({ address, current: false, active: false }));
-    if (socialService) {
-      rows.unshift({ address: socialService, current: true, active: view === 'portal' });
-    }
+    const seen = new Set<string>();
+    const rows: RosterPortal[] = [];
+    const push = (address: string, starred: boolean) => {
+      const clean = address.trim();
+      if (!clean || seen.has(clean)) return;
+      seen.add(clean);
+      rows.push({
+        address: clean,
+        current: clean === socialService,
+        active: clean === socialService && view === 'portal',
+        starred,
+      });
+    };
+    for (const address of favorites) push(address, true);
+    for (const address of recentPortals) push(address, false);
+    if (socialService) push(socialService, isFavoritePortal(favorites, socialService));
     return rows;
-  }, [recentPortals, socialService, view]);
+  }, [favorites, recentPortals, socialService, view]);
+
+  // Star/unstar the bound portal. Persisted; the roster re-sorts on its own.
+  const onToggleFavorite = useCallback(
+    (address: string) => {
+      const adding = !isFavoritePortal(favorites, address);
+      setFavorites((prev) => {
+        const next = toggleFavoritePortal(prev, address);
+        saveFavoritePortals(next, defaultViewStorage());
+        return next;
+      });
+      append(adding ? 'portal added to favourites' : 'portal removed from favourites');
+    },
+    [favorites, append],
+  );
+
+  const currentFavorite = socialService ? isFavoritePortal(favorites, socialService) : false;
 
   const rosterThreads = useMemo(
     () =>
@@ -865,6 +899,22 @@ export function App() {
                   />
                 </div>
               </section>
+
+              {socialService && (
+                <div className="fly-row" aria-label="Current portal">
+                  <span className="fly-muted" style={{ wordBreak: 'break-all' }}>
+                    {shortenAddress(socialService)}
+                  </span>
+                  <button
+                    className={currentFavorite ? 'fly-btn fly-btn-secondary' : 'fly-btn'}
+                    aria-pressed={currentFavorite}
+                    onClick={() => onToggleFavorite(socialService)}
+                    title="Favourite this portal — pinned to the top of the roster"
+                  >
+                    {currentFavorite ? '★ Favourited' : '☆ Favourite'}
+                  </button>
+                </div>
+              )}
 
               {pendingInvite && (
                 <section className="fly-card" aria-label="You've been invited">

@@ -107,6 +107,8 @@ export interface RosterPortal {
   current: boolean;
   /** Selected (portal view open on this address). */
   active: boolean;
+  /** Pinned by the user; favourites sort above recents. */
+  starred: boolean;
 }
 
 export interface RosterThread {
@@ -140,24 +142,35 @@ export function Roster({
   return (
     <aside className="fly-roster" aria-label="Roster">
       <section aria-label="Portals">
-        <h3>Portals</h3>
         {portals.length === 0 && <p className="fly-muted">No portals yet — open a private link above.</p>}
-        <ul>
-          {portals.map((p) => (
+        {(() => {
+          const starred = portals.filter((p) => p.starred);
+          const rest = portals.filter((p) => !p.starred);
+          const row = (p: RosterPortal) => (
             <li key={p.address}>
               <button aria-current={p.active} onClick={() => onOpenPortal(p.address)} title={p.address}>
                 <Dot
                   color={p.current ? STANDING_META.trusted.color : STANDING_META.unknown.color}
-                  title={p.current ? 'Open now' : 'Recently visited'}
+                  title={p.current ? 'Open now' : p.starred ? 'Favourited' : 'Recently visited'}
                 />
                 <span>
+                  {p.starred && <span aria-hidden="true">★ </span>}
                   {shortenAddress(p.address)}
                   {p.current && <span className="fly-sub">open now</span>}
                 </span>
               </button>
             </li>
-          ))}
-        </ul>
+          );
+          return (
+            <>
+              <h3>Favourites</h3>
+              {starred.length === 0 && <p className="fly-muted">Star a portal to pin it here.</p>}
+              {starred.length > 0 && <ul>{starred.map(row)}</ul>}
+              {rest.length > 0 && <h3>Recent</h3>}
+              {rest.length > 0 && <ul>{rest.map(row)}</ul>}
+            </>
+          );
+        })()}
       </section>
 
       <section aria-label="Contacts">
