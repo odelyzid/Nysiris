@@ -14,5 +14,6 @@ Description: Nym mixnet browser client
  requests through the Nym mixnet (Sphinx packets over the 5-hop path).
  .
  Only 127.0.0.1 is bound, and the file server refuses path traversal. The
- mixnet client is the same audited Nym WASM used by the browser build; this
+ mixnet client is the same Nym WASM used by the browser build (third-party
+ packages, not audited by this project — see docs/05-security.md §5.12); this
  package does not bundle a browser, it uses the system one.

@@ -34,6 +34,15 @@ jobs:
       - name: Run checks
         run: ./build.sh check
 
+      # The offline check deliberately skips the @noble-backed crypto tests
+      # (it never installs node_modules). Run the full web suite with the real
+      # dependencies here so the browser E2E crypto constructions — sealed-box
+      # DMs, signature domains, backups, attachments — gate CI with 0 skipped.
+      - name: Web tests with dependencies (crypto constructions)
+        run: |
+          (cd web && npm ci --no-audit --no-fund)
+          node --test $(find web/test -name '*.test.mjs')
+
   web-build:
     name: Browser build (best effort)
     runs-on: ubuntu-latest

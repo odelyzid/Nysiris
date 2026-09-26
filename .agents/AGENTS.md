@@ -76,8 +76,10 @@ checksums). `VERSION` is the source of truth; bump with
 - Current counts: 113 Rust tests, 201 web tests, zero clippy warnings.
 - Focused runs: `node --test web/test/<name>.test.mjs` (from repo root),
   `cargo test -p <crate>`, `./build.sh services social`.
-- CI (`check` job) runs `./build.sh check` on Node 24; `web-build`/`android`
-  are best-effort (`continue-on-error`).
+- CI (`check` job) runs `./build.sh check` on Node 24 **and then the full web
+  suite with dependencies installed** (`Web tests with dependencies` step), so
+  the `@noble`-backed crypto constructions gate CI; `web-build`/`android` are
+  best-effort (`continue-on-error`).
 - `check` only parses service manifests (fast/offline). First `services`
   build compiles `nym-sdk` from scratch (minutes); `clean` deletes
   `services/*/target` (gigabytes) — that cache is what keeps rebuilds fast.
@@ -93,6 +95,8 @@ checksums). `VERSION` is the source of truth; bump with
   explicit `.ts`/`.mjs` extensions on relative imports (`../lib/bytes.ts`) —
   an extensionless one makes the import fail and the test silently *skips*
   even with `node_modules` present (this hid 14 tests — see the CHANGELOG).
+  CI runs the full suite with dependencies, so silent skips no longer hide
+  failures there — keep local runs honest too (`npm ci` in `web/` first).
 - Pure logic lives in dependency-free `web/src/**/*.ts|.mjs` with a
   `web/test/*.test.mjs` in the same change. `withVerdict`/`withPetname`-style
   helpers always copy — never rely on reference equality.

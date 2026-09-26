@@ -27,7 +27,8 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 > * Reference Rust workspace: **113 tests pass** (the soak test is ignored by
 >   default).
 > * Browser PWA + social logic: **201 `node --test` tests pass** (0 skipped
->   when `node_modules` are present).
+>   when `node_modules` are present — and the CI gate runs them with
+>   dependencies installed, so the @noble crypto constructions gate too).
 > * Service hosting: runnable providers + `nysiris` CLI + hybrid compose +
 >   gateway assets.
 > * Build system: `./build.sh` for Rust / web / Android / services / desktop /
@@ -40,7 +41,7 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 | Area | State |
 |---|---|
 | PWA: tunnel, leak guard, Nym-address messaging, `fetchNym` (+ parallel tagged requests) | Works (mainnet-verified delivery + SURB reply) |
-| Community timeline, threads, E2E DMs, trust dots, petnames, invites, encrypted attachments | Works against a `nysiris-social` provider you run |
+| Community timeline, threads, E2E DMs (signature-authenticated dead-drop reads), trust dots, petnames, invites, encrypted attachments | Works against a `nysiris-social` provider you run |
 | Providers, hybrid bridge, portal store, `nysiris` CLI | Works; you operate them (see `services/`) |
 | Linux `.deb`, Windows zip | Works; built by CI on every release tag |
 | Android (Capacitor), MV3 extension | Debug-signed APK per release (sideloadable) + opt-in release signing; extension is a scaffold |
@@ -110,9 +111,10 @@ executed.
 
 Mixing + cover traffic hide **who talks to whom and when** from network
 observers (L1/L3), and services never learn client addresses (SURB replies).
-It does **not** protect against a compromised endpoint, a malicious service
-you choose to use, or timing correlation when cover traffic is thin. Full
-analysis: [`docs/05-security.md`](docs/05-security.md).
+DM dead-drops are destructive and **authenticated** — only the recipient key
+can read them. It does **not** protect against a compromised endpoint, a
+malicious service you choose to use, or timing correlation when cover traffic
+is thin. Full analysis: [`docs/05-security.md`](docs/05-security.md).
 
 ## Read in this order
 

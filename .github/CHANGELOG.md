@@ -32,6 +32,14 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 
 ### Changed
 
+- **The browser E2E crypto constructions now gate CI**: the offline `check`
+  intentionally skips the `@noble`-backed tests (no `node_modules`), so CI's
+  check job gained a `Web tests with dependencies` step that runs the full
+  web suite with 0 skipped — sealed-box DMs, signature domains, backups, and
+  attachment crypto are enforced, not just conventional.
+- The `.deb` package description no longer calls the Nym WASM "audited" by
+  this project; it points at the third-party audit-status note
+  (`docs/05-security.md` §5.12), matching the docs' own standard.
 - **Exit-rotation advisory surfaced in the UI**: the protection-status card
   shows a warning when the exit-reuse threshold is crossed (the tunnel is
   one-shot, so rotation means a reload), and the log records the crossing
