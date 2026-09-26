@@ -91,23 +91,27 @@ jobs:
       # produce an installable, signed APK/AAB (see android/README.md). Without
       # them the build stays unsigned and a debug-signed APK is staged as a
       # sideloadable fallback. Staged as dist/nysiris_*_android*.
-      - name: Decode signing keystore (optional)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      - name: Prepare signing keystore (optional)
+        id: keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nysiris.keystore"
-      - name: Export signing env (optional)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         run: |
-          {
-            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/nysiris.keystore"
-            echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
-            echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"
-            echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"
-          } >> "$GITHUB_ENV"
-      - run: ./build.sh android --release
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::no ANDROID_KEYSTORE_BASE64 secret; the release APK/AAB will be UNSIGNED (a debug-signed APK is staged as a fallback)"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nysiris.keystore"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/nysiris.keystore" >> "$GITHUB_ENV"
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+      - name: Build Android release
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./build.sh android --release
       - name: Verify APK signature (when signed)
-        if: ${{ env.ANDROID_KEYSTORE_PATH != '' }}
+        if: steps.keystore.outputs.configured == 'true'
         run: |
           APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)"
           "$APKSIGNER" verify --print-certs dist/nysiris_*_android.apk
