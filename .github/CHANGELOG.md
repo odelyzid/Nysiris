@@ -3,7 +3,7 @@
 Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 (`./build.sh bump <version>`). Pre-1.0: anything may change.
 
-## [Unreleased]
+## [0.1.31] — 2026-09-26
 
 ### Fixed
 
@@ -17,6 +17,17 @@ Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
   before. Note: CI's debug key is ephemeral, so debug-signed releases need the
   old app uninstalled before updating — add the secrets for stable, updatable
   signatures (`android/README.md`).
+- **This is the first release signed with the project's stable upload key**
+  (`ANDROID_KEYSTORE_*` repository secrets): the APK is verified with
+  `apksigner` in CI, and updates now install over each other without an
+  uninstall. If you installed a previous debug-signed build, uninstall it
+  once before installing this one (different signature).
+- **Home tab: no more duplicate status boxes.** The Protection-status card
+  only renders after onboarding is dismissed — before that, the Welcome /
+  Connecting box is the single status surface (it previously duplicated the
+  "Connecting…" text and Connect action, and the "You're protected ✓" card).
+  Portal, Messages, Service, and Settings tabs audited: no same-tab
+  duplicates.
 
 ## [0.1.30] — 2026-09-26
 

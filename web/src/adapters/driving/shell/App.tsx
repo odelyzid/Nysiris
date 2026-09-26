@@ -641,63 +641,67 @@ export function App() {
                 </section>
               )}
 
-              <section className="fly-card" aria-label="Protection status">
-                <h2>
-                  {status.state === 'ready'
-                    ? 'You are protected'
-                    : status.state === 'connecting'
-                      ? 'Connecting…'
-                      : 'Not protected yet'}
-                </h2>
-                <p>
-                  {status.state === 'ready'
-                    ? 'Your connection is running over the private network.'
-                    : status.state === 'connecting'
-                      ? 'Finding the fastest private path. This usually takes a few seconds.'
-                      : 'Connect once — we handle the private path for you.'}
-                </p>
-                <div className="fly-row">
-                  {status.state !== 'ready' && (
-                    <button className="fly-btn fly-btn-primary" onClick={() => void onConnect()} disabled={busy}>
-                      Connect privately
-                    </button>
-                  )}
-                  {status.state === 'ready' && (
-                    <>
-                      <button className="fly-btn" onClick={() => void onProveTunnel()} disabled={busy}>
-                        Prove I am protected
-                      </button>
-                      <button className="fly-btn" onClick={() => void onDisconnect()} disabled={busy}>
-                        Switch off
-                      </button>
-                    </>
-                  )}
-                </div>
-                {exit.recommendReconnect && (
-                  <p
-                    style={{
-                      fontSize: 12,
-                      border: '1px solid var(--fly-line)',
-                      borderLeft: '4px solid var(--fly-warn)',
-                      padding: '8px 10px',
-                      margin: '10px 0 0',
-                    }}
-                    role="note"
-                  >
-                    Exit reuse limit reached ({exit.requests} requests on one exit). Reload the page to rotate your
-                    exit (§5.2.2) — a fixed exit is a linking key at the destinations you visit.
+              {/* Persistent status card: only after onboarding is dismissed —
+                  before that the Onboarding box is the single home status. */}
+              {onboarded && (
+                <section className="fly-card" aria-label="Protection status">
+                  <h2>
+                    {status.state === 'ready'
+                      ? 'You are protected'
+                      : status.state === 'connecting'
+                        ? 'Connecting…'
+                        : 'Not protected yet'}
+                  </h2>
+                  <p>
+                    {status.state === 'ready'
+                      ? 'Your connection is running over the private network.'
+                      : status.state === 'connecting'
+                        ? 'Finding the fastest private path. This usually takes a few seconds.'
+                        : 'Connect once — we handle the private path for you.'}
                   </p>
-                )}
-                {(clearnetIp || mixnetIp) && (
-                  <p className="fly-muted">
-                    {clearnetIp && mixnetIp
-                      ? clearnetIp !== mixnetIp
-                        ? 'Checked: your private address differs from your everyday one. ✓'
-                        : 'Checked: the addresses look the same — try again in a moment.'
-                      : 'Check in progress…'}
-                  </p>
-                )}
-              </section>
+                  <div className="fly-row">
+                    {status.state !== 'ready' && (
+                      <button className="fly-btn fly-btn-primary" onClick={() => void onConnect()} disabled={busy}>
+                        Connect privately
+                      </button>
+                    )}
+                    {status.state === 'ready' && (
+                      <>
+                        <button className="fly-btn" onClick={() => void onProveTunnel()} disabled={busy}>
+                          Prove I am protected
+                        </button>
+                        <button className="fly-btn" onClick={() => void onDisconnect()} disabled={busy}>
+                          Switch off
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {exit.recommendReconnect && (
+                    <p
+                      style={{
+                        fontSize: 12,
+                        border: '1px solid var(--fly-line)',
+                        borderLeft: '4px solid var(--fly-warn)',
+                        padding: '8px 10px',
+                        margin: '10px 0 0',
+                      }}
+                      role="note"
+                    >
+                      Exit reuse limit reached ({exit.requests} requests on one exit). Reload the page to rotate your
+                      exit (§5.2.2) — a fixed exit is a linking key at the destinations you visit.
+                    </p>
+                  )}
+                  {(clearnetIp || mixnetIp) && (
+                    <p className="fly-muted">
+                      {clearnetIp && mixnetIp
+                        ? clearnetIp !== mixnetIp
+                          ? 'Checked: your private address differs from your everyday one. ✓'
+                          : 'Checked: the addresses look the same — try again in a moment.'
+                        : 'Check in progress…'}
+                    </p>
+                  )}
+                </section>
+              )}
 
               <section
                 className="fly-card"
