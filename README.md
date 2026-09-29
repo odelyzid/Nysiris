@@ -36,6 +36,44 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 > * The `services/*` builds depend on Nym's own packages and are not compiled by
 >   the fast `./build.sh check` loop.
 
+## What this project is not
+
+Nysiris is a private browser and a set of self-hosting services. It is not a
+crypto or DeFi product, and it has no financial features:
+
+* No wallet, and no crypto asset management.
+* No token. There is no Nysiris token and no Nysiris airdrop.
+* No swap, exchange, or trading.
+* No staking, bonding, or delegation.
+* No yield or farming, and no in-app earn/rewards program.
+* No token-gated UI, tiers, or paid unlocks.
+* No crypto price, chart, or portfolio features.
+
+Nothing in the app asks for a wallet connection, a seed phrase, a token balance,
+or a payment. The cryptography here is for private communication — routing,
+encryption, and signatures — not for finance.
+
+## Transport note (Nym)
+
+The Nym mixnet is used strictly as a transport and privacy layer: it hides who
+talks to whom and when, it carries fixed-size packets, and SURBs let a service
+reply without learning the client's address. That is its whole role here.
+
+The public Nym network has its own token economics — a $NYM token, node
+staking, operator rewards, and credentials for clearnet exits. That is Nym's,
+not Nysiris's. This repository does **not** implement $NYM, staking, bonding,
+node-operator rewards, or credential purchase flows, and it does not expose or
+depend on Nym token economics inside the application:
+
+* No token, staking, or bonding logic in the client or the providers.
+* No node-operator rewards, payouts, or accounting.
+* No credential purchase, resale, or top-up flows.
+* No wallet, balance, or price display anywhere in the UI.
+
+Running and bonding a Nym node (see `services/gateway/` and
+`docs/04-hosting-services.md`) is standard Nym operator work done with Nym's own
+tools and wallet, outside the Nysiris application.
+
 ## What works vs what is experimental
 
 | Area | State |
@@ -190,7 +228,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `crates/nysiris-sdk/` | Hosting SDK: `HostConfig`, `serve` harness, traversal-safe `StaticFiles`, curated re-exports | 11 tests |
 | `crates/portal-data/` | Portal data model: content-addressed objects, append-only logs, LWW-map | 4 tests |
 | `crates/portal-replication/` | Sync core: heads, want-lists, verified atomic apply | 12 tests |
-| `crates/portal-reputation/` | PoW, local reputation scores, provider rate limits | 5 tests |
+| `crates/portal-reputation/` | PoW (anti-spam), local reputation scores, provider rate limits | 5 tests |
 | `crates/provider-runtime/` | Shared hidden-service runtime: transport seam, request loop, PoW + rate guards, route plumbing | 15 tests |
 | `crates/social-format/` | Byte-exact social wire format: signed envelope framing, attachment binding, size limits, PoW preimages | 15 tests |
 | `crates/sphinx-core/tests/fuzz_parser.rs` | Deterministic mutation fuzzing of all parsers | 6 tests |
@@ -202,7 +240,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); encrypted attachments (content-addressed blobs, chunked + parallel upload); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`); signed dead-drop reads | 17 tests + `web/src/adapters/driving/social/` timeline UI |
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
 | `services/nysiris-cli/` | `nysiris` CLI + nym-sdk transport adapter: `host echo`/`host files`, `address`, `fetch`, `petname`, `doctor` | 9 parser tests + `./build.sh services` |
-| `services/gateway/` | `nym-node` entry-gateway config, systemd, bonding notes | Templates + operator steps |
+| `services/gateway/` | `nym-node` entry-gateway config, systemd, Nym operator bonding notes (outside the app) | Templates + operator steps |
 | `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, portal favourites, nysiris-social timeline, leak guard, runtime enforcement | 203 `node --test` tests + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
 | `desktop/launcher/` | std-only Linux launcher: loopback static server + Chromium app window | 6 tests |
