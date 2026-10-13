@@ -316,9 +316,10 @@ class MainActivity : BridgeActivity() {
 ### Android runtime realities (plan for these)
 
 * **Background limits.** Android aggressively stops background work; Doze and
-  App Standby will suspend a long-lived tunnel. If you need a persistent
-  connection, run it in a **foreground service** with a visible notification,
-  otherwise treat the tunnel as foreground-only and reconnect on resume.
+  App Standby would suspend a long-lived tunnel. The Android shell runs a
+  **foreground service** with an ongoing notification
+  (`NysirisForegroundService`, driven by `web/src/adapters/driven/foreground.mjs`)
+  to keep the process — and its tunnel — alive while backgrounded.
 * **One-shot tunnel.** The WASM tunnel cannot be rebuilt without a page reload.
   On Capacitor, a full page reload is a `webView.reload()`; on PWA it is
   `location.reload()`. Surface a clear "reconnect" action instead of silently
@@ -330,10 +331,11 @@ class MainActivity : BridgeActivity() {
 * **Battery/data.** Cover traffic runs continuously while connected; show the
   user a data estimate and offer disconnect. Consider `disableCoverTraffic` only
   if the user explicitly accepts the privacy trade-off.
-* **Secure storage.** The messaging SDK stores identity in IndexedDB, which is
-  app-scoped but not hardware-backed. For higher assurance, generate/import keys
-  and wrap them with Android Keystore / `EncryptedSharedPreferences` via a
-  Capacitor plugin, and document the threat model.
+* **Secure storage.** The social identity is wrapped with Android Keystore /
+  AES-GCM via the `NysirisKeystore` Capacitor plugin. The **messaging** SDK
+  (`@nymproject/sdk-full-fat`) stores its own identity in IndexedDB internally
+  and exposes no export/import API, so that key stays app-scoped, not
+  hardware-backed — documented as a known limitation.
 * **App Links.** Use verified App Links if services hand off to your app.
 * **Network changes.** Handle Wi-Fi↔cellular transitions as a reconnect; the WSS
   to the entry gateway will drop.

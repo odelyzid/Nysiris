@@ -115,5 +115,7 @@ MaintainerNotes: |-
   - Per release: add a new `Builds` entry with the new versionName/versionCode
     and update `CurrentVersion`/`CurrentVersionCode`. versionCode is derived as
     major*1e6 + minor*1e3 + patch by web/android/app/build.gradle from VERSION.
-  - Replace the placeholder launcher/splash resources and web/public/icons with
-    real artwork before the first release.
+  - Launcher/adaptive/splash icons are generated from the mixnet motif via
+    `scripts/gen-android-icons.py`; PWA icons via `scripts/gen-icons.py`. Device
+    screenshots for the listing still need to be captured (F-Droid metadata
+    `fastlane/metadata/android/en-US/images/phoneScreenshots/`).

@@ -48,9 +48,11 @@ Then copy `network_security_config.xml` to
 ## Runtime realities on Android
 
 * **Background execution.** Android suspends background work (Doze, App
-  Standby). A long-lived tunnel needs a **foreground service** with a visible
-  notification. Otherwise treat the tunnel as foreground-only and reconnect on
-  resume.
+  Standby). The app ships a **foreground service** (`NysirisForegroundService`,
+  started/stopped from `web/src/adapters/driven/foreground.mjs` while the tunnel
+  is up) with an ongoing notification, which raises process priority so the
+  WebView — and the tunnel inside it — stays alive. Without it the tunnel would
+  be foreground-only.
 * **One-shot WASM tunnel.** The tunnel cannot be rebuilt without a page reload.
   Surface an explicit "Reconnect" action (`webView.reload()` / `location.reload()`)
   rather than silently retrying `setupMixTunnel`.
@@ -59,10 +61,12 @@ Then copy `network_security_config.xml` to
 * **Battery and data.** Cover traffic runs continuously while connected. Show an
   estimate and let the user disconnect. Only offer `disableCoverTraffic` with an
   explicit warning about the privacy cost.
-* **Secure storage.** The messaging SDK keeps identity in IndexedDB (app-scoped,
-  not hardware-backed). For higher assurance, manage keys via Android Keystore /
-  `EncryptedSharedPreferences` through a Capacitor plugin, and document the
-  threat model. Losing the keys means losing the address.
+* **Secure storage.** The social identity is Keystore-backed (the
+  `NysirisKeystore` plugin). The **messaging** SDK (`@nymproject/sdk-full-fat`)
+  keeps *its* identity in IndexedDB internally and exposes no export/import API,
+  so it cannot be moved into the Keystore from app code — a documented
+  limitation (see `docs/05-security.md`). `android:allowBackup="false"` keeps it
+  out of device backups.
 * **Release.** Sign with an upload key, target a recent `compileSdk`, and test
   on both a physical device and an emulator image with Google Play services.
 
@@ -144,8 +148,10 @@ with the F-Droid key — you do not upload a binary.
   `UpdateCheckMode: Tags` reads the `vX.Y.Z` tags.
 * Store listing text/screenshots can live in the app repo under
   `web/android/fastlane/metadata/android/en-US/` (F-Droid reads `fastlane`
-  metadata). The placeholder icon in `public/icons/` should be replaced with a
-  real one first.
+  metadata). The launcher, adaptive and splash icons are generated from the
+  mixnet motif with `python3 scripts/gen-android-icons.py` (and the PWA icons
+  with `python3 scripts/gen-icons.py`); real device screenshots still need to be
+  captured for the listing.
 
 ### F-Droid policy notes
 
