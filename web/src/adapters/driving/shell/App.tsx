@@ -4,6 +4,7 @@ import { exitStatus, proveTunnel } from '../../../mixnet/fetch';
 import { NymAddressClient, type IncomingMessage } from '../../../mixnet/messaging';
 import { fetchNym } from '../../../mixnet/fetchNym';
 import { parseInviteLink } from '../../../mixnet/hiddenService.mjs';
+import { startForeground, stopForeground } from '../../../adapters/driven/foreground.mjs';
 import { Social } from '../social/Social';
 import { verifyInvite } from '../../../domain/identity';
 import { loadTrust, saveTrust, withVerdict, defaultTrustStorage, type Verdict } from '../../../application/trustStore';
@@ -169,6 +170,17 @@ export function App() {
     }, 2000);
     return () => window.clearInterval(id);
   }, [append]);
+
+  // Keep the Android process alive (foreground service + notification) while the
+  // tunnel is up, so Doze/App Standby cannot suspend it; stop it once the tunnel
+  // is gone. No-op off Android (foreground.mjs degrades to {available:false}).
+  useEffect(() => {
+    if (spent || status.state === 'failed' || status.state === 'shutdown') {
+      void stopForeground();
+    } else if (status.state === 'ready') {
+      void startForeground();
+    }
+  }, [status.state, spent]);
 
   const onSelectView = useCallback((next: ViewId) => {
     setView(next);

@@ -3,24 +3,23 @@
   ILLUSTRATIVE Android manifest for the Capacitor shell.
 
   `npx cap add android` generates the real file at
-  web/android/app/src/main/AndroidManifest.xml. Merge the three settings that
-  matter for a mixnet client:
+  web/android/app/src/main/AndroidManifest.xml. The settings that matter for a
+  mixnet client:
 
     1. INTERNET permission (required).
     2. android:usesCleartextTraffic="false"  -> never allow plaintext HTTP.
     3. android:networkSecurityConfig="@xml/network_security_config"
+    4. A foreground service (with matching permissions) so the one-shot tunnel
+       survives backgrounding / Doze.
 
-  If you add a long-lived tunnel, add a foreground service with a visible
-  notification; Android will otherwise suspend it in the background.
+  The real project already merges all four.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Add only if you run a persistent foreground tunnel:
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    -->
 
     <application
         android:allowBackup="false"
@@ -50,5 +49,11 @@
             </intent-filter>
             -->
         </activity>
+
+        <!-- Foreground service keeping the tunnel alive in the background. -->
+        <service
+            android:name=".NysirisForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
