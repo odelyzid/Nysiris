@@ -1,4 +1,4 @@
-package app.example.nysiris;
+package com.tribewarez.nysiris;
 
 import static org.junit.Assert.*;
 

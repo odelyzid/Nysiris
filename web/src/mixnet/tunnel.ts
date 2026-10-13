@@ -93,3 +93,12 @@ export async function teardownTunnel(): Promise<void> {
   spent = true;
   tunnelPromise = undefined;
 }
+
+/**
+ * True once the tunnel has been torn down. The one-shot WASM cannot be brought
+ * up again in this page: the UI must offer an explicit reconnect (page reload)
+ * rather than calling `ensureTunnel` again (§5.2.2).
+ */
+export function tunnelSpent(): boolean {
+  return spent;
+}

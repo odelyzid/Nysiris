@@ -69,8 +69,11 @@ npm run android:sync
 npm run android:open      # Android Studio
 ```
 
-See [`../android/README.md`](../android/README.md) for manifest, network
-security config, background-execution limits, and secure-storage guidance.
+The Android shell is on **Capacitor 8** (AGP 8.13, Gradle 8.14.3,
+`targetSdk 36`) and carries no proprietary dependencies, so it is F-Droid
+eligible. See [`../android/README.md`](../android/README.md) for manifest,
+network security config, background-execution limits, secure-storage guidance,
+and the F-Droid/APK distribution notes.
 
 ## Scope and limits (read before promising anything)
 

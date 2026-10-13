@@ -119,9 +119,61 @@ three password/alias variables.
 > `-PandroidVersionCode=… -PandroidVersionName=…` to override
 > (`web/android/app/build.gradle`).
 
-For a Play Store upload, publish `assetlinks.json` and bump `versionCode`
-monotonically — the script derives it from `VERSION`, so `./build.sh bump` is
-all you need.
+## Distribution
+
+Nysiris is Apache-2.0 and ships **no proprietary dependencies**: there is no
+Google Play Services / Firebase SDK in the build (the `com.google.gms`
+google-services plugin was removed), so it is eligible for **F-Droid** and other
+free-software stores. This is the preferred channel over Google Play.
+
+### F-Droid (preferred)
+
+F-Droid builds the app **from source** on its own server and signs the result
+with the F-Droid key — you do not upload a binary.
+
+* The recipe lives in the [`fdroiddata`](https://gitlab.com/fdroid/fdroiddata)
+  repo as `metadata/com.tribewarez.nysiris.yml`. A ready-to-submit template
+  is kept in this repo at
+  [`fdroiddata/com.tribewarez.nysiris.yml`](fdroiddata/com.tribewarez.nysiris.yml);
+  it points at a git tag of this project with `subdir: web/android`.
+* Build steps are `npm ci` + `npm run build` in `web/`, then
+  `npx cap sync android`, then gradle `assembleRelease`. Without
+  `ANDROID_KEYSTORE_*` that produces an **unsigned** release APK, which is
+  exactly what F-Droid signs — no secrets are needed on the build server.
+* Keep `versionCode` monotonic (derived from `VERSION`); F-Droid's
+  `UpdateCheckMode: Tags` reads the `vX.Y.Z` tags.
+* Store listing text/screenshots can live in the app repo under
+  `web/android/fastlane/metadata/android/en-US/` (F-Droid reads `fastlane`
+  metadata). The placeholder icon in `public/icons/` should be replaced with a
+  real one first.
+
+### F-Droid policy notes
+
+* **Native enhancement, not a bare web wrapper.** The `NysirisKeystore`
+  Capacitor plugin seals secrets with AES-256-GCM keys in the hardware-backed
+  Android Keystore — native value the PWA cannot provide.
+* **No proprietary deps, no anti-features.** No Google Play Services / Firebase
+  (google-services removed), no ads, no trackers or analytics; only `INTERNET`
+  is requested.
+* **Distinct id.** `com.tribewarez.nysiris`, based on the project's domain
+  `tribewarez.com` (F-Droid's recommended developer-owned-domain scheme).
+* **Actively maintained.** Tagged `vX.Y.Z` releases built by CI; the recipe uses
+  `UpdateCheckMode: Tags`.
+* **Be honest about the network.** The client depends on the public Nym mixnet
+  and a hardcoded Nym API endpoint; a reviewer may raise `TetheredNet` /
+  `NonFreeNet`, which is a judgement call — see the recipe's MaintainerNotes.
+
+### Direct APK (sideload / other stores)
+
+```sh
+./build.sh android --release   # with ANDROID_KEYSTORE_* set for a signed APK/AAB
+```
+
+`assembleRelease` + `bundleRelease` stage `dist/nysiris_<version>_android.apk`
+and `..._android.aab`. Google Play still accepts the AAB (this project now
+targets **`targetSdk 36`**, meeting Play's requirement for new apps since
+2026-08-31), but Play is not the primary channel and there is no automated Play
+upload.
 
 ## What this cannot do
 

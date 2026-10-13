@@ -82,7 +82,8 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          # Capacitor 8 compiles the Android app with Java 21 (AGP 8.13).
+          java-version: '21'
       # No android-actions/setup-android: the hosted ubuntu-latest image
       # already ships a full SDK (/usr/local/lib/android/sdk, licenses
       # accepted), and the action's sdkmanager 16 run fails on the removed

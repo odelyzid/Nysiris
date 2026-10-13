@@ -82,7 +82,7 @@ tools and wallet, outside the Nysiris application.
 | Community timeline, threads, E2E DMs (signature-authenticated dead-drop reads), trust dots, petnames, invites, encrypted attachments | Works against a `nysiris-social` provider you run |
 | Providers, hybrid bridge, portal store, `nysiris` CLI | Works; you operate them (see `services/`) |
 | Linux `.deb`, Windows zip | Works; built by CI on every release tag |
-| Android (Capacitor), MV3 extension | Debug-signed APK per release (sideloadable) + opt-in release signing; extension is a scaffold |
+| Android (Capacitor 8, targetSdk 36), MV3 extension | Signed APK/AAB per release (F-Droid / sideload; no proprietary deps); extension is a scaffold |
 | `sphinx-core` crypto | Reference/educational only — never use in production |
 
 ## Quick start

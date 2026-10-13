@@ -1,0 +1,119 @@
+# F-Droid build recipe for Nysiris — TEMPLATE.
+#
+# This is a copy of the metadata to submit to the fdroiddata repo. To publish,
+# fork https://gitlab.com/fdroid/fdroiddata, copy this file to
+# `metadata/com.tribewarez.nysiris.yml`, update the version/build block for
+# the tag being released, and open a merge request. F-Droid builds the app from
+# source on its own server and signs the resulting APK with the F-Droid key, so
+# no upload or signing key is supplied by us.
+#
+# See https://f-droid.org/docs/Build_Metadata_Reference/ for the schema.
+
+Categories:
+  - Internet
+  - Security
+License: Apache-2.0
+AuthorName: odelyzid
+SourceCode: https://github.com/odelyzid/Nysiris
+IssueTracker: https://github.com/odelyzid/Nysiris/issues
+Changelog: https://github.com/odelyzid/Nysiris/blob/HEAD/.github/CHANGELOG.md
+
+AutoName: Nysiris
+Summary: Private browser for the Nym mixnet
+Description: |-
+  Nysiris is a private browser and client for the Nym mixnet.
+
+  Requests made in the app travel through the mixnet, so the network sees
+  traffic patterns rather than who is talking to whom and when. Open private
+  links, send messages to a Nym address, and (when connected to a social
+  provider you run) follow a community timeline with end-to-end encrypted
+  direct messages.
+
+  On Android it adds a native enhancement over the same web app: app secrets
+  such as your social identity are sealed with AES-256-GCM keys held in the
+  hardware-backed Android Keystore, so a WebView compromise or a device backup
+  never exposes them in plaintext.
+
+  Experimental software, not yet audited. Apache-2.0. No trackers, no ads, and
+  no proprietary dependencies.
+
+RepoType: git
+Repo: https://github.com/odelyzid/Nysiris.git
+
+# One Build per release tag. versionCode is derived by the Gradle build from the
+# repo VERSION file as major*1e6 + minor*1e3 + patch (0.1.31 -> 1031), so it
+# always matches what fdroiddata records here.
+Builds:
+  - versionName: 0.1.31
+    versionCode: 1031
+    commit: v0.1.31
+    subdir: web/android
+    # Capacitor 8 needs Node >= 22; the Debian nodejs package is older, so pull
+    # Node 22 from NodeSource. (Adjust/remove if the buildserver already ships
+    # a new enough Node.)
+    sudo:
+      - apt-get update
+      - apt-get install -y ca-certificates curl gnupg
+      - sh -c "mkdir -p /etc/apt/keyrings && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg"
+      - sh -c "echo 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main' > /etc/apt/sources.list.d/nodesource.list"
+      - apt-get update
+      - apt-get install -y nodejs
+    # Build the web bundle, then sync it into the committed Capacitor project.
+    # Commands run with the recipe's subdir (web/android) as the cwd.
+    prebuild:
+      - cd ../../web && npm ci --no-audit --no-fund
+      - cd ../../web && npm run build
+      - cd ../../web && npx cap sync android
+    gradle:
+      - assembleRelease
+    # With no ANDROID_KEYSTORE_* set, assembleRelease produces an unsigned APK,
+    # which is exactly what F-Droid expects to sign itself.
+    output: app/build/outputs/apk/release/app-release-unsigned.apk
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+ArchivePolicy: 0 versions
+CurrentVersion: 0.1.31
+CurrentVersionCode: 1031
+
+MaintainerNotes: |-
+  Compliance / reviewer notes
+  - Native feature (not just a website wrapper): the app ships a custom
+    Capacitor plugin, NysirisKeystore, that stores app secrets under AES-256-GCM
+    keys in the hardware-backed Android Keystore. Source lives in
+    web/android/app/src/main/java/io/github/odelyzid/nysiris/ and is unit-tested
+    on the host JVM and on device.
+  - No proprietary dependencies: there is no Firebase / Google Play Services SDK
+    (the com.google.gms google-services plugin was removed), no advertising, no
+    trackers/analytics. Only android.permission.INTERNET is requested.
+  - No AntiFeatures are declared. The app depends on the public Nym mixnet and a
+    hardcoded Nym API endpoint (https://validator.nymtech.net/api in
+    web/src). If a reviewer considers this a TetheredNet/NonFreeNet case, the
+    endpoint is not the developer's and any Nym network would work — flag rather
+    than add silently.
+  - Prebuilt binaries: the only committed binary is gradle/wrapper/
+    gradle-wrapper.jar (Gradle, Apache-2.0). The Nym SDK (Apache-2.0) inlines a
+    Rust-compiled WASM as Base64 inside JS; if the scanner flags it, add a
+    scanignore entry rather than excluding the whole module.
+
+  Build environment (may need buildserver support)
+  - Capacitor 8 requires Node >= 22 (installed via NodeSource above), JDK 21
+    (AGP 8.13 / Java 21 sources), and Android SDK Platform 36 (compileSdk 36).
+    If the buildserver lacks JDK 21 or SDK 36, add them (e.g. `apt-get install
+    openjdk-21-jdk` / sdkmanager) or lower compileSdk/targetSdk in
+    web/android/variables.gradle.
+  - Node deps come from web/package-lock.json (npm ci). If prebuild has no
+    network, vendor node_modules or add a Node srclib.
+
+  Release chores
+  - Package name is com.tribewarez.nysiris (based on the project's domain
+    tribewarez.com), set in web/android/app/build.gradle,
+    web/capacitor.config.ts and web/android/app/src/main/res/values/strings.xml
+    (plus the Java package under
+    web/android/app/src/main/java/com/tribewarez/nysiris/). It is permanent
+    once published.
+  - Per release: add a new `Builds` entry with the new versionName/versionCode
+    and update `CurrentVersion`/`CurrentVersionCode`. versionCode is derived as
+    major*1e6 + minor*1e3 + patch by web/android/app/build.gradle from VERSION.
+  - Replace the placeholder launcher/splash resources and web/public/icons with
+    real artwork before the first release.
