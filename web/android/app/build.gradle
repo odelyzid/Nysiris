@@ -13,22 +13,36 @@ if (keystorePath != null && !keystorePath.isEmpty() && !keystoreReady) {
     logger.warn("ANDROID_KEYSTORE_PATH '$keystorePath' not found; building UNSIGNED release")
 }
 
+// Version: -PandroidVersionCode / -PandroidVersionName override; otherwise
+// derive from the repo VERSION file so a bare `gradle assembleRelease` (e.g. on
+// the F-Droid build server, which does not use ./build.sh) stamps the correct
+// monotonic versionCode = major*1000000 + minor*1000 + patch.
+def versionFile = file('../../../VERSION')
+def derivedVersionName = versionFile.exists() ? versionFile.text.trim() : '1.0'
+def versionMatcher = (derivedVersionName =~ /^(\d+)\.(\d+)\.(\d+)/)
+def derivedVersionCode = versionMatcher
+        ? versionMatcher[0][1].toInteger() * 1000000 + versionMatcher[0][2].toInteger() * 1000 + versionMatcher[0][3].toInteger()
+        : 1
+if (derivedVersionCode < 1) {
+    derivedVersionCode = 1
+}
+
 apply plugin: 'com.android.application'
 
 android {
-    namespace "app.example.nysiris"
-    compileSdk rootProject.ext.compileSdkVersion
+    namespace = "com.tribewarez.nysiris"
+    compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.example.nysiris"
+        applicationId "com.tribewarez.nysiris"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode (project.hasProperty('androidVersionCode') ? project.property('androidVersionCode').toString().toInteger() : 1)
-        versionName (project.hasProperty('androidVersionName') ? project.property('androidVersionName').toString() : "1.0")
+        versionCode = project.hasProperty('androidVersionCode') ? project.property('androidVersionCode').toString().toInteger() : derivedVersionCode
+        versionName = project.hasProperty('androidVersionName') ? project.property('androidVersionName').toString() : derivedVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
     signingConfigs {
@@ -76,11 +90,5 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
-}
+// No com.google.gms.google-services plugin: the app ships no Firebase / Google
+// Play Services dependency (F-Droid requires a fully free-software build).

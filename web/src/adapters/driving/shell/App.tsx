@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ensureTunnel, teardownTunnel, tunnelState, type TunnelStateView } from '../../../mixnet/tunnel';
+import { ensureTunnel, teardownTunnel, tunnelState, tunnelSpent, type TunnelStateView } from '../../../mixnet/tunnel';
 import { exitStatus, proveTunnel } from '../../../mixnet/fetch';
 import { NymAddressClient, type IncomingMessage } from '../../../mixnet/messaging';
 import { fetchNym } from '../../../mixnet/fetchNym';
@@ -60,6 +60,10 @@ const NYM_API_URL = 'https://validator.nymtech.net/api';
 
 export function App() {
   const [status, setStatus] = useState<TunnelStateView>({ state: 'shutdown' });
+  // Set once the tunnel has been torn down: the one-shot WASM cannot be rebuilt
+  // without a page reload, so the UI offers an explicit reconnect instead of a
+  // second `ensureTunnel` call that is guaranteed to reject (§5.2.2).
+  const [spent, setSpent] = useState(() => tunnelSpent());
   const [log, setLog] = useState<string[]>([]);
   const [clearnetIp, setClearnetIp] = useState<string>('');
   const [mixnetIp, setMixnetIp] = useState<string>('');
@@ -224,7 +228,8 @@ export function App() {
     setBusy(true);
     try {
       await teardownTunnel();
-      append('tunnel torn down (reload the page to reconnect)');
+      setSpent(tunnelSpent());
+      append('tunnel torn down — reconnect to start a fresh one');
       setStatus(await tunnelState());
     } catch (err) {
       setLastError(err);
@@ -232,6 +237,12 @@ export function App() {
       setBusy(false);
     }
   }, [append]);
+
+  // The only way to bring the one-shot tunnel back (or to rotate the exit) is a
+  // full page reload: it rebuilds the WASM tunnel from scratch (§5.2.2).
+  const onReconnect = useCallback(() => {
+    window.location.reload();
+  }, []);
 
   const onProveTunnel = useCallback(async () => {
     setBusy(true);
@@ -646,24 +657,34 @@ export function App() {
               {onboarded && (
                 <section className="fly-card" aria-label="Protection status">
                   <h2>
-                    {status.state === 'ready'
-                      ? 'You are protected'
-                      : status.state === 'connecting'
-                        ? 'Connecting…'
-                        : 'Not protected yet'}
+                    {spent
+                      ? 'Disconnected'
+                      : status.state === 'ready'
+                        ? 'You are protected'
+                        : status.state === 'connecting'
+                          ? 'Connecting…'
+                          : 'Not protected yet'}
                   </h2>
                   <p>
-                    {status.state === 'ready'
-                      ? 'Your connection is running over the private network.'
-                      : status.state === 'connecting'
-                        ? 'Finding the fastest private path. This usually takes a few seconds.'
-                        : 'Connect once — we handle the private path for you.'}
+                    {spent
+                      ? 'The tunnel was switched off. Reconnect to build a fresh private path.'
+                      : status.state === 'ready'
+                        ? 'Your connection is running over the private network.'
+                        : status.state === 'connecting'
+                          ? 'Finding the fastest private path. This usually takes a few seconds.'
+                          : 'Connect once — we handle the private path for you.'}
                   </p>
                   <div className="fly-row">
-                    {status.state !== 'ready' && (
-                      <button className="fly-btn fly-btn-primary" onClick={() => void onConnect()} disabled={busy}>
-                        Connect privately
+                    {spent ? (
+                      <button className="fly-btn fly-btn-primary" onClick={onReconnect}>
+                        Reconnect
                       </button>
+                    ) : (
+                      status.state !== 'ready' && (
+                        <button className="fly-btn fly-btn-primary" onClick={() => void onConnect()} disabled={busy}>
+                          Connect privately
+                        </button>
+                      )
                     )}
                     {status.state === 'ready' && (
                       <>
@@ -687,8 +708,13 @@ export function App() {
                       }}
                       role="note"
                     >
-                      Exit reuse limit reached ({exit.requests} requests on one exit). Reload the page to rotate your
-                      exit (§5.2.2) — a fixed exit is a linking key at the destinations you visit.
+                      Exit reuse limit reached ({exit.requests} requests on one exit). Reconnect to rotate your exit
+                      (§5.2.2) — a fixed exit is a linking key at the destinations you visit.
+                      <span className="fly-row" style={{ marginTop: 8 }}>
+                        <button className="fly-btn" onClick={onReconnect}>
+                          Reconnect now
+                        </button>
+                      </span>
                     </p>
                   )}
                   {(clearnetIp || mixnetIp) && (
@@ -1042,9 +1068,15 @@ export function App() {
                     {openPanels.includes('connection') && (
                       <Panel title="Connection (technical)" onClose={() => onClosePanel('connection')}>
                         <div className="fly-row">
-                          <button className="fly-btn" onClick={() => void onConnect()} disabled={busy}>
-                            Connect
-                          </button>
+                          {spent ? (
+                            <button className="fly-btn" onClick={onReconnect}>
+                              Reconnect
+                            </button>
+                          ) : (
+                            <button className="fly-btn" onClick={() => void onConnect()} disabled={busy}>
+                              Connect
+                            </button>
+                          )}
                           <button className="fly-btn" onClick={() => void onProveTunnel()} disabled={busy}>
                             Prove tunnel (IP comparison)
                           </button>

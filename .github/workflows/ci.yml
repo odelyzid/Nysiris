@@ -59,15 +59,35 @@ jobs:
         run: ./build.sh web
 
   android:
-    name: Android toolchain probe
+    name: Android build (Capacitor 8, API 36)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      # Expects a bubblewrap twa-manifest.json or a Capacitor web/android project;
-      # reports availability without failing the pipeline when absent.
-      - name: Probe Android build
-        run: ./build.sh android
+      # Capacitor 8 compiles the app with Java 21 (see app/capacitor.build.gradle).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Build web bundle + sync Capacitor
+        run: |
+          (cd web && npm ci --no-audit --no-fund)
+          (cd web && npm run build)
+          (cd web && npx cap sync android)
+      # Debug build: compiles all sources + the native Keystore plugin.
+      - name: Assemble debug APK
+        run: |
+          chmod +x web/android/gradlew
+          (cd web/android && ./gradlew --no-daemon assembleDebug)
+      # Release build with no keystore = the exact F-Droid path: an unsigned
+      # release APK, with versionCode/versionName derived from ./VERSION.
+      - name: Assemble release APK (F-Droid path)
+        run: (cd web/android && ./gradlew --no-daemon assembleRelease)
+      - name: Verify outputs and stamped version
+        run: |
+          ls -l web/android/app/build/outputs/apk/release/
+          test -f web/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          AAPT="$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
+          "$AAPT" dump badging web/android/app/build/outputs/apk/release/app-release-unsigned.apk | grep -E "package: name='com.tribewarez.nysiris'"

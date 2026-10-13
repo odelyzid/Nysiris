@@ -241,7 +241,7 @@ Use when you need plugins (secure storage, foreground service, share).
 ```bash
 npm i @capacitor/core @capacitor/android
 npm i -D @capacitor/cli
-npx cap init "nysiris" app.example.nysiris --web-dir=dist
+npx cap init "nysiris" com.tribewarez.nysiris --web-dir=dist
 npm run build && npx cap add android && npx cap sync
 ```
 
@@ -251,7 +251,7 @@ npm run build && npx cap add android && npx cap sync
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.example.nysiris',
+  appId: 'com.tribewarez.nysiris',
   appName: 'nysiris',
   webDir: 'dist',
   android: {
@@ -322,7 +322,11 @@ class MainActivity : BridgeActivity() {
 * **One-shot tunnel.** The WASM tunnel cannot be rebuilt without a page reload.
   On Capacitor, a full page reload is a `webView.reload()`; on PWA it is
   `location.reload()`. Surface a clear "reconnect" action instead of silently
-  trying a second `setupMixTunnel`.
+  trying a second `setupMixTunnel`. This is implemented: after teardown (and
+  when the exit-rotation policy fires) the client shows an explicit
+  **Reconnect** button that reloads the page
+  (`web/src/adapters/driving/shell/App.tsx`; spent state exposed by
+  `web/src/mixnet/tunnel.ts`).
 * **Battery/data.** Cover traffic runs continuously while connected; show the
   user a data estimate and offer disconnect. Consider `disableCoverTraffic` only
   if the user explicitly accepts the privacy trade-off.
@@ -333,6 +337,18 @@ class MainActivity : BridgeActivity() {
 * **App Links.** Use verified App Links if services hand off to your app.
 * **Network changes.** Handle Wi-Fi↔cellular transitions as a reconnect; the WSS
   to the entry gateway will drop.
+
+### Distribution: F-Droid over Google Play
+
+The app is Apache-2.0 with **no proprietary dependencies** (no Google Play
+Services / Firebase), so **F-Droid** is the preferred channel: F-Droid builds
+from source at a `vX.Y.Z` tag and signs the APK itself. See `android/README.md`
+for the recipe layout. A plain **AAB/APK** is also produced by
+`./build.sh android --release` for sideloading or other stores.
+
+The Android project is on **Capacitor 8 / AGP 8.13 / Gradle 8.14.3** and targets
+**`targetSdk 36`** (Android 16), meeting Play's new-app requirement since
+2026-08-31 if it is ever published there.
 
 ### Desktop extension (bonus, not Android)
 

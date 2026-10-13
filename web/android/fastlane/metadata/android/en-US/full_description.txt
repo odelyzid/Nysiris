@@ -1,0 +1,14 @@
+Nysiris is a private browser and client for the Nym mixnet.
+
+Requests made in the app travel through the mixnet, so the network sees traffic
+patterns rather than who is talking to whom and when. Open private links, send
+messages to a Nym address, and (when connected to a social provider you run)
+follow a community timeline with end-to-end encrypted direct messages.
+
+On Android it adds a native enhancement over the same web app: app secrets such
+as your social identity are sealed with AES-256-GCM keys held in the
+hardware-backed Android Keystore, so a WebView compromise or a device backup
+never exposes them in plaintext.
+
+Experimental software, not yet audited. Apache-2.0. No trackers, no ads, and no
+proprietary dependencies.

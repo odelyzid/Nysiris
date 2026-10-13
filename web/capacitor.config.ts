@@ -9,7 +9,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * the settings that matter for a mixnet client (no cleartext, no file access).
  */
 const config: CapacitorConfig = {
-  appId: 'app.example.nysiris',
+  appId: 'com.tribewarez.nysiris',
   appName: 'nysiris',
   webDir: 'dist',
   server: {
