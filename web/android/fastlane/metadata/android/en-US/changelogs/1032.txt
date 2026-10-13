@@ -1,0 +1,3 @@
+Updated to Capacitor 8 and target API 36. Added a foreground service so the
+private connection keeps running in the background, a Reconnect action, and
+refreshed launcher and splash icons.

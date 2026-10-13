@@ -44,9 +44,9 @@ Repo: https://github.com/odelyzid/Nysiris.git
 # repo VERSION file as major*1e6 + minor*1e3 + patch (0.1.31 -> 1031), so it
 # always matches what fdroiddata records here.
 Builds:
-  - versionName: 0.1.31
-    versionCode: 1031
-    commit: v0.1.31
+  - versionName: 0.1.32
+    versionCode: 1032
+    commit: v0.1.32
     subdir: web/android
     # Capacitor 8 needs Node >= 22; the Debian nodejs package is older, so pull
     # Node 22 from NodeSource. (Adjust/remove if the buildserver already ships
@@ -73,8 +73,8 @@ Builds:
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
 ArchivePolicy: 0 versions
-CurrentVersion: 0.1.31
-CurrentVersionCode: 1031
+CurrentVersion: 0.1.32
+CurrentVersionCode: 1032
 
 MaintainerNotes: |-
   Compliance / reviewer notes

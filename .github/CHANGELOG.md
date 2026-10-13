@@ -3,6 +3,43 @@
 Format follows Keep-a-Changelog (loosely); versions are `VERSION`-driven
 (`./build.sh bump <version>`). Pre-1.0: anything may change.
 
+## [0.1.32] — 2026-10-14
+
+### Added
+
+- **Android foreground service** (`NysirisForegroundService`): an ongoing
+  notification keeps the WebView process — and its one-shot mixnet tunnel —
+  alive while the app is backgrounded, so Doze/App Standby no longer suspend
+  it. Started/stopped from `web/src/adapters/driven/foreground.mjs` while the
+  tunnel is up; requests `POST_NOTIFICATIONS` on Android 13+.
+- **Explicit Reconnect action** for the one-shot tunnel: after "Switch off" (or
+  when the exit-rotation policy fires) the client offers a Reconnect button
+  that reloads the page, rather than a Connect action that is guaranteed to
+  reject.
+- **F-Droid readiness**: no proprietary dependencies (the Google
+  `google-services` plugin is gone), a build recipe template under
+  `android/fdroiddata/`, `fastlane` store metadata, and generated launcher /
+  adaptive / splash icons (`scripts/gen-android-icons.py`).
+
+### Changed
+
+- **Capacitor 6 → 8.5.3** (Android Gradle Plugin 8.13.0, Gradle 8.14.3, Java
+  21, `compileSdk`/`targetSdk` 36, `minSdk` 24). A bare `gradle assembleRelease`
+  now stamps `versionCode`/`versionName` from `VERSION`, which is what the
+  F-Droid build server runs.
+- **Android application id** `app.example.nysiris` → `com.tribewarez.nysiris`
+  (domain-based), across Gradle, the Capacitor config, the manifest strings and
+  the Java package.
+- CI: the Android job is a real, blocking build (JDK 21, `assembleDebug` +
+  F-Droid-style `assembleRelease`) instead of an advisory probe.
+
+### Notes
+
+- The **messaging** SDK (`@nymproject/sdk-full-fat`) keeps its identity in
+  IndexedDB internally and exposes no key export/import, so that key cannot be
+  moved into the Android Keystore from app code (the social identity remains
+  Keystore-backed). Documented in `docs/05-security.md`.
+
 ## [0.1.31] — 2026-09-26
 
 ### Fixed
