@@ -13,6 +13,15 @@ import { Toolbar } from './Toolbar';
 import { ContactsPanel, type PendingInvite } from './ContactsPanel';
 import { PortalSync } from '../portal/PortalSync';
 import { addContact, defaultContactStorage, loadContacts, saveContacts, type Contact } from '../../../application/contacts';
+import {
+  addBookmark,
+  defaultBookmarkStorage,
+  isBookmarked,
+  loadBookmarks,
+  removeBookmark,
+  saveBookmarks,
+  type Bookmark,
+} from '../../../application/bookmarks';
 import { defaultStorage, loadOpenPanels, saveOpenPanels, type PanelId } from '../../../application/panels';
 import { describeStatus } from '../../../mixnet/status';
 import { AppNav } from './AppNav';
@@ -43,6 +52,7 @@ import {
   formatFetchedBody,
 } from '../../../shared/share';
 import { ContextPanel, Roster, TopBar, type RosterPortal } from './DesktopShell';
+import { SavedLinks } from './SavedLinks';
 import {
   isFavoritePortal,
   loadActiveThread,
@@ -107,6 +117,11 @@ export function App() {
   // Contacts: local-only address book + pending invite from the URI bar.
   const [contacts, setContacts] = useState<Contact[]>(() => loadContacts(defaultContactStorage()));
   const [pendingInvite, setPendingInvite] = useState<PendingInvite | null>(null);
+
+  // Named private-link bookmarks (device-local), shown in the Portal view.
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>(() => loadBookmarks(defaultBookmarkStorage()));
+  const [bookmarkName, setBookmarkName] = useState('');
+  const [showBookmarkField, setShowBookmarkField] = useState(false);
 
   // Local web-of-trust: explicit Trust/Block verdicts per author. Owned here
   // (not in Social) so both the timeline and the invite banner can read and
@@ -557,6 +572,46 @@ export function App() {
 
   const currentFavorite = socialService ? isFavoritePortal(favorites, socialService) : false;
 
+  // The link a bookmark saves: the last opened private link (keeps any path),
+  // otherwise the bound portal address.
+  const bookmarkLink = uri.trim() || socialService;
+  const currentBookmarked = isBookmarked(bookmarks, bookmarkLink);
+
+  const onAddBookmark = useCallback(() => {
+    const name = bookmarkName.trim();
+    if (!name || !bookmarkLink) return;
+    const next = addBookmark(bookmarks, { name, link: bookmarkLink });
+    if (next.length === bookmarks.length) {
+      append(`a bookmark named “${name}” already exists`);
+      return;
+    }
+    setBookmarks(next);
+    saveBookmarks(next, defaultBookmarkStorage());
+    setBookmarkName('');
+    setShowBookmarkField(false);
+    append(`bookmark saved: ${name}`);
+  }, [bookmarkName, bookmarkLink, bookmarks, append]);
+
+  const onRemoveBookmark = useCallback(
+    (name: string) => {
+      const next = removeBookmark(bookmarks, name);
+      setBookmarks(next);
+      saveBookmarks(next, defaultBookmarkStorage());
+      append(`bookmark removed: ${name}`);
+    },
+    [bookmarks, append],
+  );
+
+  // Open a saved link/favourite: same flow as the URI bar, then show the Portal.
+  const onOpenSaved = useCallback(
+    (link: string) => {
+      setUri(link);
+      void goTo(link);
+      onSelectView('portal');
+    },
+    [goTo, onSelectView],
+  );
+
   const rosterThreads = useMemo(
     () =>
       threads.map((key) => {
@@ -943,20 +998,63 @@ export function App() {
               </section>
 
               {socialService && (
-                <div className="fly-row" aria-label="Current portal">
-                  <span className="fly-muted" style={{ wordBreak: 'break-all' }}>
-                    {shortenAddress(socialService)}
-                  </span>
-                  <button
-                    className={currentFavorite ? 'fly-btn fly-btn-secondary' : 'fly-btn'}
-                    aria-pressed={currentFavorite}
-                    onClick={() => onToggleFavorite(socialService)}
-                    title="Favourite this portal — pinned to the top of the roster"
-                  >
-                    {currentFavorite ? '★ Favourited' : '☆ Favourite'}
-                  </button>
-                </div>
+                <>
+                  <div className="fly-row" aria-label="Current portal">
+                    <span className="fly-muted" style={{ wordBreak: 'break-all' }}>
+                      {shortenAddress(socialService)}
+                    </span>
+                    <button
+                      className={currentFavorite ? 'fly-btn fly-btn-secondary' : 'fly-btn'}
+                      aria-pressed={currentFavorite}
+                      onClick={() => onToggleFavorite(socialService)}
+                      title="Favourite this portal — pinned to the top of the roster"
+                    >
+                      {currentFavorite ? '★ Favourited' : '☆ Favourite'}
+                    </button>
+                    <button
+                      className={currentBookmarked ? 'fly-btn fly-btn-secondary' : 'fly-btn'}
+                      aria-pressed={currentBookmarked}
+                      onClick={() => {
+                        setBookmarkName('');
+                        setShowBookmarkField((open) => !open);
+                      }}
+                      title="Save this link with a name only you see"
+                    >
+                      {currentBookmarked ? '★ Bookmarked' : '☆ Bookmark'}
+                    </button>
+                  </div>
+                  {showBookmarkField && (
+                    <div className="fly-row" aria-label="Name this bookmark">
+                      <input
+                        className="fly-input"
+                        placeholder="Name this bookmark (only you see it)"
+                        value={bookmarkName}
+                        onChange={(e) => setBookmarkName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') onAddBookmark();
+                        }}
+                        spellCheck={false}
+                        aria-label="Bookmark name"
+                      />
+                      <button
+                        className="fly-btn fly-btn-primary"
+                        onClick={onAddBookmark}
+                        disabled={!bookmarkName.trim()}
+                      >
+                        Save bookmark
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
+
+              <SavedLinks
+                bookmarks={bookmarks}
+                favorites={favorites}
+                onOpen={onOpenSaved}
+                onRemoveBookmark={onRemoveBookmark}
+                onRemoveFavorite={onToggleFavorite}
+              />
 
               {pendingInvite && (
                 <section className="fly-card" aria-label="You've been invited">
