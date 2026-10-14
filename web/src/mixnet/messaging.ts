@@ -4,7 +4,9 @@
  * Uses `@nymproject/sdk-full-fat`, which inlines the WASM + Web Worker as
  * Base64 so Android/TWA builds need no bundler configuration. The SDK persists
  * client identity in IndexedDB; clear it to force a fresh identity (also the
- * fix for a stuck gateway handshake).
+ * fix for a stuck gateway handshake). Your Nym address derives from a stable
+ * per-device `clientId` (`messageIdentity.ts`) — it must not change between
+ * sessions, or replies to your shared address are lost.
  *
  * SDK quirks (sdk-full-fat 1.x, WASM 1.4.1 — expected console noise, not bugs):
  * * `__wbg_init: using deprecated parameters…` comes from Nym's own
@@ -25,6 +27,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- the SDK surface is wide
    and versioned; we keep a thin typed wrapper around the documented calls. */
 import { ReplyBudget, ReplyTracker, messageKey } from './enforcement.mjs';
+import { defaultStorage } from '../lib/storage.ts';
+import { messageClientId } from './messageIdentity.ts';
 
 export interface IncomingMessage {
   text: string;
@@ -104,7 +108,10 @@ export class NymAddressClient {
     });
 
     await this.nym.client.start({
-      clientId: crypto.randomUUID(),
+      // Stable per device: the SDK derives (and persists) your Nym address from
+      // this id, so a fresh value each launch would rotate the address and drop
+      // every reply to the one you shared.
+      clientId: messageClientId(defaultStorage()),
       nymApiUrl,
       // WSS to the entry gateway; required on HTTPS pages.
       forceTls: true,
@@ -131,18 +138,22 @@ export class NymAddressClient {
   /** Send to a `<identity>.<encryption>@<gateway>` address. SURBs are bundled automatically. */
   async send(recipient: string, message: string): Promise<void> {
     this.assertStarted();
+    // A pasted address often carries stray whitespace/newlines; a malformed
+    // recipient silently fails inside the SDK, so reject it here instead.
+    const to = recipient.trim();
+    if (!to) throw new Error('recipient address is empty');
     // Send raw UTF-8 so non-TypeScript peers (the Rust SDK / service providers)
     // receive the message text rather than this SDK's mime envelope.
     if (typeof this.nym.client.rawSend === 'function') {
       await this.nym.client.rawSend({
         payload: new TextEncoder().encode(message),
-        recipient,
+        recipient: to,
       });
       return;
     }
     await this.nym.client.send({
       payload: { message, mimeType: 'text/plain' },
-      recipient,
+      recipient: to,
     });
   }
 
