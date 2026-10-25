@@ -1,12 +1,13 @@
 # 14. Nysiris-Core: extracted protocol & transport
 
-> **Status: partial extraction.** The native chat protocol and the Nym
-> transport seam now live in
+> **Status: partial extraction, published base.** The native chat protocol and
+> the Nym transport seam live in
 > [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core),
-> vendored here as the `core/` submodule (pinned `v0.1.2`). The browser client,
-> the social provider, the hosting abstractions and the reference Sphinx
-> implementation are still in this repository. This page records what moved,
-> what did not, and the rules that keep the two repositories from drifting.
+> vendored here as the `core/` submodule (pinned `v0.1.2`) and published on
+> crates.io as `0.1.2` for anyone to build on. The browser client, the social
+> provider, the hosting abstractions and the reference Sphinx implementation are
+> still in this repository. This page records what moved, what did not, how to
+> consume it, and the rules that keep the two repositories from drifting.
 
 ---
 
@@ -52,8 +53,9 @@ The submodule is **not** a member of this Cargo workspace. Reasons:
 
 * `nysiris-transport-nym` pulls the heavy `nym-sdk` toolchain; `./build.sh
   check` must stay fast and offline.
-* The crates publish independently (`publish = false` for now; crates.io
-  versions are immutable, so nothing is published until the API stabilizes).
+* The crates version and publish independently (crates.io versions are
+  immutable, so a release is cut by tagging the workspace version; `0.1.2` is
+  the first published set).
 * CI here validates the extraction as a consumer would — by building the
   submodule against its own lockfile, not by merging dependency graphs.
 
@@ -165,7 +167,50 @@ configured. Never move or re-tag an existing version.
 
 ---
 
-## 14.6 Migration checklist
+## 14.6 Building on the core
+
+Nysiris-Core is not app-private. The five crates are published on crates.io as
+`0.1.2` and can be used by any Rust project — a native client, a bot, a relay, a
+bridge, or a mixnet-backed **microservice** — without depending on this
+repository or inheriting its UI and release cadence.
+
+```toml
+[dependencies]
+nysiris-core = "0.1.2"
+nysiris-chat-core = "0.1.2"
+nysiris-chat-history = "0.1.2"
+
+[dependencies.nysiris-transport-nym]
+version = "0.1.2"
+features = ["nym"]          # real nym-sdk adapter
+
+[dev-dependencies]
+nysiris-testkit = "0.1.2"
+```
+
+For unreleased work, depend on the tag instead of the registry:
+`nysiris-core = { git = "https://github.com/TribeWarez/nysiris-core", tag = "v0.1.2" }`.
+
+What makes it reusable:
+
+* `nysiris-core` is Nym-free and UI-free; only `nysiris-transport-nym` pulls
+  `nym-sdk`, and only with `features = ["nym"]` (default builds get an explicit
+  unavailable stub, so test suites stay fast).
+* `History` is encrypted flat files — no SQLite and no plaintext at rest.
+* `Transport` is a two-method trait (`name`, `send`), so a host can supply its
+  own delivery: Nym, a local queue, a test mock.
+* Domains stay `nysiris-chat-v1/*`; consumers must not reuse the social
+  `fly-social-v1/*` domains.
+* Wire compatibility with the browser client is a contract: changing the DM
+  envelope, history binding or room format requires versioning the domain and
+  updating both implementations.
+
+Consumers pin a tag or crates.io version and verify in their own CI. Do not copy
+the crates into a host repository — fix them upstream and cut a release.
+
+---
+
+## 14.7 Migration checklist
 
 Done:
 
@@ -175,14 +220,15 @@ Done:
 - [x] `Transport` trait + in-memory testkit.
 - [x] `nym-sdk` transport adapter (`NymTransport`), verified on mainnet with two
       native daemons (DM and room delivery).
-- [x] Standalone repository, tag `v0.1.1`, Apache-2.0, security policy.
+- [x] Standalone repository, tag `v0.1.2`, Apache-2.0, security policy.
 - [x] Submodule at `core/` in this repository, pinned `v0.1.2`.
+- [x] Published on crates.io in dependency order as `0.1.2` (all five crates;
+      release gate green, GitHub release created).
 
 Next:
 
 - [ ] Service-side crates (`nysiris-service`, `nysiris-social-protocol`) so
       `services/*` can consume the same protocol instead of local copies.
-- [ ] Publish to crates.io in dependency order once the API stabilizes.
 - [ ] wasm build of `nysiris-core` (Nym-free parts only) to share the envelope
       and history formats with the browser client.
 - [ ] Cross-repo CI: build Nysiris + NCC against the changed core revision.
@@ -191,7 +237,7 @@ Next:
 
 ---
 
-## 14.7 Related reading
+## 14.8 Related reading
 
 * [`01-architecture.md`](01-architecture.md) — where the core sits in the
   system view.

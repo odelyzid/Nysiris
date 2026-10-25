@@ -37,8 +37,131 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 >   the fast `./build.sh check` loop.
 > * The protocol/transport layer is being extracted into
 >   [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core) and
->   is vendored as the `core/` submodule (pinned `v0.1.2`) — see
->   [Nysiris-Core](#nysiris-core-reusable-protocol--transport).
+>   is vendored as the `core/` submodule (pinned `v0.1.2`); the five crates are
+>   published on crates.io as `0.1.2` — see
+>   [Build on Nysiris-Core](#build-on-nysiris-core).
+
+## One protocol, two projects
+
+Nysiris is split along a deliberate seam, so the protocol can be reused without
+carrying the app:
+
+| | **Nysiris** (this repository) | **[Nysiris-Core](https://github.com/TribeWarez/nysiris-core)** |
+|---|---|---|
+| Role | the product | the reusable base |
+| Scope | browser PWA, Android/desktop shells, service providers, `nysiris` CLI, reference Sphinx | chat identity, sealed DMs, encrypted history, rooms, `Transport` trait, `nym-sdk` adapter |
+| For | private mixnet browsing + self-hosting | your own mixnet app, bot, relay or microservice |
+| Build | `./build.sh check` · `web` · `services` | `cd core && cargo test --workspace --locked` |
+| Version | `VERSION` (app releases) | independent tags; `core/` pins `v0.1.2` |
+
+Both sides implement the same wire contract (DM envelope, history binding, room
+keys), but the dependency only ever points one way: **Nysiris-Core must not
+depend on this repository.**
+
+## Build on Nysiris-Core
+
+If you are not building Nysiris, the base is the useful part. Nysiris-Core is an
+Apache-2.0 Rust workspace with no UI, no wallet or token economics, and no
+dependency on this repository. It is meant for:
+
+* native desktop/mobile clients that need mixnet delivery and end-to-end DMs;
+* bots, relays, notifiers and other **microservices** reachable by Nym address;
+* bridges that want sealed local history plus a `Transport` trait to plug in
+  their own network (Nym today, something else tomorrow);
+* tests and CI that need a deterministic in-memory transport.
+
+What you get (all crates are versioned together, `0.1.2`):
+
+* `nysiris-core` — identity, signed DM inner envelope, sealed DM crypto,
+  contacts, messages, sealed files, `Transport` trait;
+* `nysiris-chat-history` — encrypted append-only flat-file history (no SQLite);
+* `nysiris-chat-core` — 1:1 chat engine + capability-key rooms with client-side
+  fan-out;
+* `nysiris-transport-nym` — `nym-sdk` adapter behind the `nym` feature (an
+  explicit unavailable stub without it, so tests stay fast);
+* `nysiris-testkit` — `MemoryTransport` and fixtures.
+
+They are on crates.io — add what you need:
+
+```toml
+[dependencies]
+nysiris-core = "0.1.2"
+nysiris-chat-core = "0.1.2"
+nysiris-chat-history = "0.1.2"
+
+[dependencies.nysiris-transport-nym]
+version = "0.1.2"
+features = ["nym"]          # real nym-sdk adapter; heavy first build
+
+[dev-dependencies]
+nysiris-testkit = "0.1.2"
+```
+
+Working against unreleased changes? Depend on the tag (or the `core/` submodule
+vendored here):
+
+```toml
+nysiris-core = { git = "https://github.com/TribeWarez/nysiris-core", tag = "v0.1.2" }
+```
+
+A minimal engine — send a sealed DM and let the transport deliver it:
+
+```rust
+use std::sync::Arc;
+
+use nysiris_chat_core::ChatEngine;
+use nysiris_chat_history::History;
+use nysiris_core::ChatIdentity;
+use nysiris_testkit::MemoryTransport;
+
+fn main() -> nysiris_core::Result<()> {
+    let identity = ChatIdentity::generate();
+    let transport = Arc::new(MemoryTransport::new());
+    let history = History::open("state/history", [7u8; 32])?;
+
+    let mut engine = ChatEngine::new(
+        identity,
+        Vec::new(),          // contacts
+        Vec::new(),          // groups
+        history,
+        transport.clone(),
+        "<your nym address>",
+    );
+
+    let peer_pubkey_hex = "<peer ed25519 pubkey>";
+    let msg = engine.send_dm(peer_pubkey_hex, "hello over the mixnet")?;
+    println!("queued {}", msg.msg_id);
+    assert_eq!(transport.len(), 1);   // sealed payload ready to send
+    Ok(())
+}
+```
+
+The example uses `nysiris-testkit`'s in-memory transport so it runs anywhere;
+swap in `NymTransport::connect(dir, gateway)` with `features = ["nym"]` for real
+delivery (`address()` and `recv_timeout()` drive the receive loop).
+
+Bring your own transport — the core never opens a socket:
+
+```rust
+use nysiris_core::error::Result;
+use nysiris_core::transport::Transport;
+
+struct MyTransport { /* ... */ }
+
+impl Transport for MyTransport {
+    fn name(&self) -> &'static str { "my-transport" }
+
+    fn send(&self, recipient: &str, payload: Vec<u8>) -> Result<()> {
+        // deliver `payload` to the Nym address in `recipient`
+        Ok(())
+    }
+}
+```
+
+Honest limits: pre-1.0 API, not independently audited crypto (see the core
+`SECURITY.md`), and no financial features — Nym is the transport, not the
+product. Full crate map, wire invariants and migration state:
+[`docs/14-nysiris-core.md`](docs/14-nysiris-core.md).
 
 ## What this project is not
 
@@ -85,6 +208,7 @@ tools and wallet, outside the Nysiris application.
 | PWA: tunnel, leak guard, Nym-address messaging, `fetchNym` (+ parallel tagged requests) | Works (mainnet-verified delivery + SURB reply) |
 | Community timeline, threads, E2E DMs (signature-authenticated dead-drop reads), trust dots, petnames, invites, encrypted attachments | Works against a `nysiris-social` provider you run |
 | Providers, hybrid bridge, portal store, `nysiris` CLI | Works; you operate them (see `services/`) |
+| Nysiris-Core as a dependency (crates.io `0.1.2`) | Works: 1:1 DMs + rooms, encrypted history, `nym-sdk` transport — pre-1.0 API |
 | Linux `.deb`, Windows zip | Works; built by CI on every release tag |
 | Android (Capacitor 8, targetSdk 36), MV3 extension | Signed APK/AAB per release (F-Droid / sideload; no proprietary deps); extension is a scaffold |
 | `sphinx-core` crypto | Reference/educational only — never use in production |
@@ -235,7 +359,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | Path | What | Verification |
 |---|---|---|
 | `crates/sphinx-core/` | Reference Sphinx: header/blinding/filler/MAC/Lioness/SURB/address | `cargo test -p sphinx-core` |
-| `core/` (submodule) | Extracted protocol/transport workspace: chat identity, sealed DMs, encrypted history, rooms, `Transport` trait, `nym-sdk` adapter (pinned `v0.1.2`) | `cd core && cargo test --workspace --locked` |
+| `core/` (submodule) | Extracted protocol/transport workspace: chat identity, sealed DMs, encrypted history, rooms, `Transport` trait, `nym-sdk` adapter (pinned `v0.1.2`, published as `0.1.2`) | `cd core && cargo test --workspace --locked` |
 | `crates/sphinx-core/src/enforcement.rs` | Route policy, SURB single-use/expiry, reply budget, exit rotation, cover-traffic guardrail | 12 tests |
 | `crates/bridge-guard/` | Open-proxy guards for the mixnet↔HTTP bridge | 8 tests |
 | `crates/nym-hidden-service/` | Hidden-service abstraction: URIs, envelopes, dispatch, petnames, chunking | 13 tests |
@@ -264,7 +388,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `build.sh` + `scripts/` | Rust / web / android / services / check build system | `check` runs offline |
 | `.github/workflows/ci.yml` | CI | Runs `./build.sh check` |
 
-## Nysiris-Core (reusable protocol & transport)
+## Nysiris-Core extraction status
 
 The protocol and transport layer is being extracted from this repository into
 [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core): a
@@ -314,7 +438,7 @@ Rules that keep the extraction clean:
 
 * **The submodule is not a Cargo workspace member.** Its `nym-sdk` toolchain
   must not slow or couple to `./build.sh check`, and the crates publish
-  independently (they are `publish = false` until the API stabilizes).
+  independently (all five are on crates.io from `0.1.2`; the API is pre-1.0).
 * **Consumers pin, they do not fork.** `Nysiris` must not depend on
   `nysiris-chat-core` and NCC must not depend on `Nysiris`; compatibility is a
   CI relationship across repositories, not a Cargo dependency.
