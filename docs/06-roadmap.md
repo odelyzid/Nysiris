@@ -208,11 +208,29 @@ Only if you need to *operate* an exit (as opposed to using existing ones):
 
 ---
 
+## Cross-repo extraction — Nysiris-Core (in progress)
+
+The native chat protocol and Nym transport seam are extracted into
+[`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core) and
+pinned here as the `core/` submodule. Crate map, boundaries and wire invariants:
+[`14-nysiris-core.md`](14-nysiris-core.md).
+
+- [x] Chat identity, sealed DM crypto, signed inner envelope, encrypted history.
+- [x] `Transport` trait, in-memory testkit, `nym-sdk` adapter (verified on mainnet).
+- [x] `core/` submodule pinned to `v0.1.1`; not a Cargo workspace member.
+- [ ] Service-side crates (`nysiris-service`, `nysiris-social-protocol`).
+- [ ] crates.io publication (currently `publish = false`).
+- [ ] wasm build for the browser client; retire duplicate TS DM framing.
+
+**Acceptance:** the browser PWA, the Rust services and NCC all build against one
+pinned core revision, and cross-repo CI fails on wire-format drift.
+
 ## Cross-cutting decisions to record
 
 | Decision | Recommendation | Rationale |
 |---|---|---|
 | Reimplement Sphinx? | **No.** Use `mix-tunnel` / `nym-sdk`. | Audited crypto; `sphinx-core` is reference only. |
+| Protocol/transport location | One shared core repo (`TribeWarez/nysiris-core`), consumed by tag | Three consumers must not grow three divergent wire formats |
 | Local daemon vs WASM? | WASM in-browser; local `nym-socks5-client` for non-web apps | Browsers cannot open raw sockets |
 | Naming | Ship addresses in config; no public directory | Avoid enumerability/unlinkability loss |
 | Path length | 5 Sphinx hops (entry, 3 mixes, destination gw) | Matches `MAX_PATH_LENGTH = 5` |

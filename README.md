@@ -35,6 +35,10 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 >   Windows / check, plus CI.
 > * The `services/*` builds depend on Nym's own packages and are not compiled by
 >   the fast `./build.sh check` loop.
+> * The protocol/transport layer is being extracted into
+>   [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core) and
+>   is vendored as the `core/` submodule (pinned `v0.1.1`) — see
+>   [Nysiris-Core](#nysiris-core-reusable-protocol--transport).
 
 ## What this project is not
 
@@ -91,12 +95,18 @@ Prerequisites: a stable Rust toolchain and Node 24 (the version CI uses for the
 browser client and its type-stripping tests).
 
 ```bash
-git clone https://github.com/odelyzid/Nysiris.git
+git clone --recurse-submodules https://github.com/odelyzid/Nysiris.git
 cd Nysiris
+# already cloned? git submodule update --init --recursive
 
 ./build.sh check     # toolchain sanity: fmt + clippy + 113 Rust + 203 web tests
 ./build.sh web       # build the browser PWA into web/dist
 ```
+
+The `core/` submodule is the extracted protocol/transport workspace
+([Nysiris-Core](https://github.com/TribeWarez/nysiris-core)). It is **not** a
+workspace member, so the fast `check` loop does not build its `nym-sdk`
+toolchain; build it on demand with `cd core && cargo test --workspace`.
 
 Run the client from the built bundle (serve `web/dist` with any static file
 server) or with the dev server:
@@ -179,7 +189,10 @@ Prefer a rendered site? These docs are mirrored to the
    microblog + E2E DMs, SQLite security, signature/E2E specs, operations.
 9. [`docs/07-desktop-linux.md`](docs/07-desktop-linux.md) — Linux Mint / Debian
    desktop packaging (`.deb`, Electron, Tauri, Flatpak) and engine compatibility.
-10. [`docs/06-roadmap.md`](docs/06-roadmap.md) — phased plan with acceptance
+10. [`docs/14-nysiris-core.md`](docs/14-nysiris-core.md) — the extracted
+    protocol/transport workspace (`core/` submodule), its boundaries and
+    migration status.
+11. [`docs/06-roadmap.md`](docs/06-roadmap.md) — phased plan with acceptance
    criteria.
 
 ## Build & verify
@@ -222,6 +235,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | Path | What | Verification |
 |---|---|---|
 | `crates/sphinx-core/` | Reference Sphinx: header/blinding/filler/MAC/Lioness/SURB/address | `cargo test -p sphinx-core` |
+| `core/` (submodule) | Extracted protocol/transport workspace: chat identity, sealed DMs, encrypted history, rooms, `Transport` trait, `nym-sdk` adapter (pinned `v0.1.1`) | `cd core && cargo test --workspace` |
 | `crates/sphinx-core/src/enforcement.rs` | Route policy, SURB single-use/expiry, reply budget, exit rotation, cover-traffic guardrail | 12 tests |
 | `crates/bridge-guard/` | Open-proxy guards for the mixnet↔HTTP bridge | 8 tests |
 | `crates/nym-hidden-service/` | Hidden-service abstraction: URIs, envelopes, dispatch, petnames, chunking | 13 tests |
@@ -249,6 +263,78 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `extension/` | MV3 desktop scaffold | Load unpacked after bundling |
 | `build.sh` + `scripts/` | Rust / web / android / services / check build system | `check` runs offline |
 | `.github/workflows/ci.yml` | CI | Runs `./build.sh check` |
+
+## Nysiris-Core (reusable protocol & transport)
+
+The protocol and transport layer is being extracted from this repository into
+[`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core): a
+standalone Rust workspace that depends on neither this repository nor any
+client. It is vendored here as the **`core/` submodule**, pinned to `v0.1.1`,
+so the extracted code is reviewable from one checkout while the builds stay
+decoupled.
+
+| Crate | Responsibility |
+|---|---|
+| `nysiris-core` | chat identity, signed DM inner envelope, sealed DM crypto, contacts, message types, `Transport` trait, sealed files |
+| `nysiris-chat-history` | encrypted append-only flat-file history (no SQLite) |
+| `nysiris-chat-core` | 1:1 chat engine plus capability-key rooms with client-side fan-out over the transport trait |
+| `nysiris-transport-nym` | real `nym-sdk` adapter behind the `nym` feature; an explicit unavailable stub by default |
+| `nysiris-testkit` | in-memory transport and test fixtures |
+
+Dependency direction (core sits in the middle, and must not depend on either
+side):
+
+```
+Nysiris browser PWA ──wire──► Nysiris services ──┐
+                                                 ├──► Nysiris-Core
+NCC (PySide6 + ncc-daemon) ──────────────────────┘
+```
+
+**Migration status: partially extracted.** What moved is the native chat
+protocol and Nym transport seam:
+
+* chat identity (`ChatIdentity`), contacts, message types;
+* the sealed DM construction — ed25519 identity → X25519, ephemeral DH,
+  BLAKE2b-256 KDF, XChaCha20-Poly1305 — matching the browser client, with a
+  signed inner envelope that binds `from`, `to`, `ts`, `msgId`, and body;
+* encrypted history journals (flat files, filename bound as AEAD associated
+  data);
+* the `Transport` trait and the `nym-sdk` adapter, verified on mainnet.
+
+What is still in this repository (and why):
+
+| Still here | Why |
+|---|---|
+| `crates/sphinx-core` | reference Sphinx implementation + test vectors, never production crypto |
+| `crates/social-format`, `services/social` | the social wire format and its provider are still service-side; `nysiris-social-protocol` is planned in core |
+| `crates/nym-hidden-service`, `crates/provider-runtime`, `crates/nysiris-sdk` | hosting abstractions consume service crates that have not been extracted yet (`nysiris-service` is planned) |
+| `web/src/mixnet/`, `web/src/application/dm.ts` | the browser client is TypeScript and uses `@nymproject/*`; consuming the Rust chat crates from the PWA needs a wasm build first |
+
+Rules that keep the extraction clean:
+
+* **The submodule is not a Cargo workspace member.** Its `nym-sdk` toolchain
+  must not slow or couple to `./build.sh check`, and the crates publish
+  independently (they are `publish = false` until the API stabilizes).
+* **Consumers pin, they do not fork.** `Nysiris` must not depend on
+  `nysiris-chat-core` and NCC must not depend on `Nysiris`; compatibility is a
+  CI relationship across repositories, not a Cargo dependency.
+* **Do not copy core code back.** Fix protocol/transport bugs in
+  `nysiris-core`, bump the submodule pointer here, and re-run the consumer
+  build.
+
+```bash
+git submodule update --init --recursive      # fetch core/ (pinned tag)
+cd core
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo check -p nysiris-transport-nym --features nym   # heavy; real nym-sdk
+```
+
+To bump the pin: `git -C core fetch --tags && git -C core checkout vX.Y.Z`,
+then commit the updated `core` pointer (and `.gitmodules` if the URL changes).
+Full details, boundaries, and the remaining extraction checklist:
+[`docs/14-nysiris-core.md`](docs/14-nysiris-core.md).
 
 ## Reference core
 
@@ -304,6 +390,7 @@ and `desktop/electron/package.json`.
 | Rust toolchain | system | `rustup update` |
 | Rust crates | `crates/*/Cargo.toml` | edit the version, then `cargo update` |
 | Nym SDK (services) | `services/*/Cargo.toml` | `cargo search nym-sdk`, raise the version, rebuild |
+| Nysiris-Core | `core/` submodule | `git -C core fetch --tags`, check out the new tag, commit the pointer; re-run `cd core && cargo test --workspace` and the consumer smoke test |
 | Browser Nym SDK | `web/package.json` | `npm view @nymproject/mix-fetch version` (and `sdk-full-fat`), then `npm install` |
 | Electron | `desktop/electron/package.json` | `npm install electron@latest electron-builder@latest --save-dev` |
 
@@ -323,6 +410,7 @@ scripts/                 modular build commands + doc/JSON validators
 .github/workflows/       CI + release + wiki publishing
 .github/                 community health: SECURITY, CONTRIBUTING, CODE_OF_CONDUCT, CHANGELOG
 .agents/AGENTS.md        guidance for AI coding agents
+core/                    nysiris-core submodule: extracted protocol + transport (not a workspace member)
 crates/sphinx-core/      reference Sphinx + enforcement controls (workspace)
 crates/bridge-guard/     open-proxy guards (workspace)
 crates/nym-hidden-service/  hidden-service abstraction: URIs, envelopes, dispatch, petnames (workspace)

@@ -142,17 +142,27 @@ sequenceDiagram
 ```
 nysiris/
 ├── Cargo.toml                     workspace
+├── core/                          nysiris-core submodule (protocol + transport, not a member)
 ├── crates/
-│   └── sphinx-core/               reference Sphinx (builds, tested, not for prod)
-├── docs/
-│   ├── 01-architecture.md         ← this file
-│   ├── 02-addressing-and-routing.md
-│   └── 06-roadmap.md
-├── web/                           (planned) React UI
-├── extension/                     (planned) MV3 browser extension
-├── services/                      (planned) service-provider examples + Docker
-└── workers/                       (planned) mix-tunnel wrapper TypeScript
+│   ├── sphinx-core/               reference Sphinx (builds, tested, not for prod)
+│   ├── social-format/             signed social wire format
+│   ├── nym-hidden-service/        hidden-service abstraction (URIs, envelopes, dispatch)
+│   ├── provider-runtime/          shared provider request loop + guards
+│   ├── nysiris-sdk/               hosting SDK (HostConfig, serve, StaticFiles)
+│   └── portal-*/                  portal data, replication, reputation
+├── docs/                          numbered design docs (this file is 01)
+├── web/                           React PWA client (TypeScript)
+├── extension/                     MV3 desktop scaffold
+├── services/                      runnable providers, CLI, hybrid bridge, acceptance
+└── desktop/                       launcher, .deb / Windows packaging, Electron
 ```
+
+`core/` is the extracted protocol/transport workspace
+([Nysiris-Core](https://github.com/TribeWarez/nysiris-core), pinned tag, see
+[`14-nysiris-core.md`](14-nysiris-core.md)): chat identity, sealed DMs,
+encrypted history, capability-key rooms, the `Transport` trait and the
+`nym-sdk` adapter. It is deliberately **not** a member of this Cargo workspace
+— it carries the heavy `nym-sdk` toolchain and publishes independently.
 
 `crates/sphinx-core` mirrors `sphinx-packet` v0.6.x exactly where it matters:
 

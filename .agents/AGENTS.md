@@ -39,6 +39,12 @@ reference Sphinx implementation (`crates/sphinx-core`). Live-network delivery
   `crates/portal-data`, `crates/portal-replication`, `crates/portal-reputation`,
   `crates/provider-runtime`, `crates/social-format`, `desktop/launcher`.
   Everything else with a `Cargo.toml` is standalone.
+- `core/` is the `TribeWarez/nysiris-core` submodule: the extracted protocol and
+  transport layer (chat identity, sealed DMs, encrypted history, rooms,
+  `Transport` trait, `nym-sdk` adapter). It is **not** a workspace member —
+  never add it to `workspace.members`; build it separately with
+  `cd core && cargo test --workspace` and read `docs/14-nysiris-core.md`
+  before touching protocol code. Bug fixes go upstream, then bump the pointer.
 - `services/`: `echo-provider`, `hybrid-bridge`, `portal-provider`, `social`,
   `acceptance`, `nysiris-cli` (each with its own `Cargo.lock`; `gateway/` is
   ops-only: no crate, just systemd + example config). Excluded from the
@@ -46,7 +52,7 @@ reference Sphinx implementation (`crates/sphinx-core`). Live-network delivery
   `workspace.members`. `nysiris-cli` also depends on the workspace-member
   `crates/nysiris-sdk` by path; keep the SDK nym-free so `check` stays fast.
 - `web/`: React PWA (`src/`), `test/` (node unit tests), `android/`,
-  `extension/` (MV3, desktop-only). `docs/` is numbered `01–12` by
+  `extension/` (MV3, desktop-only). `docs/` is numbered `01–14` by
   deliverable. `scripts/cmd-*.sh` implement `./build.sh` subcommands.
 - Naming: the product is **Nysiris** (`nysiris-*` packages, binaries,
   install paths). These historical identifiers are frozen for compat — do
