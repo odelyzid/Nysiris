@@ -3,7 +3,7 @@
 > **Status: partial extraction.** The native chat protocol and the Nym
 > transport seam now live in
 > [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core),
-> vendored here as the `core/` submodule (pinned `v0.1.1`). The browser client,
+> vendored here as the `core/` submodule (pinned `v0.1.2`). The browser client,
 > the social provider, the hosting abstractions and the reference Sphinx
 > implementation are still in this repository. This page records what moved,
 > what did not, and the rules that keep the two repositories from drifting.
@@ -116,18 +116,20 @@ Initialise (the `--recurse-submodules` clone in the README does this for you):
 
 ```bash
 git submodule update --init --recursive
-git submodule status          # core (a031e9b...) v0.1.1
+git submodule status          # core (ecc3d8e...) — tag v0.1.2
 ```
 
-Verify the extracted workspace:
+Verify the extracted workspace (always `--locked`: the lockfile is what makes
+the Nym tree buildable):
 
 ```bash
 cd core
 cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo doc --workspace --no-deps
-cargo check -p nysiris-transport-nym --features nym   # heavy, real nym-sdk
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+cargo doc --workspace --no-deps --locked
+bash scripts/check-nym-pins.sh                        # from-scratch resolve, no build
+cargo check -p nysiris-transport-nym --features nym --locked   # heavy, real nym-sdk
 ```
 
 Bump the pin deliberately (consumers break on a pointer change, not silently):
@@ -143,16 +145,23 @@ Then run the consumer smoke test: build NCC and the Nysiris services against the
 new tag. That is a CI/test relationship across repositories — never a Cargo
 path dependency from this workspace.
 
-Releases are cut in the core repository by tagging the workspace version
-(`git tag vX.Y.Z && git push origin vX.Y.Z`); its release workflow verifies the
-tag against `[workspace.package].version`, runs the full gate including the
-`nym` feature compile, and publishes in dependency order when
-`CORE_PUBLISH_ENABLED` and `CARGO_REGISTRY_TOKEN` are configured. Never move or
-re-tag an existing version.
+Releases are cut in the core repository by bumping
+`[workspace.package].version`, committing that bump, and tagging that same
+commit — annotated, so `git submodule status` displays it:
+`git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`. The release workflow
+verifies the tag against `[workspace.package].version` and fails on a mismatch,
+runs the full gate including the `nym` feature compile, and publishes in
+dependency order when `CORE_PUBLISH_ENABLED` and `CARGO_REGISTRY_TOKEN` are
+configured. Never move or re-tag an existing version.
 
-> The Nym `1.22.x` patch line is internally inconsistent. `core/Cargo.lock` pins
-> a known-good set; do not regenerate it without testing
-> `--features nym`.
+> The Nym `1.22.x` patch line is internally inconsistent:
+> `nym-client-core` 1.22.2 requires the yanked `tokio_with_wasm` 0.10.1, while
+> the 1.22.1 fallback does not compile against its 1.22.2 siblings.
+> `core/Cargo.lock` pins the mainnet-verified 1.22.0 set, and since `v0.1.2`
+> `nysiris-transport-nym` also pins every Nym crate exactly inside the `nym`
+> feature, so a consumer resolving from scratch gets the same buildable tree.
+> Build with `--locked`, and run `bash scripts/check-nym-pins.sh` after touching
+> Nym pins or the lockfile.
 
 ---
 
@@ -167,7 +176,7 @@ Done:
 - [x] `nym-sdk` transport adapter (`NymTransport`), verified on mainnet with two
       native daemons (DM and room delivery).
 - [x] Standalone repository, tag `v0.1.1`, Apache-2.0, security policy.
-- [x] Submodule at `core/` in this repository, pinned `v0.1.1`.
+- [x] Submodule at `core/` in this repository, pinned `v0.1.2`.
 
 Next:
 

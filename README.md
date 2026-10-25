@@ -37,7 +37,7 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 >   the fast `./build.sh check` loop.
 > * The protocol/transport layer is being extracted into
 >   [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core) and
->   is vendored as the `core/` submodule (pinned `v0.1.1`) — see
+>   is vendored as the `core/` submodule (pinned `v0.1.2`) — see
 >   [Nysiris-Core](#nysiris-core-reusable-protocol--transport).
 
 ## What this project is not
@@ -106,7 +106,7 @@ cd Nysiris
 The `core/` submodule is the extracted protocol/transport workspace
 ([Nysiris-Core](https://github.com/TribeWarez/nysiris-core)). It is **not** a
 workspace member, so the fast `check` loop does not build its `nym-sdk`
-toolchain; build it on demand with `cd core && cargo test --workspace`.
+toolchain; build it on demand with `cd core && cargo test --workspace --locked`.
 
 Run the client from the built bundle (serve `web/dist` with any static file
 server) or with the dev server:
@@ -235,7 +235,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | Path | What | Verification |
 |---|---|---|
 | `crates/sphinx-core/` | Reference Sphinx: header/blinding/filler/MAC/Lioness/SURB/address | `cargo test -p sphinx-core` |
-| `core/` (submodule) | Extracted protocol/transport workspace: chat identity, sealed DMs, encrypted history, rooms, `Transport` trait, `nym-sdk` adapter (pinned `v0.1.1`) | `cd core && cargo test --workspace` |
+| `core/` (submodule) | Extracted protocol/transport workspace: chat identity, sealed DMs, encrypted history, rooms, `Transport` trait, `nym-sdk` adapter (pinned `v0.1.2`) | `cd core && cargo test --workspace --locked` |
 | `crates/sphinx-core/src/enforcement.rs` | Route policy, SURB single-use/expiry, reply budget, exit rotation, cover-traffic guardrail | 12 tests |
 | `crates/bridge-guard/` | Open-proxy guards for the mixnet↔HTTP bridge | 8 tests |
 | `crates/nym-hidden-service/` | Hidden-service abstraction: URIs, envelopes, dispatch, petnames, chunking | 13 tests |
@@ -269,7 +269,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 The protocol and transport layer is being extracted from this repository into
 [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core): a
 standalone Rust workspace that depends on neither this repository nor any
-client. It is vendored here as the **`core/` submodule**, pinned to `v0.1.1`,
+client. It is vendored here as the **`core/` submodule**, pinned to `v0.1.2`,
 so the extracted code is reviewable from one checkout while the builds stay
 decoupled.
 
@@ -326,9 +326,10 @@ Rules that keep the extraction clean:
 git submodule update --init --recursive      # fetch core/ (pinned tag)
 cd core
 cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo check -p nysiris-transport-nym --features nym   # heavy; real nym-sdk
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+bash scripts/check-nym-pins.sh                        # from-scratch Nym resolve
+cargo check -p nysiris-transport-nym --features nym --locked   # heavy; real nym-sdk
 ```
 
 To bump the pin: `git -C core fetch --tags && git -C core checkout vX.Y.Z`,

@@ -217,7 +217,7 @@ pinned here as the `core/` submodule. Crate map, boundaries and wire invariants:
 
 - [x] Chat identity, sealed DM crypto, signed inner envelope, encrypted history.
 - [x] `Transport` trait, in-memory testkit, `nym-sdk` adapter (verified on mainnet).
-- [x] `core/` submodule pinned to `v0.1.1`; not a Cargo workspace member.
+- [x] `core/` submodule pinned to `v0.1.2`; not a Cargo workspace member.
 - [ ] Service-side crates (`nysiris-service`, `nysiris-social-protocol`).
 - [ ] crates.io publication (currently `publish = false`).
 - [ ] wasm build for the browser client; retire duplicate TS DM framing.
