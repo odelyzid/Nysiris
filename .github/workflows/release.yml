@@ -74,13 +74,19 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
+      # MSYS2 dropped the MINGW64 (MSVCRT) nodejs package; only the ucrt64 and
+      # clang64 variants are left. Use the runner's native Node instead:
+      # MSYS2_PATH_TYPE=inherit puts its bin dir on the MSYS2 PATH, where the
+      # POSIX `npm` wrapper from the official Windows distribution resolves.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
           install: >-
             mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-nodejs
             git
             zip
       - uses: dtolnay/rust-toolchain@stable
