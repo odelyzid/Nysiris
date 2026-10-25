@@ -129,7 +129,7 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
         </div>
         {selectedOs !== null && (
           <div role="tabpanel" aria-label={PORTAL_OS_META[selectedOs].title}>
-            <pre className="fly-code" style={{ maxHeight: 260 }}>
+            <pre className="fly-code fly-code-scroll">
               {quickStartCommand(selectedOs)}
             </pre>
             <button
@@ -198,7 +198,7 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
           </button>
         </div>
 
-        <label className="fly-muted" style={{ display: 'block', marginTop: 12 }}>
+        <label className="fly-muted fly-label-block">
           Provider address (from <code>nym-address.txt</code>, or paste the link you share):
         </label>
         <div className="fly-row">
@@ -223,7 +223,7 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
           </button>
         </div>
         {invite && (
-          <p className="fly-muted" style={{ wordBreak: 'break-all', fontSize: 12 }}>
+          <p className="fly-muted fly-break-all">
             {invite}
           </p>
         )}
@@ -252,7 +252,7 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
           )}
         </div>
         {probeSummary && (
-          <p className="fly-muted" style={{ fontSize: 12 }}>
+          <p className="fly-muted">
             {probeSummary}
           </p>
         )}
@@ -266,36 +266,33 @@ export function RunPortal({ onProbe, busy }: RunPortalProps) {
             <label>
               PoW bits{' '}
               <input
-                className="fly-input"
+                className="fly-input fly-num-sm"
                 type="number"
                 min={0}
                 max={32}
                 value={prefs.config.powBits}
                 onChange={(e) => updateConfig({ powBits: Number(e.target.value) })}
                 aria-label="PoW bits"
-                style={{ width: 76 }}
               />
             </label>
             <label>
               Rate/day{' '}
               <input
-                className="fly-input"
+                className="fly-input fly-num-md"
                 type="number"
                 min={0}
                 value={prefs.config.ratePerDay}
                 onChange={(e) => updateConfig({ ratePerDay: Number(e.target.value) })}
                 aria-label="Entries per day"
-                style={{ width: 96 }}
               />
             </label>
             <label>
               Data dir{' '}
               <input
-                className="fly-input"
+                className="fly-input fly-num-lg"
                 value={prefs.config.dataDir}
                 onChange={(e) => updateConfig({ dataDir: e.target.value })}
                 aria-label="Data directory"
-                style={{ width: 160 }}
               />
             </label>
           </div>

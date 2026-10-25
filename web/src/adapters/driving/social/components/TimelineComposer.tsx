@@ -1,5 +1,6 @@
 import { MAX_POST_BYTES } from '../../../../domain/limits';
 import type { RefObject } from 'react';
+import { CloseIcon } from '../../shared/icons';
 import { AttachmentPicker, type PreparedAttachment } from '../attachmentUi';
 import type { Post } from '../model';
 
@@ -32,24 +33,15 @@ export function TimelineComposer({
   return (
     <>
       {replyTo && (
-        <div
-          style={{
-            border: '1px solid var(--fly-line)',
-            borderRadius: 0,
-            padding: '6px 10px',
-            marginBottom: 8,
-            fontSize: 12,
-            background: 'var(--fly-bg)',
-          }}
-        >
+        <div className="fly-reply-banner">
           Replying to <strong>{replyToLabel}</strong>: “{replyTo.body.slice(0, 80)}
           {replyTo.body.length > 80 ? '…' : ''}”{' '}
-          <button className="fly-btn" style={{ fontSize: 11 }} onClick={onCancelReply} aria-label="Cancel reply">
-            ✕
+          <button className="fly-btn fly-btn-sm fly-icon-btn" onClick={onCancelReply} aria-label="Cancel reply" title="Cancel reply">
+            <CloseIcon size={14} />
           </button>
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+      <div className="fly-composer-row">
         <input
           ref={composerRef}
           style={{ flex: 1 }}
@@ -59,7 +51,7 @@ export function TimelineComposer({
           maxLength={MAX_POST_BYTES}
           className="fly-input"
         />
-        <button onClick={onPost} disabled={busy || !draft.trim()} className="btn-primary">
+        <button onClick={onPost} disabled={busy || !draft.trim()} className="btn btn-primary">
           {replyTo ? 'Reply' : 'Post'}
         </button>
       </div>

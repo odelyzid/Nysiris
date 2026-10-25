@@ -32,10 +32,10 @@ export function Onboarding({
       </div>
       {step === 'welcome' && (
         <div className="fly-row">
-          <button className="btn-primary" onClick={onConnect} disabled={busy}>
+          <button className="btn btn-primary" onClick={onConnect} disabled={busy}>
             Connect privately
           </button>
-          <button className="btn-ghost" onClick={onDismiss}>
+          <button className="btn btn-ghost" onClick={onDismiss}>
             Look around first
           </button>
         </div>

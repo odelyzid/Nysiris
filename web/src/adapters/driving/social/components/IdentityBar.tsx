@@ -15,7 +15,7 @@ export function IdentityBar({ session, busy }: { session: IdentitySession; busy:
       </span>
       {trustedVouches.length > 0 && (
         <label
-          style={{ fontSize: 11, marginRight: 8 }}
+          style={{ fontSize: 12, marginRight: 8 }}
           title="Sign your explicit-trust list into the invite so the recipient sees who you vouch for"
         >
           <input type="checkbox" checked={vouchOnCopy} onChange={(e) => setVouchOnCopy(e.target.checked)} /> Vouch for{' '}
@@ -23,7 +23,7 @@ export function IdentityBar({ session, busy }: { session: IdentitySession; busy:
         </label>
       )}
       <button
-        style={{ fontSize: 11 }}
+        style={{ fontSize: 12 }}
         className="fly-btn fly-btn-primary"
         title="Sign an invite link for this community and copy it"
         onClick={onCopyInvite}
@@ -32,8 +32,7 @@ export function IdentityBar({ session, busy }: { session: IdentitySession; busy:
         Copy invite link
       </button>
       <button
-        className="fly-btn"
-        style={{ fontSize: 11 }}
+        className="fly-btn fly-btn-sm"
         aria-expanded={showIdentity}
         aria-label="Identity options"
         title="Identity options: ID, QR, move, backup"

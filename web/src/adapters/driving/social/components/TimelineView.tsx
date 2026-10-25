@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { countDescendants } from '../../../../domain/threads';
+import { ChatIcon } from '../../shared/icons';
 import { ThreadView } from '../ThreadView';
 import { EmptyState } from './EmptyState';
 import { PostCard } from './PostCard';
@@ -37,7 +38,7 @@ export function TimelineView({
   onError: (line: string) => void;
 }) {
   return (
-    <div role="tabpanel" aria-label="Timeline">
+    <div role="tabpanel" id="social-panel-timeline" aria-label="Timeline">
       <TimelineComposer
         replyTo={composer.replyTo}
         replyToLabel={replyToLabel}
@@ -53,13 +54,12 @@ export function TimelineView({
       />
 
       <h3 className="section-title">Timeline</h3>
-      <p style={{ fontSize: 11, color: 'var(--fly-muted)' }}>
+      <p style={{ fontSize: 12, color: 'var(--fly-muted)' }}>
         Global chronological timeline — every post is checked before it appears, so fakes never show.
       </p>
       <div style={{ margin: '4px 0 8px' }}>
         <button
-          className="fly-btn"
-          style={{ fontSize: 12 }}
+          className="fly-btn fly-btn-sm"
           aria-pressed={trustedOnly}
           title="Hide posts from authors you have not trusted"
           onClick={onToggleTrustedOnly}
@@ -80,8 +80,7 @@ export function TimelineView({
       {Number.isFinite(feed.oldestSeq) && feed.oldestSeq > 1 && (
         <div style={{ marginBottom: 8 }}>
           <button
-            className="fly-btn"
-            style={{ fontSize: 11 }}
+            className="fly-btn fly-btn-sm"
             onClick={() => void feed.loadOlder()}
             disabled={feed.loadingOlder || busy}
           >
@@ -92,7 +91,7 @@ export function TimelineView({
 
       {feed.posts.length === 0 && !feed.syncing && !feed.feedError ? (
         <EmptyState
-          glyph="💬"
+          icon={<ChatIcon size={28} />}
           title="Nothing here yet"
           action={
             <button className="fly-btn fly-btn-primary" onClick={onBeFirst}>

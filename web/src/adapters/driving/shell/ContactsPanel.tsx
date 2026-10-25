@@ -68,8 +68,7 @@ export function ContactsPanel({
               </code>{' '}
               {onTrustVouched && (
                 <button
-                  className="fly-btn"
-                  style={{ fontSize: 11 }}
+                  className="fly-btn fly-btn-sm"
                   title="Record your own trust verdict for every vouched ID"
                   onClick={() => onTrustVouched(pending.invite.vouches ?? [])}
                 >
@@ -105,13 +104,13 @@ export function ContactsPanel({
         {contacts.map((c) => (
           <li key={c.name} style={{ borderTop: '1px solid var(--fly-line)', padding: '6px 0' }}>
             <strong>{c.name}</strong>{' '}
-            <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{c.address.slice(0, 24)}…</code>
+            <code style={{ fontSize: 12, wordBreak: 'break-all' }}>{c.address.slice(0, 24)}…</code>
             {c.note && <div style={{ color: 'var(--fly-muted)' }}>“{c.note}”</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => onVisit(c.address)}>
+              <button className="fly-btn fly-btn-sm" onClick={() => onVisit(c.address)}>
                 Visit
               </button>
-              <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => onRemove(c.name)}>
+              <button className="fly-btn fly-btn-sm" onClick={() => onRemove(c.name)}>
                 Remove
               </button>
             </div>

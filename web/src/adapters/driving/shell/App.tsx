@@ -27,6 +27,7 @@ import { describeStatus } from '../../../mixnet/status';
 import { AppNav } from './AppNav';
 import { Onboarding } from './Onboarding';
 import { FriendlyError } from '../shared/FriendlyError';
+import { BookmarkIcon, StarIcon } from '../shared/icons';
 import { QrScanButton } from '../shared/QrScanButton';
 import { ShareCard } from '../shared/ShareCard';
 import { RunPortal } from '../portal/RunPortal';
@@ -671,8 +672,8 @@ export function App() {
         />
         <div className="fly-main">
           <header className="fly-classic-header">
-            <h1 style={{ margin: '8px 0 0', fontSize: 22 }}>Nysiris</h1>
-            <p className="fly-muted" style={{ margin: '4px 0 8px' }}>
+            <h1 className="fly-h1">Nysiris</h1>
+            <p className="fly-muted">
               Browse and chat over the private network.
             </p>
           </header>
@@ -765,19 +766,10 @@ export function App() {
                     )}
                   </div>
                   {exit.recommendReconnect && (
-                    <p
-                      style={{
-                        fontSize: 12,
-                        border: '1px solid var(--fly-line)',
-                        borderLeft: '4px solid var(--fly-warn)',
-                        padding: '8px 10px',
-                        margin: '10px 0 0',
-                      }}
-                      role="note"
-                    >
+                    <p className="fly-callout-warn fly-mt-2" role="note">
                       Exit reuse limit reached ({exit.requests} requests on one exit). Reconnect to rotate your exit
                       (§5.2.2) — a fixed exit is a linking key at the destinations you visit.
-                      <span className="fly-row" style={{ marginTop: 8 }}>
+                      <span className="fly-row fly-mt-2">
                         <button className="fly-btn" onClick={onReconnect}>
                           Reconnect now
                         </button>
@@ -837,7 +829,7 @@ export function App() {
                       </li>
                     ))}
                   </ul>
-                  <div className="fly-row" style={{ marginTop: 8 }}>
+                  <div className="fly-row fly-mt-2">
                     <button className="fly-btn" onClick={() => onSelectView('messages')}>
                       Go to Messages
                     </button>
@@ -864,7 +856,7 @@ export function App() {
                 ) : (
                   <div className="fly-chat">
                     <div>
-                      <h3 style={{ fontSize: 15, margin: '0 0 8px' }}>Chats</h3>
+                      <h3 className="fly-h3">Chats</h3>
                       {threads.length === 0 && (
                         <p className="fly-muted">No chats yet. Add someone below to say hello.</p>
                       )}
@@ -885,14 +877,13 @@ export function App() {
                           </li>
                         ))}
                       </ul>
-                      <div style={{ marginTop: 12 }}>
+                      <div className="fly-mt-3">
                         <label className="fly-muted" htmlFor="msg-to">
                           Message someone new (paste their private address once, then use their name)
                         </label>
                         <input
                           id="msg-to"
                           className="fly-input"
-                          style={{ marginTop: 4 }}
                           placeholder="Their private address"
                           value={recipient}
                           onChange={(e) => setRecipient(e.target.value)}
@@ -901,35 +892,17 @@ export function App() {
                       </div>
                     </div>
                     <div>
-                      <h3 style={{ fontSize: 15, margin: '0 0 8px' }}>
+                      <h3 className="fly-h3">
                         {activeThread ? threadLabel(activeThread, contacts) : 'Conversation'}
                       </h3>
                       {!activeThread && <p className="fly-muted">Pick a chat, or paste an address to start one.</p>}
-                      <ul
-                        style={{
-                          fontSize: 15,
-                          listStyle: 'none',
-                          padding: 0,
-                          margin: '0 0 12px',
-                          display: 'grid',
-                          gap: 8,
-                        }}
-                      >
+                      <ul className="fly-plain-list">
                         {activeMessages.map((m, i) => (
-                          <li
-                            key={i}
-                            style={{
-                              background: 'var(--fly-bg)',
-                              border: '1px solid var(--fly-line)',
-                              borderRadius: 0,
-                              padding: '8px 12px',
-                            }}
-                          >
-                            <span style={{ wordBreak: 'break-word' }}>{m.text}</span>{' '}
+                          <li key={i} className="fly-preview-msg">
+                            <span className="fly-break-word">{m.text}</span>{' '}
                             {m.senderTag && (
                               <button
-                                className="fly-btn"
-                                style={{ fontSize: 13, minHeight: 36, padding: '6px 12px', marginTop: 4 }}
+                                className="fly-btn fly-btn-sm fly-mt-1"
                                 onClick={() => void onReply(m)}
                               >
                                 Reply
@@ -968,12 +941,15 @@ export function App() {
 
           {view === 'portal' && (
             <main>
+              <div className="fly-view-head">
+                <h2>Portal</h2>
+                <span className="fly-meta">A private site or community over the mixnet.</span>
+              </div>
               <section
                 className="fly-card"
                 aria-label="Open a private link"
                 style={socialService ? { display: 'none' } : undefined}
               >
-                <h2>Portal</h2>
                 <p>Open a private site or community. The address bar below is bound to what you see.</p>
                 <div className="fly-row">
                   <input
@@ -999,8 +975,8 @@ export function App() {
 
               {socialService && (
                 <>
-                  <div className="fly-row" aria-label="Current portal">
-                    <span className="fly-muted" style={{ wordBreak: 'break-all' }}>
+                  <div className="fly-portal-bar" aria-label="Current portal">
+                    <span className="fly-muted fly-break-all">
                       {shortenAddress(socialService)}
                     </span>
                     <button
@@ -1009,7 +985,7 @@ export function App() {
                       onClick={() => onToggleFavorite(socialService)}
                       title="Favourite this portal — pinned to the top of the roster"
                     >
-                      {currentFavorite ? '★ Favourited' : '☆ Favourite'}
+                      <StarIcon size={13} /> {currentFavorite ? 'Favourited' : 'Favourite'}
                     </button>
                     <button
                       className={currentBookmarked ? 'fly-btn fly-btn-secondary' : 'fly-btn'}
@@ -1020,7 +996,7 @@ export function App() {
                       }}
                       title="Save this link with a name only you see"
                     >
-                      {currentBookmarked ? '★ Bookmarked' : '☆ Bookmark'}
+                      <BookmarkIcon size={13} /> {currentBookmarked ? 'Bookmarked' : 'Bookmark'}
                     </button>
                   </div>
                   {showBookmarkField && (
@@ -1084,17 +1060,11 @@ export function App() {
 
               {pageHtml !== null && (
                 <iframe
+                  className="fly-portal-frame"
                   sandbox=""
-                  title="private-site"
+                  title="Portal page"
                   srcDoc={pageHtml}
-                  style={{
-                    width: '100%',
-                    height: 480,
-                    border: '1px solid var(--fly-line)',
-                    borderRadius: 0,
-                    background: 'var(--fly-surface)',
-                    marginBottom: 12,
-                  }}
+                  loading="lazy"
                 />
               )}
 
@@ -1162,17 +1132,17 @@ export function App() {
               </section>
 
               <section className="fly-card" aria-label="Advanced settings">
-                <div className="fly-row" style={{ justifyContent: 'space-between' }}>
+                <div className="fly-row fly-row-between">
                   <div>
-                    <h2 style={{ marginBottom: 0 }}>Advanced</h2>
-                    <p style={{ margin: '4px 0 0' }}>Technical tools. Hidden unless you need them.</p>
+                    <h2 className="fly-h2-flush">Advanced</h2>
+                    <p className="fly-meta fly-mt-1">Technical tools. Hidden unless you need them.</p>
                   </div>
                   <button className="fly-btn" aria-expanded={advanced} onClick={() => onToggleAdvanced(!advanced)}>
                     {advanced ? 'Hide advanced' : 'Show advanced'}
                   </button>
                 </div>
                 {advanced && (
-                  <div style={{ marginTop: 16 }}>
+                  <div className="fly-mt-4">
                     <Toolbar open={openPanels} onToggle={onTogglePanel} statusLabel={label} statusTone={tone} />
 
                     {openPanels.includes('connection') && (
@@ -1194,7 +1164,7 @@ export function App() {
                             Disconnect
                           </button>
                         </div>
-                        <ul style={{ fontSize: 13 }}>
+                        <ul className="fly-list">
                           <li>Clearnet source IP: {clearnetIp || '—'}</li>
                           <li>Mixnet source IP: {mixnetIp || '—'}</li>
                           <li>Hop model: entry gateway → 3 mix layers → destination gateway (5 Sphinx hops)</li>
@@ -1220,9 +1190,9 @@ export function App() {
                             Start messaging client
                           </button>
                           {selfAddress && (
-                            <p style={{ wordBreak: 'break-all', fontSize: 12 }}>My address: {selfAddress}</p>
+                            <p className="fly-meta fly-break-all">My address: {selfAddress}</p>
                           )}
-                          <div className="fly-row" style={{ marginTop: 8 }}>
+                          <div className="fly-row fly-mt-2">
                             <input
                               className="fly-input"
                               placeholder="recipient Nym address (id.enc@gw)"
@@ -1239,13 +1209,13 @@ export function App() {
                               Send
                             </button>
                           </div>
-                          <h3 style={{ fontSize: 15 }}>Inbox</h3>
-                          <ul style={{ fontSize: 13 }}>
+                          <h3 className="fly-h3">Inbox</h3>
+                          <ul className="fly-list">
                             {inbox.map((m, i) => (
                               <li key={i}>
                                 {m.text}{' '}
                                 {m.senderTag && (
-                                  <button className="fly-btn" onClick={() => void onReply(m)} style={{ fontSize: 11 }}>
+                                  <button className="fly-btn fly-btn-sm" onClick={() => void onReply(m)}>
                                     reply via SURB
                                   </button>
                                 )}
@@ -1261,7 +1231,7 @@ export function App() {
                         <p className="fly-muted">
                           Fetch a page from a private site by address. One call, one response — no Connect needed.
                         </p>
-                        <div className="fly-row" style={{ marginTop: 8 }}>
+                        <div className="fly-row fly-mt-2">
                           <input
                             className="fly-input"
                             placeholder="private-site address"
@@ -1269,8 +1239,7 @@ export function App() {
                             onChange={(e) => setHsAddress(e.target.value)}
                           />
                           <input
-                            className="fly-input"
-                            style={{ flex: '0 1 140px', minWidth: 120 }}
+                            className="fly-input fly-field-sm"
                             placeholder="/path"
                             value={hsPath}
                             onChange={(e) => setHsPath(e.target.value)}
@@ -1280,14 +1249,14 @@ export function App() {
                           </button>
                         </div>
                         {hsResult && (
-                          <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', marginTop: 8 }}>{hsResult}</pre>
+                          <pre className="fly-pre fly-mt-2">{hsResult}</pre>
                         )}
                       </Panel>
                     )}
 
                     {openPanels.includes('log') && (
                       <Panel title="Log (technical)" onClose={() => onClosePanel('log')}>
-                        <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', margin: 0 }}>{log.join('\n')}</pre>
+                        <pre className="fly-pre">{log.join('\n')}</pre>
                       </Panel>
                     )}
 

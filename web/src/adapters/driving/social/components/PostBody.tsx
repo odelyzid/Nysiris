@@ -60,7 +60,7 @@ export function PostBody({ post: p, ctx }: { post: Post; ctx: PostBodyContext })
         <strong>{authorLabel(p.author, petname, profileName)}</strong>{' '}
         <span style={{ color: 'var(--fly-muted)' }}>{dayLabel(p.day)}</span>{' '}
         <span style={{ fontSize: 12, color: 'var(--fly-muted)' }}>Blocked author — post hidden.</span>{' '}
-        <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => ctx.onReveal(p.id)}>
+        <button className="fly-btn fly-btn-sm" onClick={() => ctx.onReveal(p.id)}>
           Show anyway
         </button>
       </div>
@@ -84,7 +84,7 @@ export function PostBody({ post: p, ctx }: { post: Post; ctx: PostBodyContext })
       <strong>{authorLabel(p.author, petname, profileName)}</strong>
       {ctx.dupeAuthors.has(p.author.toLowerCase()) && (
         <span
-          style={{ fontSize: 11, color: 'var(--fly-muted)' }}
+          style={{ fontSize: 12, color: 'var(--fly-muted)' }}
           title="Same name as another author — the hex tells them apart"
         >
           {' '}
@@ -94,15 +94,14 @@ export function PostBody({ post: p, ctx }: { post: Post; ctx: PostBodyContext })
       <span style={{ color: 'var(--fly-muted)' }}>{dayLabel(p.day)}</span>{' '}
       {!profileName && !petname && !isNaming && (
         <>
-          <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => ctx.onLookup(p.author)}>
+          <button className="fly-btn fly-btn-sm" onClick={() => ctx.onLookup(p.author)}>
             who?
           </button>{' '}
         </>
       )}
       {!isNaming ? (
         <button
-          className="fly-btn"
-          style={{ fontSize: 11 }}
+          className="fly-btn fly-btn-sm"
           title="Give them a name only you see"
           onClick={() => ctx.onStartNaming(p.author, petname ?? '')}
         >
@@ -120,15 +119,15 @@ export function PostBody({ post: p, ctx }: { post: Post; ctx: PostBodyContext })
             spellCheck={false}
             aria-label="Petname for this author"
           />{' '}
-          <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => ctx.onSaveNaming(p.author)}>
+          <button className="fly-btn fly-btn-sm" onClick={() => ctx.onSaveNaming(p.author)}>
             Save
           </button>{' '}
           {petname && (
-            <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => ctx.onClearNaming(p.author)}>
+            <button className="fly-btn fly-btn-sm" onClick={() => ctx.onClearNaming(p.author)}>
               Clear
             </button>
           )}{' '}
-          <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => ctx.onCancelNaming()}>
+          <button className="fly-btn fly-btn-sm" onClick={() => ctx.onCancelNaming()}>
             Cancel
           </button>
         </span>
@@ -136,16 +135,14 @@ export function PostBody({ post: p, ctx }: { post: Post; ctx: PostBodyContext })
       {explicit === null ? (
         <>
           <button
-            className="fly-btn"
-            style={{ fontSize: 11 }}
+            className="fly-btn fly-btn-sm"
             title="Always show them as trusted"
             onClick={() => ctx.onVerdict(p.author, 'trusted')}
           >
             Trust
           </button>{' '}
           <button
-            className="fly-btn"
-            style={{ fontSize: 11 }}
+            className="fly-btn fly-btn-sm"
             title="Always show them as blocked"
             onClick={() => ctx.onVerdict(p.author, 'blocked')}
           >
@@ -154,8 +151,7 @@ export function PostBody({ post: p, ctx }: { post: Post; ctx: PostBodyContext })
         </>
       ) : (
         <button
-          className="fly-btn"
-          style={{ fontSize: 11 }}
+          className="fly-btn fly-btn-sm"
           title="Back to first-hand observations"
           onClick={() => ctx.onVerdict(p.author, null)}
         >
@@ -165,7 +161,7 @@ export function PostBody({ post: p, ctx }: { post: Post; ctx: PostBodyContext })
       <div style={{ wordBreak: 'break-word' }}>{p.body}</div>
       {p.attachments && p.attachments.length > 0 && <AttachmentList service={ctx.service} refs={p.attachments} />}
       {caution && (
-        <div style={{ fontSize: 11, color: 'var(--fly-warn)', marginTop: 4 }} role="note">
+        <div style={{ fontSize: 12, color: 'var(--fly-warn)', marginTop: 4 }} role="note">
           ⚠ {caution}.
         </div>
       )}

@@ -24,10 +24,11 @@ export function DmComposer({
   onError: (line: string) => void;
 }) {
   return (
-    <div className="fly-dm-composer">
-      <label className="fly-dm-to">
-        To:
+    <div className="fly-dm-composer" role="group" aria-label="Compose a private message">
+      <div className="fly-dm-to">
+        <label htmlFor="fly-dm-to">To:</label>
         <input
+          id="fly-dm-to"
           className="fly-input"
           placeholder="Their 64-hex ID"
           value={dmTo}
@@ -44,7 +45,7 @@ export function DmComposer({
           }}
           onScanError={(message) => onError(`qr scan: ${message}`)}
         />
-      </label>
+      </div>
       <textarea
         className="fly-input fly-dm-message"
         rows={2}

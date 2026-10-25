@@ -12,7 +12,7 @@ export function Panel({ title, onClose, children }: { title: string; onClose: ()
       <div className="panel-title">
         <span>{title}</span>
         <button
-          className="btn-ghost"
+          className="btn btn-ghost"
           onClick={onClose}
           aria-label={`Close ${title}`}
           title={`Close ${title}`}

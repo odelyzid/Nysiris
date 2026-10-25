@@ -37,20 +37,19 @@ export function ThreadView({
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-        <button className="fly-btn" style={{ fontSize: 12 }} onClick={onBack} aria-label="Back to timeline">
+        <button className="fly-btn fly-btn-sm" onClick={onBack} aria-label="Back to timeline">
           ← All posts
         </button>
         {onShareLink && (
           <button
-            className="fly-btn"
-            style={{ fontSize: 12 }}
+            className="fly-btn fly-btn-sm"
             onClick={onShareLink}
             title="Copy a link that opens this thread"
           >
             Copy link
           </button>
         )}
-        <span style={{ fontSize: 11, color: 'var(--fly-muted)' }}>
+        <span style={{ fontSize: 12, color: 'var(--fly-muted)' }}>
           {replies.length === 0 ? 'No replies yet' : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
         </span>
       </div>
@@ -71,7 +70,7 @@ export function ThreadView({
         >
           {renderPost(root)}
           <div style={{ marginTop: 4 }}>
-            <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => onReply(root.id)}>
+            <button className="fly-btn fly-btn-sm" onClick={() => onReply(root.id)}>
               Reply
             </button>
           </div>
@@ -79,7 +78,7 @@ export function ThreadView({
       )}
 
       {missingIds.length > 0 && (
-        <p style={{ fontSize: 11, color: 'var(--fly-muted)' }} role="status">
+        <p style={{ fontSize: 12, color: 'var(--fly-muted)' }} role="status">
           {missingIds.some((id) => loadingIds.includes(id))
             ? 'Loading parent…'
             : 'Some earlier posts are not yet available.'}{' '}
@@ -99,7 +98,7 @@ export function ThreadView({
           >
             {renderPost(reply)}
             <div style={{ marginTop: 4 }}>
-              <button className="fly-btn" style={{ fontSize: 11 }} onClick={() => onReply(reply.id)}>
+              <button className="fly-btn fly-btn-sm" onClick={() => onReply(reply.id)}>
                 Reply
               </button>
             </div>

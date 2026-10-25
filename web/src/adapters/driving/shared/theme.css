@@ -7,7 +7,7 @@
   --fly-bg: #f7f5f2;
   --fly-surface: #ffffff;
   --fly-ink: #1f2937;
-  --fly-muted: #6b7280;
+  --fly-muted: #5f6673;
   --fly-line: #e5e7eb;
   --fly-accent: #c2410c;
   --fly-accent-ink: #ffffff;
@@ -324,7 +324,7 @@
 }
 
 .fly-identity-tip {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fly-muted);
   margin: 4px 0 0;
 }
@@ -335,6 +335,7 @@
   padding: 0;
   margin: 0;
   font-size: 13px;
+  line-height: 1.5;
 }
 
 .fly-timeline-list > li {
@@ -353,13 +354,15 @@
   padding: 24px 16px;
   text-align: center;
   font-size: 13px;
+  line-height: 1.5;
   color: var(--fly-muted);
 }
 
 .fly-empty-glyph {
-  font-size: 28px;
-  display: block;
-  margin-bottom: 8px;
+  display: flex;
+  justify-content: center;
+  margin: 0 auto 8px;
+  color: var(--fly-muted);
 }
 
 .fly-empty strong {
@@ -418,6 +421,18 @@
   padding: 8px 12px;
   margin: 0 0 8px;
   background: var(--fly-surface);
+}
+
+.fly-note svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
+.fly-msg-mark {
+  display: inline-flex;
+  align-items: center;
+  color: var(--fly-muted);
+  vertical-align: -2px;
 }
 
 /* Quiet action: looks like a link, keeps its button semantics. */
@@ -741,7 +756,7 @@
   background: var(--fly-line);
   color: var(--fly-ink);
   border-bottom: 1px solid var(--fly-line);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -849,9 +864,56 @@
 
 .btn:focus-visible,
 .fly-btn:focus-visible,
-.fly-input:focus-visible {
+.fly-input:focus-visible,
+.fly-nav-btn:focus-visible,
+.fly-tab:focus-visible,
+.fly-status:focus-visible,
+.fly-conv-list button:focus-visible,
+.fly-roster li button:focus-visible,
+.fly-empty a:focus-visible,
+.fly-empty button:focus-visible,
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--fly-accent);
-  outline-offset: 1px;
+  outline-offset: 2px;
+}
+
+/* Quiet interaction feedback: hover changes state, never carries meaning
+   alone (aria-current/aria-selected stay the source of truth). */
+.fly-nav-btn,
+.fly-tab,
+.fly-status,
+.fly-conv-list button,
+.fly-roster li button,
+.btn,
+.fly-btn {
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.fly-nav-btn:hover:not([aria-current='page']),
+.fly-tab:hover:not([aria-selected='true']),
+.fly-status:hover {
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.fly-conv-list button:hover {
+  background: var(--fly-surface);
+  border-color: var(--fly-line);
+}
+
+.fly-btn:hover:not(:disabled):not(.fly-btn-primary):not(.fly-btn-secondary) {
+  border-color: var(--fly-accent);
+}
+
+.btn-ghost:hover,
+.fly-btn-ghost:hover,
+.fly-btn-quiet:hover {
+  color: var(--fly-ink);
 }
 
 /* ---- inputs: sunken bevel, tighter --------------------------------------- */
@@ -919,7 +981,7 @@ samp,
 
 .fly-card p {
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 .fly-row {
   gap: 6px;
@@ -991,7 +1053,6 @@ samp,
   box-shadow: inset 1px 1px 0 0 rgba(0, 0, 0, 0.3);
 }
 .fly-empty-glyph {
-  font-size: 22px;
   margin-bottom: 4px;
 }
 .fly-empty strong {
@@ -1038,7 +1099,7 @@ samp,
   align-items: center;
   gap: 2px 10px;
   margin: 0 0 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fly-muted);
 }
 
@@ -1062,6 +1123,21 @@ samp,
   }
   .fly-tab {
     min-height: 40px;
+  }
+  .fly-conv-list button,
+  .fly-roster li button,
+  .fly-status,
+  .fly-tab {
+    min-height: 44px;
+  }
+  .fly-btn-quiet,
+  .btn-ghost,
+  .fly-btn-ghost {
+    min-height: 44px;
+    padding-block: 8px;
+  }
+  .fly-conv-list {
+    gap: 4px;
   }
 }
 
@@ -1118,7 +1194,7 @@ samp,
   }
   .fly-roster h3 {
     margin: 10px 0 4px;
-    font-size: 11px;
+    font-size: 12px;
   }
   .fly-roster li button {
     padding: 5px 6px;
@@ -1134,5 +1210,335 @@ samp,
 
   .uri-input {
     width: 55%;
+  }
+}
+
+
+/* ------------------------------------------------- flow audit: portal /
+   social / DM integration. One 4/8/12/16 rhythm, 12px minimum text, consistent
+   action rows. Desktop density stays; touch targets are raised below. */
+:root {
+  --fly-space-1: 4px;
+  --fly-space-2: 8px;
+  --fly-space-3: 12px;
+  --fly-space-4: 16px;
+}
+
+.fly-row {
+  gap: var(--fly-space-2);
+}
+
+/* Portal: bound-address bar + responsive sandbox frame. */
+.fly-portal-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fly-space-2);
+  padding: var(--fly-space-2) 10px;
+  margin: var(--fly-space-2) 0;
+  border: 1px solid var(--fly-line);
+  background: var(--fly-surface);
+}
+.fly-portal-bar .fly-muted {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.fly-portal-frame {
+  display: block;
+  width: 100%;
+  height: clamp(320px, 60vh, 720px);
+  margin: var(--fly-space-2) 0 var(--fly-space-3);
+  border: 1px solid var(--fly-line);
+  background: var(--fly-surface);
+}
+
+/* Social: tabs, post rows, reply banner, compact actions. */
+.fly-tabbar {
+  gap: var(--fly-space-1);
+  margin-bottom: var(--fly-space-3);
+}
+.fly-btn-sm {
+  font-size: 12px;
+  min-height: 28px;
+  padding: 4px 8px;
+}
+.fly-post-body {
+  line-height: 1.5;
+}
+.fly-post-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fly-space-2);
+  margin-top: var(--fly-space-1);
+}
+.fly-reply-banner {
+  border: 1px solid var(--fly-line);
+  padding: 6px 10px;
+  margin-bottom: var(--fly-space-2);
+  font-size: 12px;
+  background: var(--fly-bg);
+}
+.fly-composer-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fly-space-2);
+  margin-bottom: var(--fly-space-2);
+}
+.fly-meta {
+  font-size: 12px;
+  color: var(--fly-muted);
+}
+
+/* DM: scannable inbox rows + composer rhythm. */
+.fly-conv-list {
+  gap: var(--fly-space-1);
+  margin-bottom: var(--fly-space-2);
+}
+.fly-conv-list button {
+  display: grid;
+  gap: 2px;
+  padding: var(--fly-space-2);
+}
+.fly-conv-list button[aria-current='true'] {
+  border-left: 3px solid var(--fly-accent);
+  padding-left: calc(var(--fly-space-2) - 2px);
+}
+.fly-conv-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fly-space-2);
+}
+.fly-conv-preview {
+  color: var(--fly-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fly-badge {
+  display: inline-block;
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 0;
+  background: var(--fly-accent);
+  color: var(--fly-accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+.fly-dm-composer {
+  gap: var(--fly-space-2);
+  margin-top: var(--fly-space-3);
+  margin-bottom: var(--fly-space-2);
+}
+.fly-dm-actions {
+  gap: var(--fly-space-2);
+}
+.fly-dm-helper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fly-space-2);
+  margin-bottom: var(--fly-space-2);
+}
+
+/* Saved links: one row rhythm, comfortable targets. */
+.fly-link-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--fly-space-2) 0 var(--fly-space-3);
+  display: grid;
+  gap: var(--fly-space-1);
+}
+.fly-link-row {
+  display: flex;
+  align-items: center;
+  gap: var(--fly-space-2);
+  min-height: 44px;
+  padding: 4px 8px;
+  border: 1px solid var(--fly-line);
+}
+.fly-link-open {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.fly-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 4px;
+}
+
+.fly-btn svg {
+  vertical-align: -2px;
+  margin-right: 2px;
+}
+
+.fly-view-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--fly-space-2);
+  margin: var(--fly-space-1) 0 var(--fly-space-2);
+}
+.fly-view-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.fly-view-head .fly-meta {
+  flex: 1 1 240px;
+}
+
+/* Status pill is a single-line badge: never let flex shrink split its label. */
+.fly-status {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* Only long addresses should wrap anywhere; prose keeps normal word breaks. */
+.fly-info dd {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Small utilities for the view code: replacement for one-off inline styles. */
+.fly-h1 {
+  margin: 8px 0 0;
+  font-size: 22px;
+}
+.fly-h3 {
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+.fly-h2-flush {
+  margin-bottom: 0;
+}
+.fly-prose {
+  font-size: 13px;
+}
+.fly-list {
+  font-size: 13px;
+}
+.fly-break-all {
+  word-break: break-all;
+}
+.fly-break-word {
+  word-break: break-word;
+}
+.fly-pre {
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+.fly-mt-1 {
+  margin-top: var(--fly-space-1);
+}
+.fly-mt-2 {
+  margin-top: var(--fly-space-2);
+}
+.fly-mt-3 {
+  margin-top: var(--fly-space-3);
+}
+.fly-mt-4 {
+  margin-top: var(--fly-space-4);
+}
+.fly-row-between {
+  justify-content: space-between;
+}
+.fly-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fly-space-2);
+  margin-bottom: var(--fly-space-2);
+}
+.fly-flex-1 {
+  flex: 1;
+  min-width: 0;
+}
+.fly-flex-2 {
+  flex: 2;
+  min-width: 0;
+}
+.fly-field-sm {
+  flex: 0 1 140px;
+  min-width: 120px;
+}
+.fly-num-sm {
+  width: 76px;
+  flex: none;
+}
+.fly-num-md {
+  width: 96px;
+  flex: none;
+}
+.fly-num-lg {
+  width: 160px;
+  flex: none;
+}
+.fly-callout-warn {
+  font-size: 12px;
+  border: 1px solid var(--fly-line);
+  border-left: 4px solid var(--fly-warn);
+  padding: 8px 10px;
+  margin: 0 0 10px;
+}
+.fly-code-scroll {
+  max-height: 260px;
+  overflow: auto;
+}
+.fly-label-block {
+  display: block;
+  margin-top: var(--fly-space-3);
+}
+.fly-details {
+  margin-top: var(--fly-space-2);
+}
+.fly-details summary {
+  font-size: 12px;
+  color: var(--fly-muted);
+  cursor: pointer;
+}
+
+.fly-plain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--fly-space-3);
+  display: grid;
+  gap: var(--fly-space-2);
+  font-size: 15px;
+}
+.fly-preview-msg {
+  background: var(--fly-bg);
+  border: 1px solid var(--fly-line);
+  border-radius: 0;
+  padding: 8px 12px;
+}
+
+@media (pointer: coarse) {
+  .fly-btn-sm {
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  .fly-icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .fly-link-open {
+    min-height: 44px;
   }
 }

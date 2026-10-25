@@ -1,6 +1,7 @@
 import { groupConversations, type DmRecord } from '../../../../application/conversations';
 import { authorLabel } from '../../../../application/petnameStore';
 import type { PreparedAttachment } from '../../../../domain/attachmentCrypto';
+import { EnvelopeIcon, LockIcon } from '../../shared/icons';
 import { ConversationList } from './ConversationList';
 import { DmComposer } from './DmComposer';
 import { DmConversation } from './DmConversation';
@@ -55,11 +56,37 @@ export function DmView({
       : authorLabel(peer, petnameMap[peer.toLowerCase()] ?? null, names[peer] ?? null);
 
   return (
-    <div role="tabpanel" aria-label="Private messages">
+    <div role="tabpanel" id="social-panel-messages" aria-label="Private messages">
       <h3 className="section-title">
-        Private messages{totalUnread > 0 && <span style={{ color: 'var(--fly-muted)' }}> ({totalUnread} unread)</span>}
+        Private messages{totalUnread > 0 && <span className="fly-meta"> ({totalUnread} unread)</span>}
       </h3>
-      <p className="fly-note">🔒 Messages vanish once read — even from the host.</p>
+      <p className="fly-note">
+        <LockIcon size={14} /> Messages vanish once read — even from the host.
+      </p>
+      <div className="fly-dm-helper">
+        <button
+          className="fly-btn fly-btn-quiet"
+          onClick={onCheckMessages}
+          disabled={busy || !identityPresent}
+        >
+          Check for new messages
+        </button>
+        <span className="fly-meta">Arrivals appear automatically.</span>
+      </div>
+      {convos.length > 0 && (
+        <ConversationList convos={convos} activeDmPeer={activeDmPeer} onOpen={onOpenConvo} peerLabel={peerLabel} />
+      )}
+      {activeConvo ? (
+        <DmConversation activeConvo={activeConvo} peerLabel={peerLabel} service={service} />
+      ) : (
+        <EmptyState icon={<EnvelopeIcon size={28} />} title={convos.length === 0 ? 'No messages yet' : 'No conversation open'}>
+          <p>
+            {convos.length === 0
+              ? 'When someone writes to your ID, it appears here automatically.'
+              : 'Pick a conversation above to read and reply.'}
+          </p>
+        </EmptyState>
+      )}
       <DmComposer
         dmTo={dmTo}
         onDmToChange={onDmToChange}
@@ -71,30 +98,6 @@ export function DmView({
         busy={busy}
         onError={onError}
       />
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-        <button
-          className="fly-btn fly-btn-quiet"
-          onClick={onCheckMessages}
-          disabled={busy || !identityPresent}
-        >
-          Check for new messages
-        </button>
-        <span style={{ fontSize: 11, color: 'var(--fly-muted)' }}>Arrivals appear automatically.</span>
-      </div>
-      {convos.length > 0 && (
-        <ConversationList convos={convos} activeDmPeer={activeDmPeer} onOpen={onOpenConvo} peerLabel={peerLabel} />
-      )}
-      {activeConvo ? (
-        <DmConversation activeConvo={activeConvo} peerLabel={peerLabel} service={service} />
-      ) : (
-        <EmptyState glyph="✉️" title={convos.length === 0 ? 'No messages yet' : 'No conversation open'}>
-          <p>
-            {convos.length === 0
-              ? 'When someone writes to your ID, it appears here automatically.'
-              : 'Pick a conversation above to read and reply.'}
-          </p>
-        </EmptyState>
-      )}
     </div>
   );
 }

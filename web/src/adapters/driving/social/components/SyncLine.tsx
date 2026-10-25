@@ -25,10 +25,10 @@ export function SyncLine({
   const sync = describeSync(nowTick, { syncing, lastSyncedAt, error, stopped });
   const tone = sync.tone === 'bad' ? 'var(--fly-bad)' : sync.tone === 'busy' ? 'var(--fly-warn)' : 'var(--fly-muted)';
   return (
-    <p style={{ fontSize: 11, color: tone }} role="status">
+    <p style={{ fontSize: 12, color: tone }} role="status">
       {sync.text}{' '}
       {error && (
-        <button className="fly-btn" style={{ fontSize: 11 }} onClick={onRetry} disabled={busy}>
+        <button className="fly-btn fly-btn-sm" onClick={onRetry} disabled={busy}>
           Retry
         </button>
       )}

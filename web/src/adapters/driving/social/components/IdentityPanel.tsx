@@ -11,24 +11,24 @@ export function IdentityPanel({ session, busy }: { session: IdentitySession; bus
   return (
     <div className="fly-identity-panel">
       <div>
-        Full ID: <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{identity.pubHex}</code>{' '}
-        <button style={{ fontSize: 11 }} className="fly-btn" onClick={session.onCopyId}>
+        Full ID: <code style={{ fontSize: 12, wordBreak: 'break-all' }}>{identity.pubHex}</code>{' '}
+        <button className="fly-btn fly-btn-sm" onClick={session.onCopyId}>
           {idCopied ? 'Copied' : 'Copy my ID'}
         </button>{' '}
         <button
-          style={{ fontSize: 11 }}
+          style={{ fontSize: 12 }}
           onClick={session.onToggleIdQr}
           aria-expanded={showIdQr}
           className="fly-btn"
         >
           {showIdQr ? 'Hide QR' : 'Show QR'}
         </button>{' '}
-        <button style={{ fontSize: 11 }} className="fly-btn" onClick={session.onNewIdentity}>
+        <button className="fly-btn fly-btn-sm" onClick={session.onNewIdentity}>
           New ID
         </button>
       </div>
       <details>
-        <summary>Show technical details</summary> <code style={{ fontSize: 11 }}>{identity.pubHex}</code>
+        <summary>Show technical details</summary> <code style={{ fontSize: 12 }}>{identity.pubHex}</code>
       </details>
       {!profileName.trim() && (
         <p className="fly-identity-tip">
@@ -49,22 +49,22 @@ export function IdentityPanel({ session, busy }: { session: IdentitySession; bus
       )}
       <details>
         <summary>Move my ID to another device</summary>
-        <p style={{ fontSize: 11, color: 'var(--fly-muted)', margin: '4px 0' }}>
+        <p style={{ fontSize: 12, color: 'var(--fly-muted)', margin: '4px 0' }}>
           Step 1 — on this device, reveal and copy your secret key. Step 2 — on the other device, paste it below.
           Anyone with this key is you: never share it with another person.
         </p>
         <div style={{ marginBottom: 4 }}>
           {!session.showSecret ? (
-            <button className="fly-btn" style={{ fontSize: 11 }} onClick={session.onRevealSecret}>
+            <button className="fly-btn fly-btn-sm" onClick={session.onRevealSecret}>
               Reveal secret key
             </button>
           ) : (
             <span style={{ wordBreak: 'break-all' }}>
-              <code style={{ fontSize: 11 }}>{identity.privHex}</code>{' '}
-              <button style={{ fontSize: 11 }} className="fly-btn" onClick={session.onCopySecret}>
+              <code style={{ fontSize: 12 }}>{identity.privHex}</code>{' '}
+              <button className="fly-btn fly-btn-sm" onClick={session.onCopySecret}>
                 {session.secretCopied ? 'Copied' : 'Copy secret'}
               </button>{' '}
-              <button style={{ fontSize: 11 }} onClick={session.onHideSecret} className="fly-btn">
+              <button style={{ fontSize: 12 }} onClick={session.onHideSecret} className="fly-btn">
                 Hide
               </button>
             </span>
@@ -78,13 +78,13 @@ export function IdentityPanel({ session, busy }: { session: IdentitySession; bus
           onChange={(e) => session.setImportKey(e.target.value)}
           spellCheck={false}
         />
-        <button style={{ fontSize: 11 }} className="fly-btn" onClick={session.onImportIdentity}>
+        <button className="fly-btn fly-btn-sm" onClick={session.onImportIdentity}>
           Import
         </button>
       </details>
       <details>
         <summary>Back up / restore (encrypted file)</summary>
-        <p style={{ fontSize: 11, color: 'var(--fly-muted)', margin: '4px 0' }}>
+        <p style={{ fontSize: 12, color: 'var(--fly-muted)', margin: '4px 0' }}>
           Password-encrypted copy of your secret key — easier than raw hex on a new device. Anyone with this file{' '}
           <em>and</em> the password is you: store them separately.
         </p>
@@ -100,8 +100,7 @@ export function IdentityPanel({ session, busy }: { session: IdentitySession; bus
             aria-label="Backup password"
           />
           <button
-            style={{ fontSize: 11 }}
-            className="fly-btn"
+            className="fly-btn fly-btn-sm"
             onClick={() => void session.onExportBackup()}
             disabled={busy || backupPw.length < BACKUP_MIN_PASSWORD_LENGTH}
           >
@@ -113,7 +112,7 @@ export function IdentityPanel({ session, busy }: { session: IdentitySession; bus
             ref={session.restoreFileRef}
             type="file"
             accept=".json,application/json"
-            style={{ fontSize: 11 }}
+            style={{ fontSize: 12 }}
             aria-label="Backup file"
             onChange={(e) => session.setRestoreFile(e.target.files?.[0] ?? null)}
           />
@@ -128,8 +127,7 @@ export function IdentityPanel({ session, busy }: { session: IdentitySession; bus
             aria-label="Restore password"
           />
           <button
-            style={{ fontSize: 11 }}
-            className="fly-btn"
+            className="fly-btn fly-btn-sm"
             onClick={() => void session.onRestoreBackup()}
             disabled={busy || !restoreFile || !restorePw}
           >

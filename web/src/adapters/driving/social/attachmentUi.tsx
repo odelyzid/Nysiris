@@ -87,8 +87,7 @@ export function AttachmentPicker({
         onChange={(e) => void onPick(e.target.files)}
       />
       <button
-        className="fly-btn"
-        style={{ fontSize: 12 }}
+        className="fly-btn fly-btn-sm"
         title="Attach files (images, text, PDF — max 256 KB each, 3 per message)"
         disabled={disabled || encrypting}
         onClick={() => inputRef.current?.click()}
@@ -102,7 +101,7 @@ export function AttachmentPicker({
             display: 'inline-flex',
             gap: 4,
             alignItems: 'center',
-            fontSize: 11,
+            fontSize: 12,
             border: '1px solid var(--fly-line)',
             padding: '2px 4px 2px 8px',
           }}
@@ -111,7 +110,7 @@ export function AttachmentPicker({
           {f.name} · {formatBytes(f.size)}
           <button
             className="fly-btn"
-            style={{ fontSize: 11, minHeight: 24, padding: '0 6px' }}
+            style={{ fontSize: 12, minHeight: 24, padding: '0 6px' }}
             aria-label={`Remove ${f.name}`}
             disabled={disabled}
             onClick={() => onChange(files.filter((x) => x.id !== f.id))}
@@ -143,11 +142,11 @@ function AttachmentCard({ service, ref }: { service: string; ref: AttachmentRef 
   }, [service, ref]);
 
   if (state.status === 'loading') {
-    return <span style={{ fontSize: 11, color: 'var(--fly-muted)' }}>Loading {ref.name}…</span>;
+    return <span style={{ fontSize: 12, color: 'var(--fly-muted)' }}>Loading {ref.name}…</span>;
   }
   if (state.status === 'missing' || !state.url) {
     return (
-      <span style={{ fontSize: 11, color: 'var(--fly-muted)' }} title="The blob is gone or undecryptable">
+      <span style={{ fontSize: 12, color: 'var(--fly-muted)' }} title="The blob is gone or undecryptable">
         📎 {ref.name} — Attachment unavailable
       </span>
     );
@@ -172,7 +171,7 @@ function AttachmentCard({ service, ref }: { service: string; ref: AttachmentRef 
             else window.open(url, '_blank', 'noopener');
           }}
         />
-        <span style={{ fontSize: 11, color: 'var(--fly-muted)' }}>
+        <span style={{ fontSize: 12, color: 'var(--fly-muted)' }}>
           {ref.name} · {formatBytes(ref.size)}
         </span>
       </span>

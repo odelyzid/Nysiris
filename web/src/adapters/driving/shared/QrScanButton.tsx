@@ -52,8 +52,7 @@ export function QrScanButton({
         }}
       />
       <button
-        className="fly-btn"
-        style={{ fontSize: 12 }}
+        className="fly-btn fly-btn-sm"
         disabled={scanning}
         title="Read a QR code from an image file"
         onClick={() => fileRef.current?.click()}

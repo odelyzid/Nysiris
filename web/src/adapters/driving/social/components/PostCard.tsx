@@ -1,8 +1,12 @@
 import type { ReactNode } from 'react';
 
 /**
- * One timeline row: a clickable post body plus the View thread / Reply
- * actions. The body node is rendered by the caller (see `PostBody`).
+ * One timeline row: a post body plus explicit Thread / Reply actions.
+ *
+ * The body is deliberately not a click target: post bodies contain their own
+ * buttons (Name, Trust, Block, attachments), and a row-level role="button"
+ * both nests interactive controls and swallows those clicks. Keyboard users
+ * get the same actions through the plain buttons below.
  */
 export function PostCard({
   replyCount,
@@ -17,30 +21,20 @@ export function PostCard({
 }) {
   return (
     <li>
-      <span
-        role="button"
-        tabIndex={0}
-        onClick={onOpenThread}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') onOpenThread();
-        }}
-        title="Open thread"
-        style={{ cursor: 'pointer', display: 'block' }}
-      >
-        {children}
-      </span>
-      <div style={{ marginTop: 4, display: 'flex', gap: 8 }}>
-        {replyCount > 0 && (
-          <button
-            className="fly-btn"
-            style={{ fontSize: 11 }}
-            onClick={onOpenThread}
-            aria-label={`View thread with ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`}
-          >
-            {replyCount} {replyCount === 1 ? 'reply' : 'replies'} · View thread
-          </button>
-        )}
-        <button className="fly-btn" style={{ fontSize: 11 }} onClick={onReply}>
+      <div className="fly-post-body">{children}</div>
+      <div className="fly-post-actions">
+        <button
+          className="fly-btn fly-btn-sm"
+          onClick={onOpenThread}
+          aria-label={
+            replyCount > 0
+              ? `Open thread with ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`
+              : 'Open thread'
+          }
+        >
+          Thread{replyCount > 0 ? ` · ${replyCount}` : ''}
+        </button>
+        <button className="fly-btn fly-btn-sm" onClick={onReply}>
           Reply
         </button>
       </div>

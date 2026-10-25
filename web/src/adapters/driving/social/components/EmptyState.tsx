@@ -2,12 +2,12 @@ import type { ReactNode } from 'react';
 
 /** Calm empty-state block shared by the timeline and the DM pane. */
 export function EmptyState({
-  glyph,
+  icon,
   title,
   children,
   action,
 }: {
-  glyph: string;
+  icon: ReactNode;
   title: string;
   children?: ReactNode;
   action?: ReactNode;
@@ -15,7 +15,7 @@ export function EmptyState({
   return (
     <div className="fly-empty">
       <span className="fly-empty-glyph" aria-hidden="true">
-        {glyph}
+        {icon}
       </span>
       <strong>{title}</strong>
       {children}
