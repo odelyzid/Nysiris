@@ -58,6 +58,11 @@ Both sides implement the same wire contract (DM envelope, history binding, room
 keys), but the dependency only ever points one way: **Nysiris-Core must not
 depend on this repository.**
 
+Two reference consumers ship today: this app and
+**[NCC](https://github.com/TribeWarez/ncc)** (`Nysiris Chat Commander`, PySide6 +
+`ncc-daemon`), a native desktop chat client built on the same crates — a working
+example of the “build your own app on the base” path.
+
 ## Build on Nysiris-Core
 
 If you are not building Nysiris, the base is the useful part. Nysiris-Core is an
@@ -413,6 +418,13 @@ Nysiris browser PWA ──wire──► Nysiris services ──┐
                                                  ├──► Nysiris-Core
 NCC (PySide6 + ncc-daemon) ──────────────────────┘
 ```
+
+[NCC](https://github.com/TribeWarez/ncc) is the native reference consumer and a
+good template for third-party clients. Crate APIs and rustdoc:
+[docs.rs/nysiris-core](https://docs.rs/nysiris-core),
+[docs.rs/nysiris-chat-core](https://docs.rs/nysiris-chat-core),
+[docs.rs/nysiris-chat-history](https://docs.rs/nysiris-chat-history),
+[docs.rs/nysiris-transport-nym](https://docs.rs/nysiris-transport-nym).
 
 **Migration status: partially extracted.** What moved is the native chat
 protocol and Nym transport seam:

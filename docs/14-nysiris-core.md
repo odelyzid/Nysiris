@@ -31,6 +31,9 @@ Nysiris browser PWA ──wire──► Nysiris services ──┐
 NCC (PySide6 + ncc-daemon) ──────────────────────┘
 ```
 
+[NCC](https://github.com/TribeWarez/ncc) is the native consumer of the
+chat/transport/history crates and the reference for a third-party client.
+
 Two hard boundaries:
 
 * `nysiris-core` **must not** depend on Nysiris or NCC.
