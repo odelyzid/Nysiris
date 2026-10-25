@@ -116,7 +116,7 @@ Initialise (the `--recurse-submodules` clone in the README does this for you):
 
 ```bash
 git submodule update --init --recursive
-git submodule status          # core (ecc3d8e...) — tag v0.1.2
+git submodule status          # a44cc98... — tagged v0.1.2
 ```
 
 Verify the extracted workspace (always `--locked`: the lockfile is what makes
