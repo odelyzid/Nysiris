@@ -8,8 +8,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  version:
+    name: Tag matches VERSION
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # VERSION is the single source of truth: build.sh exports it as
+      # APP_VERSION and stages dist/nysiris_<version>_*. A tag that disagrees
+      # would publish mislabelled artifacts, so fail before building anything.
+      - name: Verify tag matches VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match VERSION ($version)"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches VERSION $version"
+      - name: Manual run (no tag)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: echo "::notice::workflow_dispatch run has no tag to verify against VERSION"
+
   check:
     name: Checks (must pass)
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -132,7 +155,27 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-      - run: sha256sum *.deb *.zip *.apk *.aab > SHA256SUMS.txt
+      # The Android job legitimately stages only an APK when no signing
+      # keystore is configured (see scripts/cmd-android.sh), so .aab is
+      # optional. Checksum exactly the files that exist instead of passing an
+      # unmatched glob to sha256sum, which exits non-zero.
+      - name: Checksum artifacts
+        run: |
+          shopt -s nullglob
+          files=( *.deb *.zip *.apk *.aab )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::no release artifacts were downloaded"
+            exit 1
+          fi
+          for pattern in '*.deb' '*.zip' '*.apk'; do
+            matches=( $pattern )
+            if [ "${#matches[@]}" -eq 0 ]; then
+              echo "::error::missing expected artifact $pattern"
+              exit 1
+            fi
+          done
+          sha256sum "${files[@]}" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -141,4 +184,6 @@ jobs:
             *.apk
             *.aab
             SHA256SUMS.txt
-          fail_on_unmatched_files: true
+          # .aab/.apk presence depends on whether signing secrets are set;
+          # the step above already asserts the required artifacts exist.
+          fail_on_unmatched_files: false
