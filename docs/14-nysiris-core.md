@@ -3,8 +3,8 @@
 > **Status: partial extraction, published base.** The native chat protocol and
 > the Nym transport seam live in
 > [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core),
-> vendored here as the `core/` submodule (pinned `v0.1.2`) and published on
-> crates.io as `0.1.2` for anyone to build on. The browser client, the social
+> vendored here as the `core/` submodule (pinned `v0.1.3`) and published on
+> crates.io as `0.1.3` for anyone to build on. The browser client, the social
 > provider, the hosting abstractions and the reference Sphinx implementation are
 > still in this repository. This page records what moved, what did not, how to
 > consume it, and the rules that keep the two repositories from drifting.
@@ -57,8 +57,9 @@ The submodule is **not** a member of this Cargo workspace. Reasons:
 * `nysiris-transport-nym` pulls the heavy `nym-sdk` toolchain; `./build.sh
   check` must stay fast and offline.
 * The crates version and publish independently (crates.io versions are
-  immutable, so a release is cut by tagging the workspace version; `0.1.2` is
-  the first published set).
+  immutable, so a release is cut by tagging the workspace version; `0.1.2` was
+  the first published set, and `0.1.3` adds per-crate READMEs and complete
+  rustdoc).
 * CI here validates the extraction as a consumer would — by building the
   submodule against its own lockfile, not by merging dependency graphs.
 
@@ -121,7 +122,7 @@ Initialise (the `--recurse-submodules` clone in the README does this for you):
 
 ```bash
 git submodule update --init --recursive
-git submodule status          # a44cc98... — tagged v0.1.2
+git submodule status          # c110501... — tagged v0.1.3
 ```
 
 Verify the extracted workspace (always `--locked`: the lockfile is what makes
@@ -173,26 +174,26 @@ configured. Never move or re-tag an existing version.
 ## 14.6 Building on the core
 
 Nysiris-Core is not app-private. The five crates are published on crates.io as
-`0.1.2` and can be used by any Rust project — a native client, a bot, a relay, a
+`0.1.3` and can be used by any Rust project — a native client, a bot, a relay, a
 bridge, or a mixnet-backed **microservice** — without depending on this
 repository or inheriting its UI and release cadence.
 
 ```toml
 [dependencies]
-nysiris-core = "0.1.2"
-nysiris-chat-core = "0.1.2"
-nysiris-chat-history = "0.1.2"
+nysiris-core = "0.1.3"
+nysiris-chat-core = "0.1.3"
+nysiris-chat-history = "0.1.3"
 
 [dependencies.nysiris-transport-nym]
-version = "0.1.2"
+version = "0.1.3"
 features = ["nym"]          # real nym-sdk adapter
 
 [dev-dependencies]
-nysiris-testkit = "0.1.2"
+nysiris-testkit = "0.1.3"
 ```
 
 For unreleased work, depend on the tag instead of the registry:
-`nysiris-core = { git = "https://github.com/TribeWarez/nysiris-core", tag = "v0.1.2" }`.
+`nysiris-core = { git = "https://github.com/TribeWarez/nysiris-core", tag = "v0.1.3" }`.
 
 What makes it reusable:
 
@@ -223,10 +224,10 @@ Done:
 - [x] `Transport` trait + in-memory testkit.
 - [x] `nym-sdk` transport adapter (`NymTransport`), verified on mainnet with two
       native daemons (DM and room delivery).
-- [x] Standalone repository, tag `v0.1.2`, Apache-2.0, security policy.
-- [x] Submodule at `core/` in this repository, pinned `v0.1.2`.
-- [x] Published on crates.io in dependency order as `0.1.2` (all five crates;
-      release gate green, GitHub release created).
+- [x] Standalone repository, tag `v0.1.3`, Apache-2.0, security policy.
+- [x] Submodule at `core/` in this repository, pinned `v0.1.3`.
+- [x] Published on crates.io in dependency order as `0.1.3` (all five crates;
+      GitHub release created, docs.rs at 100% item coverage).
 
 Next:
 
