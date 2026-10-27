@@ -15,6 +15,8 @@ export interface BrowserChromeProps {
   canForward: boolean;
   loading: boolean;
   error?: string | null;
+  downloadCount?: number;
+  onOpenDownloads?: () => void;
   uri: string;
   onUriChange: (value: string) => void;
   onSubmit: () => void;
@@ -34,6 +36,8 @@ export function BrowserChrome({
   canForward,
   loading,
   error,
+  downloadCount = 0,
+  onOpenDownloads,
   uri,
   onUriChange,
   onSubmit,
@@ -62,6 +66,11 @@ export function BrowserChrome({
                 title={tab.error ? `${tab.url || 'New tab'} — ${tab.error}` : tab.url || 'New tab'}
                 onClick={() => onSelectTab(tab.id)}
               >
+                {tab.favicon ? (
+                  <img className="fly-tab-favicon" src={tab.favicon} alt="" aria-hidden="true" />
+                ) : (
+                  <span className="fly-tab-dot" aria-hidden="true" />
+                )}
                 {tab.loading && <span className="fly-tab-spinner" aria-hidden="true" />}
                 {tab.error && (
                   <span className="fly-tab-error" aria-hidden="true">
@@ -136,6 +145,17 @@ export function BrowserChrome({
         <button type="button" className="fly-btn fly-btn-primary fly-go" onClick={onSubmit} disabled={!uri.trim()}>
           Open
         </button>
+        {onOpenDownloads && (
+          <button
+            type="button"
+            className="fly-navbtn fly-download-btn"
+            aria-label={`Downloads${downloadCount ? ` (${downloadCount})` : ''}`}
+            title={`Downloads${downloadCount ? ` (${downloadCount})` : ''}`}
+            onClick={onOpenDownloads}
+          >
+            ⤓{downloadCount > 0 && <span className="fly-download-count">{downloadCount}</span>}
+          </button>
+        )}
       </div>
       {error && (
         <p className="fly-nav-error" role="alert">

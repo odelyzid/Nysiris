@@ -80,7 +80,7 @@ checksums). `VERSION` is the source of truth; `./build.sh bump <version>`
 updates it, commits the bump, and creates the tag. Push the branch and tag
 together, and never tag before the bump commit exists.
 
-- Current counts: 113 Rust tests, 249 web tests, zero clippy warnings.
+- Current counts: 113 Rust tests, 268 web tests, zero clippy warnings.
 - Focused runs: `node --test web/test/<name>.test.mjs` (from repo root),
   `cargo test -p <crate>`, `./build.sh services social`.
 - CI (`check` job) runs `./build.sh check` on Node 24 **and then the full web

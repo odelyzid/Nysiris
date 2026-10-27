@@ -26,7 +26,7 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 > documented controls enforced in code and tests.
 > * Reference Rust workspace: **113 tests pass** (the soak test is ignored by
 >   default).
-> * Browser PWA + social logic: **249 `node --test` tests pass** (0 skipped
+> * Browser PWA + social logic: **268 `node --test` tests pass** (0 skipped
 >   when `node_modules` are present — and the CI gate runs them with
 >   dependencies installed, so the @noble crypto constructions gate too).
 > * Service hosting: runnable providers + `nysiris` CLI + hybrid compose +
@@ -211,7 +211,8 @@ tools and wallet, outside the Nysiris application.
 | Area | State |
 |---|---|
 | PWA: tunnel, leak guard, Nym-address messaging, `fetchNym` (+ parallel tagged requests) | Works (mainnet-verified delivery + SURB reply) |
-| Browser tabs + unified `nym://`/`http(s)` navigation | Works; clearnet pages use the exit gateway. HTML/CSS/images are fetched through the same transport and inlined; scripts, forms, and cookies remain disabled |
+| Browser tabs + unified `nym://`/`http(s)` navigation | Works; clearnet pages use the exit gateway. HTML/CSS/images/media are fetched through the same transport and inlined; top-level PDF/media and a download shelf work; scripts and forms remain disabled |
+| Cookies, redirects, larger static files | Clearnet cookie jar and final-URL redirect handling work; `nysiris-sdk` serves >1,400-byte files as `206` chunks that `fetchNymFull` reassembles |
 | Community timeline, threads, E2E DMs (signature-authenticated dead-drop reads), trust dots, petnames, invites, encrypted attachments | Works against a `nysiris-social` provider you run |
 | Providers, hybrid bridge, portal store, `nysiris` CLI | Works; you operate them (see `services/`) |
 | Nysiris-Core as a dependency (crates.io `0.1.3`) | Works: 1:1 DMs + rooms, encrypted history, `nym-sdk` transport — pre-1.0 API; docs.rs coverage 100% |
@@ -229,7 +230,7 @@ git clone --recurse-submodules https://github.com/odelyzid/Nysiris.git
 cd Nysiris
 # already cloned? git submodule update --init --recursive
 
-./build.sh check     # toolchain sanity: fmt + clippy + 113 Rust + 249 web tests
+./build.sh check     # toolchain sanity: fmt + clippy + 113 Rust + 268 web tests
 ./build.sh web       # build the browser PWA into web/dist
 ```
 
@@ -361,7 +362,7 @@ CI builds the `.deb` + Windows zip and publishes them with checksums
 (`.github/workflows/release.yml`). Tagging a commit whose `VERSION` does not
 match fails the release before anything is built.
 
-`./build.sh check` runs **113 Rust tests** and **249 web unit tests** with zero
+`./build.sh check` runs **113 Rust tests** and **268 web unit tests** with zero
 clippy warnings, validates the JSON manifests, and checks every relative link in
 the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 
@@ -396,7 +397,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
 | `services/nysiris-cli/` | `nysiris` CLI + nym-sdk transport adapter: `host echo`/`host files`, `address`, `fetch`, `petname`, `doctor` | 9 parser tests + `./build.sh services` |
 | `services/gateway/` | `nym-node` entry-gateway config, systemd, Nym operator bonding notes (outside the app) | Templates + operator steps |
-| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, portal favourites, nysiris-social timeline, leak guard, runtime enforcement | 249 `node --test` tests + `npm run build` |
+| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, portal favourites, nysiris-social timeline, leak guard, runtime enforcement | 268 `node --test` tests + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
 | `desktop/launcher/` | std-only Linux launcher: loopback static server + Chromium app window | 6 tests |
 | `desktop/debian/` | `.deb` packaging (control, postinst, `.desktop`, icon) | Built + inspected; `./build.sh desktop` |

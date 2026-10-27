@@ -1,7 +1,8 @@
 # 15. Browser Document, Tabs, and Unified Navigation
 
-**Status:** Phase 1 and the Phase 2 content-loader core are implemented; later
-phases and the remaining Phase 2 items are listed below.
+**Status:** Phase 1 and Phase 2 are implemented, and the Phase 3 core (redirects,
+cookies, range chunking, larger static files) is implemented. Remaining items
+are listed in each phase below.
 
 This document is the implementation plan for turning the Portal view into a
 real browser document model. It complements the browser-capability audit and
@@ -159,7 +160,8 @@ single blank tab.
 - [x] `mixnetFetch` wired into navigation for clearnet URLs.
 - [x] Tab/history persistence.
 - [x] Unit tests for model, history, serialization, and resolution.
-- [ ] Page bodies restored from cache (deferred).
+- [x] In-session document cache for back/forward; page bodies are not persisted
+      across a full app reload.
 
 **Acceptance:** open two tabs, navigate one to a Nym portal and one to an
 `https://` URL, switch between them, use back/forward, reload, stop a slow
@@ -172,37 +174,57 @@ load, close a tab, and reload the app — the tab list and histories survive.
 - [x] Link interception inside the sandboxed document (`data-nysiris-href`).
 - [x] `<title>` extraction and tab labels.
 - [x] Budgeted resource loading (24 resources, 2 MiB each, 8 MiB total).
-- [ ] Generic downloads / `Content-Disposition`.
-- [ ] Per-tab document cache, favicons, and scroll restoration.
-- [ ] Media/PDF rendering.
+- [x] Favicon extraction/inlining and tab labels.
+- [x] Scroll restoration by canonical URL.
+- [x] In-session document cache (24 pages / 16 MiB LRU).
+- [x] Top-level media (`audio`/`video`), PDF viewer, and embedded media inlining.
+- [x] Download shelf: save page, save again, remove/clear, metadata persistence.
+- [ ] `Content-Disposition` filename parsing and a resume-capable downloader.
+- [ ] Embedded PDF/object documents and media range streaming.
 
 **Implemented in** `web/src/application/contentLoader.ts`. Fetched documents
-are sanitised: scripts, frames, plugins, media, meta refresh, event handlers,
-and external SVG references are removed; every CSS `url(...)`/`@import` and
-image source is routed through the injected fetcher and replaced with a data
-URL. Links become `data-nysiris-href` values that the app shell intercepts and
-opens in the owning tab.
+are sanitised: scripts, frames, plugins, meta refresh, event handlers, and
+external SVG references are removed; every CSS `url(...)`/`@import`, image,
+favicon, poster, audio, and video source is routed through the injected fetcher
+and replaced with a data URL. Links become `data-nysiris-href` values that the
+app shell intercepts and opens in the owning tab. The prepared document also
+carries its own restrictive CSP as defence in depth.
 
-**Acceptance (met for the core):** a portal page with local CSS and images
-renders without clearnet requests; clicking an in-page link stays in the tab.
-Scripts, forms, cookies, and media remain deliberately disabled.
+**Acceptance (met):** a portal page with local CSS and images renders without
+clearnet requests; clicking an in-page link stays in the tab. Scripts, forms,
+and embedded PDFs remain deliberately disabled; clearnet cookies are handled by
+the Phase 3 jar.
 
-### Phase 3 — HTTP semantics
+### Phase 3 — HTTP semantics (core implemented)
 
-- Redirects (`301/302/303/307/308`), cookies/auth where explicitly allowed.
-- `HEAD`, `Range`/206, cache validators, content-encoding.
-- Chunked request/response envelopes; raise the 1,400-byte static-site cap.
-- Per-tab cancellation.
+- [x] Clearnet redirects followed by `mixnetFetch`; the final `Response.url`
+      is used as the document base.
+- [x] Nym `3xx` + `Location` redirects with a five-hop limit.
+- [x] Per-origin cookie jar (domain/path/expiry/secure) wired into clearnet
+      requests and `Set-Cookie` responses.
+- [x] `Range`/`206` support in `nysiris-sdk` static files.
+- [x] `fetchNymFull` reassembles `Content-Range` chunks.
+- [x] Static files larger than one mixnet message are served in chunks instead
+      of `413`; pages/downloads accept up to 8/32 MiB.
+- [ ] Auth UI, redirect-response cookies, cache validators (`ETag`/`If-None-Match`),
+      content-encoding, HEAD-driven metadata, and a resumable downloader.
+- [ ] Per-in-flight-request cancellation (Stop currently ignores the result but
+      does not abort the transport call).
 
-**Acceptance:** a multi-KB static page is served and rendered; a redirect is
-followed; a range download resumes.
+**Implemented in** `web/src/application/cookies.ts`,
+`web/src/application/ranges.ts`, `web/src/mixnet/fetchNym.ts`, and
+`crates/nysiris-sdk/src/files.rs`.
+
+**Acceptance (met for the core):** a multi-KB static page is served and
+rendered; redirects are followed; large static responses are assembled from
+range chunks.
 
 ### Phase 4 — browser lifecycle
 
 - In-place reconnect (no page reload) and tab restoration after reconnect.
 - Error boundary + crash recovery.
-- Download manager, session restore of scroll/content, service worker/offline.
-- Permissions, find, zoom, print, PDF/media.
+- Session restore of tab scroll/position and service worker/offline.
+- Permissions, find, zoom, print.
 - OS protocol handling (`nym://`) on desktop and Android.
 
 ### Phase 5 — portal/Osiris surface
@@ -220,13 +242,25 @@ followed; a range download resumes.
 |---|---|
 | `web/src/application/browser.ts` | Tab/document model, history, serialization |
 | `web/src/application/navigation.ts` | Address/petname resolution |
-| `web/src/application/contentLoader.ts` | Sanitising content loader, CSS/image inlining, link rewriting |
+| `web/src/application/contentLoader.ts` | Sanitising content loader, CSS/image/media/favicon inlining, link rewriting |
+| `web/src/application/documentCache.ts` | LRU prepared-page cache |
+| `web/src/application/scrollStore.ts` | Per-URL scroll positions |
+| `web/src/application/downloads.ts` | Download shelf metadata |
+| `web/src/application/cookies.ts` | Clearnet cookie jar |
+| `web/src/application/ranges.ts` | `Content-Range` parsing/chunk assembly |
 | `web/src/adapters/driving/shell/BrowserChrome.tsx` | Tab strip + navigation controls |
+| `web/src/adapters/driving/shell/PdfView.tsx` | Blob-backed PDF viewer |
+| `web/src/adapters/driving/portal/DownloadManager.tsx` | Download shelf UI |
 | `web/src/adapters/driving/shell/App.tsx` | Navigation orchestration and page rendering |
 | `web/src/adapters/driving/shell/DesktopShell.tsx` | Desktop top bar (view nav/status) |
 | `web/test/browser.test.mjs` | Model/history/serialization tests |
 | `web/test/navigation.test.mjs` | URL/petname resolution tests |
 | `web/test/contentLoader.test.mjs` | Resource resolution, CSS inlining, and budgets |
+| `web/test/documentCache.test.mjs` | LRU/byte limits and eviction |
+| `web/test/scrollStore.test.mjs` | Scroll persistence and caps |
+| `web/test/downloads.test.mjs` | Shelf add/update/remove/persist |
+| `web/test/cookies.test.mjs` | Cookie domain/path/expiry matching |
+| `web/test/ranges.test.mjs` | `Content-Range` parsing and chunk assembly |
 
 ## 15.9 Migration notes
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ensureTunnel, teardownTunnel, tunnelState, tunnelSpent, type TunnelStateView } from '../../../mixnet/tunnel';
 import { exitStatus, mixnetFetch, proveTunnel } from '../../../mixnet/fetch';
 import { NymAddressClient, type IncomingMessage } from '../../../mixnet/messaging';
-import { fetchNym } from '../../../mixnet/fetchNym';
+import { fetchNym, fetchNymFull } from '../../../mixnet/fetchNym';
 import {
   addBlankTab,
   applyPage,
@@ -23,6 +23,20 @@ import {
 import { resolveNavigationInput, type NavigationTarget, type ParsedInvite } from '../../../application/navigation';
 import { b64decode, b64encode } from '../../../lib/bytes';
 import { prepareDocument, type ResourceKind, type ResourceResponse } from '../../../application/contentLoader';
+import { DocumentCache } from '../../../application/documentCache';
+import { CookieJar, loadCookieJar, saveCookieJar } from '../../../application/cookies';
+import { loadScrollPositions, rememberScroll } from '../../../application/scrollStore';
+import {
+  addDownload,
+  clearDownloads,
+  formatSize,
+  loadDownloads,
+  newDownloadId,
+  removeDownload,
+  saveDownloads,
+  updateDownload,
+  type DownloadRecord,
+} from '../../../application/downloads';
 import { BrowserChrome } from './BrowserChrome';
 import { startForeground, stopForeground } from '../../../adapters/driven/foreground.mjs';
 import { Social } from '../social/Social';
@@ -32,6 +46,8 @@ import { Panel } from '../shared/Panel';
 import { Toolbar } from './Toolbar';
 import { ContactsPanel, type PendingInvite } from './ContactsPanel';
 import { PortalSync } from '../portal/PortalSync';
+import { DownloadManager } from '../portal/DownloadManager';
+import { PdfView } from './PdfView';
 import {
   addContact,
   defaultContactStorage,
@@ -105,20 +121,49 @@ function dataUrlFor(bytes: Uint8Array, contentType: string): string {
   return `data:${type};base64,${b64encode(bytes)}`;
 }
 
-/** Save a top-level binary response without navigating to a `data:` URL. */
-function downloadDataUrl(dataUrl: string, name: string): void {
-  const match = /^data:([^;,]*);base64,(.*)$/s.exec(dataUrl);
-  if (!match) return;
-  const bytes = b64decode(match[2]);
+/** Save bytes through a temporary object URL and an anchor download. */
+function saveBlob(bytes: Uint8Array, contentType: string, name: string): void {
   const copy = new Uint8Array(bytes.length);
   copy.set(bytes);
-  const blob = new Blob([copy.buffer], { type: match[1] || 'application/octet-stream' });
+  const blob = new Blob([copy.buffer], { type: contentType || 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = name || 'download';
   anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+/** Save a top-level response without navigating to a `data:` URL. */
+function downloadDataUrl(dataUrl: string, name: string): number | null {
+  const match = /^data:([^;,]*);base64,(.*)$/s.exec(dataUrl);
+  if (!match) return null;
+  const bytes = b64decode(match[2]);
+  saveBlob(bytes, match[1] || 'application/octet-stream', name);
+  return bytes.length;
+}
+
+const DOWNLOAD_EXTENSIONS: Record<string, string> = {
+  'application/pdf': '.pdf',
+  'application/zip': '.zip',
+  'application/json': '.json',
+  'audio/mpeg': '.mp3',
+  'audio/ogg': '.ogg',
+  'audio/wav': '.wav',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+};
+
+function downloadName(title: string, contentType: string): string {
+  const base = (title || 'download').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'download';
+  const type = contentType.split(';')[0].trim().toLowerCase();
+  const extension = DOWNLOAD_EXTENSIONS[type] ?? '';
+  return base.toLowerCase().endsWith(extension) ? base : `${base}${extension}`;
 }
 
 export function App() {
@@ -207,6 +252,10 @@ export function App() {
   const bootRestoredRef = useRef(false);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const linkedFrameDocsRef = useRef(new WeakSet<Document>());
+  const documentCacheRef = useRef(new DocumentCache());
+  const cookieJarRef = useRef<CookieJar | null>(null);
+  if (!cookieJarRef.current) cookieJarRef.current = loadCookieJar(defaultStorage());
+  const [downloads, setDownloads] = useState<DownloadRecord[]>(() => loadDownloads(defaultStorage()));
 
   const append = useCallback((line: string) => {
     setLog((prev) => [...prev.slice(-99), `${new Date().toLocaleTimeString()}  ${line}`]);
@@ -404,7 +453,11 @@ export function App() {
     setLastError(null);
     try {
       append(`fetchNym ${hsPath} @ ${hsAddress.slice(0, 12)}…`);
-      const res = await fetchNym(hsAddress, { method: 'GET', path: hsPath }, { timeoutMs: 120_000 });
+      const res = await fetchNymFull(
+        hsAddress,
+        { method: 'GET', path: hsPath },
+        { timeoutMs: 120_000, maxBytes: MAX_PAGE_BYTES },
+      );
       const text = new TextDecoder().decode(res.body);
       setHsResult(`status=${res.status} error=${res.error ?? 'none'}\n${text.slice(0, 2000)}`);
       append(`fetchNym done: status=${res.status} body=${res.body.length}B`);
@@ -427,38 +480,76 @@ export function App() {
     [contacts],
   );
 
+  /** mixnetFetch plus the app-level cookie jar for clearnet requests. */
+  const mixnetRequest = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
+    const jar = cookieJarRef.current;
+    const cookie = jar?.headerFor(url) ?? '';
+    const headers: Record<string, string> = {};
+    if (init?.headers) {
+      if (init.headers instanceof Headers) init.headers.forEach((value, key) => (headers[key] = value));
+      else if (Array.isArray(init.headers)) for (const [key, value] of init.headers) headers[key] = value;
+      else Object.assign(headers, init.headers);
+    }
+    if (cookie) headers.cookie = cookie;
+    const res = await mixnetFetch(url, { ...init, headers });
+    const withSetCookie = res.headers as Headers & { getSetCookie?: () => string[] };
+    const setCookies = withSetCookie.getSetCookie?.() ?? [];
+    if (setCookies.length === 0) {
+      const single = res.headers.get('set-cookie');
+      if (single) setCookies.push(single);
+    }
+    if (jar && setCookies.length > 0) {
+      for (const value of setCookies) jar.setFromHeader(url, value);
+      saveCookieJar(defaultStorage(), jar);
+    }
+    return res;
+  }, []);
+
   /**
    * Fetch one page subresource through the same transport as the document.
    * The content loader only ever receives this callback, never native fetch.
    */
-  const fetchSubresource = useCallback(async (url: string, kind: ResourceKind): Promise<ResourceResponse | null> => {
-    let target: NavigationTarget;
-    try {
-      target = resolveNavigationInput(url);
-    } catch {
-      return null;
-    }
-    try {
-      if (target.kind === 'nym') {
-        const accept = kind === 'image' ? 'image/*,*/*;q=0.8' : kind === 'stylesheet' ? 'text/css,*/*;q=0.1' : '*/*';
-        const res = await fetchNym(
-          target.address,
-          { method: 'GET', path: target.path, headers: { accept } },
-          { timeoutMs: 30_000 },
-        );
-        if (res.error) return null;
-        return { status: res.status, contentType: res.headers['content-type'] ?? '', bytes: res.body };
+  const fetchSubresource = useCallback(
+    async (url: string, kind: ResourceKind): Promise<ResourceResponse | null> => {
+      let target: NavigationTarget;
+      try {
+        target = resolveNavigationInput(url);
+      } catch {
+        return null;
       }
-      const res = await mixnetFetch(url);
-      return {
-        status: res.status,
-        contentType: res.headers.get('content-type') ?? '',
-        bytes: new Uint8Array(await res.arrayBuffer()),
-      };
-    } catch {
-      return null;
-    }
-  }, []);
+      try {
+        if (target.kind === 'nym') {
+          const accept =
+            kind === 'image'
+              ? 'image/*,*/*;q=0.8'
+              : kind === 'stylesheet'
+                ? 'text/css,*/*;q=0.1'
+                : kind === 'media'
+                  ? 'audio/*,video/*,*/*;q=0.1'
+                  : '*/*';
+          const res = await fetchNymFull(
+            target.address,
+            { method: 'GET', path: target.path, headers: { accept } },
+            {
+              timeoutMs: 30_000,
+              maxBytes: kind === 'other' ? 32 * 1024 * 1024 : 4 * 1024 * 1024,
+            },
+          );
+          if (res.error) return null;
+          return { status: res.status, contentType: res.headers['content-type'] ?? '', bytes: res.body };
+        }
+        const res = await mixnetRequest(url);
+        return {
+          status: res.status,
+          contentType: res.headers.get('content-type') ?? '',
+          bytes: new Uint8Array(await res.arrayBuffer()),
+        };
+      } catch {
+        return null;
+      }
+    },
+    [mixnetRequest],
+  );
 
   /**
    * Execute one resolved navigation into one tab. Callers own the history
@@ -469,10 +560,8 @@ export function App() {
     async (
       target: NavigationTarget,
       tabId: string,
-      options: { push: boolean; historyIndex?: number; token: number },
+      options: { push: boolean; historyIndex?: number; token: number; force?: boolean; redirects?: number },
     ) => {
-      activeLoadsRef.current += 1;
-      setBusy(true);
       setLastError(null);
       setNavigationError(null);
       setTabs((prev) =>
@@ -487,6 +576,26 @@ export function App() {
         ),
       );
       setUri(target.url);
+
+      const cached = options.force ? null : documentCacheRef.current.get(target.url);
+      if (cached) {
+        setTabs((prev) =>
+          prev.map((tab) =>
+            tab.id === tabId
+              ? applyPage(tab, options.token, {
+                  status: cached.status,
+                  contentType: cached.contentType,
+                  body: cached.body,
+                  favicon: cached.favicon,
+                })
+              : tab,
+          ),
+        );
+        return;
+      }
+
+      activeLoadsRef.current += 1;
+      setBusy(true);
 
       if (target.kind === 'nym') {
         if (target.invite) {
@@ -503,10 +612,10 @@ export function App() {
         }
         append(`nym:// fetch ${target.path} @ ${target.address.slice(0, 12)}…`);
         try {
-          const res = await fetchNym(
+          const res = await fetchNymFull(
             target.address,
             { method: 'GET', path: target.path, headers: { accept: 'text/html' } },
-            { timeoutMs: 120_000 },
+            { timeoutMs: 120_000, maxBytes: MAX_PAGE_BYTES },
           );
           if (res.body.length > MAX_PAGE_BYTES) {
             setTabs((prev) =>
@@ -517,9 +626,36 @@ export function App() {
             append(`nym:// page too large: ${res.body.length} bytes`);
             return;
           }
-          const text = new TextDecoder().decode(res.body);
           const contentType = res.headers['content-type'] ?? '';
           const error = res.error;
+          if (!error && res.status >= 300 && res.status < 400 && res.headers.location) {
+            const redirects = (options.redirects ?? 0) + 1;
+            if (redirects > 5) {
+              setTabs((prev) =>
+                prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, 'too many redirects') : tab)),
+              );
+              return;
+            }
+            let next: NavigationTarget;
+            try {
+              next = resolveNavigationInput(new URL(res.headers.location, target.url).toString());
+            } catch (redirectError) {
+              setTabs((prev) =>
+                prev.map((tab) =>
+                  tab.id === tabId ? failPage(tab, options.token, `bad redirect: ${String(redirectError)}`) : tab,
+                ),
+              );
+              return;
+            }
+            append(`redirect ${res.status} -> ${next.url}`);
+            await loadInto(next, tabId, {
+              push: false,
+              token: (navigationSeqRef.current += 1),
+              redirects,
+            });
+            return;
+          }
+          const text = new TextDecoder().decode(res.body);
           if (error) {
             setTabs((prev) => prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, error) : tab)));
             setHsResult(`status=${res.status} error=${error}`);
@@ -529,13 +665,15 @@ export function App() {
           const kind = pageKindFor(contentType, text);
           let body = text;
           let effectiveType = contentType;
-          if (kind === 'image' || kind === 'binary') {
+          let favicon: string | null = null;
+          if (kind === 'image' || kind === 'media' || kind === 'pdf' || kind === 'binary') {
             body = dataUrlFor(res.body, contentType);
           } else if (kind === 'html') {
             try {
               const prepared = await prepareDocument(text, target.url, fetchSubresource);
               body = prepared.html;
               effectiveType = 'text/html; charset=utf-8';
+              favicon = prepared.favicon;
               if (prepared.stats.resources > 0) {
                 append(
                   `page assets: ${prepared.stats.resources} fetched, ${prepared.stats.failed} unavailable` +
@@ -556,10 +694,16 @@ export function App() {
           setTabs((prev) =>
             prev.map((tab) =>
               tab.id === tabId
-                ? applyPage(tab, options.token, { status: res.status, contentType: effectiveType, body })
+                ? applyPage(tab, options.token, { status: res.status, contentType: effectiveType, body, favicon })
                 : tab,
             ),
           );
+          documentCacheRef.current.set(target.url, {
+            status: res.status,
+            contentType: effectiveType,
+            body,
+            favicon,
+          });
           setRecentPortals((prev) => {
             const next = rememberPortal(prev, target.address);
             saveRecentPortals(next, defaultViewStorage());
@@ -580,7 +724,7 @@ export function App() {
 
       append(`https fetch ${target.url}`);
       try {
-        const res = await mixnetFetch(target.url);
+        const res = await mixnetRequest(target.url);
         const bytes = new Uint8Array(await res.arrayBuffer());
         if (bytes.length > MAX_PAGE_BYTES) {
           setTabs((prev) =>
@@ -594,10 +738,11 @@ export function App() {
         const contentType = res.headers.get('content-type') ?? '';
         const decoded = new TextDecoder().decode(bytes);
         const kind = pageKindFor(contentType, decoded);
-        const text = kind === 'image' || kind === 'binary' ? '' : decoded;
+        const text = kind === 'image' || kind === 'media' || kind === 'pdf' || kind === 'binary' ? '' : decoded;
         let body = text;
         let effectiveType = contentType;
-        if (kind === 'image' || kind === 'binary') {
+        let favicon: string | null = null;
+        if (kind === 'image' || kind === 'media' || kind === 'pdf' || kind === 'binary') {
           body = dataUrlFor(bytes, contentType);
         } else if (kind === 'html') {
           try {
@@ -607,6 +752,7 @@ export function App() {
             const prepared = await prepareDocument(text, documentUrl, fetchSubresource);
             body = prepared.html;
             effectiveType = 'text/html; charset=utf-8';
+            favicon = prepared.favicon;
             if (prepared.stats.resources > 0) {
               append(
                 `page assets: ${prepared.stats.resources} fetched, ${prepared.stats.failed} unavailable` +
@@ -627,10 +773,16 @@ export function App() {
         setTabs((prev) =>
           prev.map((tab) =>
             tab.id === tabId
-              ? applyPage(tab, options.token, { status: res.status, contentType: effectiveType, body })
+              ? applyPage(tab, options.token, { status: res.status, contentType: effectiveType, body, favicon })
               : tab,
           ),
         );
+        documentCacheRef.current.set(target.url, {
+          status: res.status,
+          contentType: effectiveType,
+          body,
+          favicon,
+        });
         setHsResult(`status=${res.status} body=${body.length}B (rendered in the tab)`);
         append(`web done: status=${res.status} body=${body.length}B`);
       } catch (err) {
@@ -642,7 +794,7 @@ export function App() {
         setBusy(activeLoadsRef.current > 0);
       }
     },
-    [append],
+    [append, fetchSubresource, mixnetRequest],
   );
 
   const goTo = useCallback(
@@ -680,8 +832,9 @@ export function App() {
    * click into a tab navigation instead of letting the iframe navigate itself.
    */
   const onFrameLoad = useCallback(() => {
-    const doc = frameRef.current?.contentDocument;
-    if (!doc || linkedFrameDocsRef.current.has(doc)) return;
+    const frame = frameRef.current;
+    const doc = frame?.contentDocument;
+    if (!frame || !doc || linkedFrameDocsRef.current.has(doc)) return;
     linkedFrameDocsRef.current.add(doc);
     const activate = (event: Event) => {
       const target = event.target as Element | null;
@@ -696,7 +849,49 @@ export function App() {
     };
     doc.addEventListener('click', activate);
     doc.addEventListener('auxclick', activate);
+
+    const pageUrl = frame.getAttribute('data-page-url') ?? '';
+    if (pageUrl) {
+      const saved = loadScrollPositions(defaultStorage())[pageUrl] ?? 0;
+      requestAnimationFrame(() => {
+        try {
+          frame.contentWindow?.scrollTo(0, saved);
+        } catch {
+          // Frame may have navigated/replaced itself.
+        }
+      });
+      let timer = 0;
+      frame.contentWindow?.addEventListener(
+        'scroll',
+        () => {
+          window.clearTimeout(timer);
+          timer = window.setTimeout(() => {
+            try {
+              rememberScroll(defaultStorage(), pageUrl, frame.contentWindow?.scrollY ?? 0);
+            } catch {
+              // Storage unavailable; restore just won't persist.
+            }
+          }, 150);
+        },
+        { passive: true },
+      );
+    }
   }, [goTo]);
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    const url = activeTab?.url;
+    if (!frame || !url || activeTab?.content?.kind !== 'html') return;
+    const saved = loadScrollPositions(defaultStorage())[url] ?? 0;
+    const id = requestAnimationFrame(() => {
+      try {
+        frame.contentWindow?.scrollTo(0, saved);
+      } catch {
+        // The document may not be ready yet; onFrameLoad restores again.
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [activeTabId, activeTab?.url, activeTab?.content?.body]);
 
   /** Re-fetch a tab's current URL without pushing a history entry. */
   const reloadTab = useCallback(
@@ -709,7 +904,7 @@ export function App() {
         return;
       }
       const token = (navigationSeqRef.current += 1);
-      await loadInto(target, tab.id, { push: false, historyIndex, token });
+      await loadInto(target, tab.id, { push: false, historyIndex, token, force: true });
     },
     [loadInto],
   );
@@ -789,10 +984,71 @@ export function App() {
     [activeTabId, tabs],
   );
 
+  const saveCurrentPage = useCallback(() => {
+    if (!activeTab?.content || !activeTab.url) return;
+    const contentType = activeTab.content.contentType;
+    const name = downloadName(activeTab.title || tabTitle(activeTab), contentType);
+    const size = downloadDataUrl(activeTab.content.body, name);
+    if (size === null) return;
+    setDownloads((prev) =>
+      addDownload(prev, {
+        id: newDownloadId(),
+        name,
+        url: activeTab.url,
+        contentType,
+        size,
+        status: 'saved',
+        createdAt: Date.now(),
+      }),
+    );
+  }, [activeTab]);
+
+  const saveDownloadAgain = useCallback(
+    async (entry: DownloadRecord) => {
+      setDownloads((prev) => updateDownload(prev, entry.id, { status: 'pending', error: undefined }));
+      const res = await fetchSubresource(entry.url, 'other');
+      if (!res) {
+        setDownloads((prev) =>
+          updateDownload(prev, entry.id, {
+            status: 'failed',
+            error: 'Could not fetch the file again through the mixnet.',
+          }),
+        );
+        return;
+      }
+      saveBlob(res.bytes, res.contentType || entry.contentType, entry.name);
+      setDownloads((prev) =>
+        updateDownload(prev, entry.id, {
+          status: 'saved',
+          size: res.bytes.length,
+          contentType: res.contentType || entry.contentType,
+          error: undefined,
+        }),
+      );
+    },
+    [fetchSubresource],
+  );
+
+  const onOpenDownloads = useCallback(() => {
+    setAdvanced(true);
+    saveAdvancedVisible(true, defaultViewStorage());
+    setOpenPanels((prev) => {
+      if (prev.includes('downloads')) return prev;
+      const next = [...prev, 'downloads' as const];
+      saveOpenPanels(next, defaultStorage());
+      return next;
+    });
+    onSelectView('settings');
+  }, [onSelectView]);
+
   // Persist the tab list and histories. Page bodies never go to storage.
   useEffect(() => {
     saveBrowserTabs(defaultStorage(), tabs, activeTabId);
   }, [tabs, activeTabId]);
+
+  useEffect(() => {
+    saveDownloads(defaultStorage(), downloads);
+  }, [downloads]);
 
   // On first mount, restore and load the active tab once (page bodies are not
   // persisted). The ref keeps StrictMode's development double-effect in check.
@@ -1049,6 +1305,8 @@ export function App() {
         canForward={canGoForward(activeTab)}
         loading={Boolean(activeTab?.loading)}
         error={navigationError}
+        downloadCount={downloads.length}
+        onOpenDownloads={onOpenDownloads}
         uri={uri}
         onUriChange={onAddressChange}
         onSubmit={onGo}
@@ -1472,6 +1730,7 @@ export function App() {
                   sandbox="allow-same-origin"
                   referrerPolicy="no-referrer"
                   title={tabTitle(activeTab)}
+                  data-page-url={activeTab.url}
                   srcDoc={activeTab.content.body}
                   loading="lazy"
                   onLoad={onFrameLoad}
@@ -1488,18 +1747,42 @@ export function App() {
                 <img className="fly-portal-image" src={activeTab.content.body} alt={tabTitle(activeTab)} />
               )}
 
+              {activeTab?.content?.kind === 'media' &&
+                (activeTab.content.contentType.startsWith('video/') ? (
+                  <video
+                    className="fly-portal-media"
+                    src={activeTab.content.body}
+                    controls
+                    playsInline
+                    aria-label={tabTitle(activeTab)}
+                  />
+                ) : (
+                  <audio
+                    className="fly-portal-media"
+                    src={activeTab.content.body}
+                    controls
+                    aria-label={tabTitle(activeTab)}
+                  />
+                ))}
+
+              {activeTab?.content?.kind === 'pdf' && (
+                <PdfView dataUrl={activeTab.content.body} title={tabTitle(activeTab)} />
+              )}
+
               {activeTab?.content?.kind === 'binary' && (
                 <section className="fly-card" aria-label="Download">
                   <p className="fly-muted">
                     {activeTab.content.contentType || 'Binary content'} — this build does not render this file type.
                   </p>
-                  <button
-                    className="fly-btn fly-btn-primary"
-                    onClick={() => downloadDataUrl(activeTab.content?.body ?? '', tabTitle(activeTab))}
-                  >
-                    Download file
-                  </button>
                 </section>
+              )}
+
+              {activeTab?.content && ['image', 'media', 'pdf', 'binary'].includes(activeTab.content.kind) && (
+                <div className="fly-row fly-mt-2">
+                  <button className="fly-btn fly-btn-primary" onClick={saveCurrentPage}>
+                    Save to downloads
+                  </button>
+                </div>
               )}
 
               {activeTab?.loading && (
@@ -1721,6 +2004,17 @@ export function App() {
                     {openPanels.includes('portal') && (
                       <Panel title="Portal replica (reads)" onClose={() => onClosePanel('portal')}>
                         <PortalSync />
+                      </Panel>
+                    )}
+
+                    {openPanels.includes('downloads') && (
+                      <Panel title="Downloads" onClose={() => onClosePanel('downloads')}>
+                        <DownloadManager
+                          entries={downloads}
+                          onSaveAgain={(entry) => void saveDownloadAgain(entry)}
+                          onRemove={(id) => setDownloads((prev) => removeDownload(prev, id))}
+                          onClear={() => setDownloads(clearDownloads())}
+                        />
                       </Panel>
                     )}
                   </div>

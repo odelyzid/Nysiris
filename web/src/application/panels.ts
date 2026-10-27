@@ -10,7 +10,7 @@ import { defaultStorage } from '../lib/storage.ts';
 
 export { defaultStorage };
 
-export type PanelId = 'connection' | 'messages' | 'fetch' | 'log' | 'contacts' | 'portal';
+export type PanelId = 'connection' | 'messages' | 'fetch' | 'log' | 'contacts' | 'portal' | 'downloads';
 
 export const PANEL_META: Record<PanelId, { title: string }> = {
   connection: { title: 'Connection' },
@@ -19,9 +19,10 @@ export const PANEL_META: Record<PanelId, { title: string }> = {
   log: { title: 'Log' },
   contacts: { title: 'Contacts' },
   portal: { title: 'Portal' },
+  downloads: { title: 'Downloads' },
 };
 
-export const PANEL_ORDER: PanelId[] = ['connection', 'messages', 'fetch', 'contacts', 'portal', 'log'];
+export const PANEL_ORDER: PanelId[] = ['connection', 'messages', 'fetch', 'contacts', 'portal', 'downloads', 'log'];
 
 export interface PanelStorage {
   getItem(key: string): string | null;

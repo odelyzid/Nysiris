@@ -124,11 +124,13 @@ test('applyPage extracts title/kind only for the current token', () => {
     status: 200,
     contentType: 'text/html; charset=utf-8',
     body: '<!doctype html><title> Hello  &amp; world </title>',
+    favicon: 'data:image/png;base64,AA==',
   });
   assert.equal(state.loading, false);
   assert.equal(state.status, 200);
   assert.equal(state.content.kind, 'html');
   assert.equal(state.title, 'Hello & world');
+  assert.equal(state.favicon, 'data:image/png;base64,AA==');
   assert.equal(tabTitle(state), 'Hello & world');
 });
 
@@ -150,7 +152,10 @@ test('page kind follows content type with an HTML fallback', () => {
   assert.equal(pageKindFor('text/plain'), 'text');
   assert.equal(pageKindFor('application/xml'), 'text');
   assert.equal(pageKindFor('image/png'), 'image');
-  assert.equal(pageKindFor('application/pdf'), 'binary');
+  assert.equal(pageKindFor('audio/ogg'), 'media');
+  assert.equal(pageKindFor('video/mp4'), 'media');
+  assert.equal(pageKindFor('application/pdf'), 'pdf');
+  assert.equal(pageKindFor('application/octet-stream'), 'binary');
   assert.equal(pageKindFor(''), 'text');
   assert.equal(pageKindFor('', '<!doctype html><html></html>'), 'html');
 });
@@ -183,12 +188,18 @@ test('blank tabs are capped', () => {
 
 test('serialization persists URLs/history but not page bodies', () => {
   let state = go(tab(), `nym://${NYM}/a`, 1);
-  state = applyPage(state, 1, { status: 200, contentType: 'text/html', body: '<title>A</title>' });
+  state = applyPage(state, 1, {
+    status: 200,
+    contentType: 'text/html',
+    body: '<title>A</title>',
+    favicon: 'data:image/png;base64,AA==',
+  });
   const raw = serializeBrowserTabs([state], 't1');
   const restored = restoreBrowserTabs(raw, () => 'unused');
   assert.equal(restored.activeId, 't1');
   assert.equal(restored.tabs[0].url, `nym://${NYM}/a`);
   assert.equal(restored.tabs[0].title, 'A');
+  assert.equal(restored.tabs[0].favicon, 'data:image/png;base64,AA==');
   assert.deepEqual(restored.tabs[0].history, [`nym://${NYM}/a`]);
   assert.equal(restored.tabs[0].content, null);
   assert.equal(restored.tabs[0].loading, false);

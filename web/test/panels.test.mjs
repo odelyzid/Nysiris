@@ -13,7 +13,15 @@ function fakeStorage(initial = {}) {
 }
 
 test('registry covers every panel id', () => {
-  assert.deepEqual([...PANEL_ORDER].sort(), ['connection', 'contacts', 'fetch', 'log', 'messages', 'portal']);
+  assert.deepEqual([...PANEL_ORDER].sort(), [
+    'connection',
+    'contacts',
+    'downloads',
+    'fetch',
+    'log',
+    'messages',
+    'portal',
+  ]);
   for (const id of PANEL_ORDER) {
     assert.ok(PANEL_META[id].title.length > 0);
   }

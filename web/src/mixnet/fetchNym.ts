@@ -29,6 +29,7 @@
 import { NymAddressClient } from './messaging';
 import { decodeResponse, dispatchReply, encodeRequest } from './hiddenService.mjs';
 import { b64decode, b64encode } from '../lib/bytes';
+import { mergeChunks, parseContentRange, responseTotal } from '../application/ranges';
 
 const NYM_API_URL = 'https://validator.nymtech.net/api';
 
@@ -52,6 +53,13 @@ export interface FetchNymOptions {
   nymApiUrl?: string;
   /** How long to wait for the SURB reply. Default 90 s (mixnet latency). */
   timeoutMs?: number;
+}
+
+export interface FetchNymFullOptions extends FetchNymOptions {
+  /** Refuse a chunked response larger than this (default 8 MiB). */
+  maxBytes?: number;
+  /** Safety cap on the number of follow-up range requests (default 128). */
+  maxChunks?: number;
 }
 
 /** @deprecated use `b64encode` from `../lib/bytes`; kept for existing callers. */
@@ -189,6 +197,56 @@ async function runOnce(
     headers: parsed.headers,
     body: fromBase64(parsed.bodyBase64),
     error: parsed.error,
+  };
+}
+
+/**
+ * Fetch a complete resource, following `Content-Range` chunks when the service
+ * serves a body larger than one mixnet message.
+ *
+ * `nysiris-sdk` static files answer a large GET with a `206` first chunk plus
+ * `Content-Range: bytes 0-(n-1)/total`. We request `bytes=<next>-` until the
+ * advertised total is assembled. Services that do not advertise a total are
+ * returned as-is, so feed/DM/JSON calls keep their existing one-reply shape.
+ */
+export async function fetchNymFull(
+  recipient: string,
+  request: FetchNymRequest,
+  options: FetchNymFullOptions = {},
+): Promise<FetchNymResponse> {
+  const maxBytes = options.maxBytes ?? 8 * 1024 * 1024;
+  const maxChunks = options.maxChunks ?? 128;
+  const first = await fetchNym(recipient, request, options);
+  if (first.error) return first;
+  const total = responseTotal(first.headers);
+  if (total === null) return first;
+  if (total > maxBytes) throw new Error(`response is too large (${total} bytes; limit ${maxBytes})`);
+  if (first.body.length >= total) return first.status === 206 ? { ...first, status: 200 } : first;
+
+  const chunks: Uint8Array[] = [first.body];
+  const firstRange = parseContentRange(first.headers['content-range']);
+  let offset = firstRange && firstRange.start === 0 ? firstRange.end + 1 : first.body.length;
+  while (offset < total) {
+    if (chunks.length >= maxChunks) throw new Error('response chunk limit reached');
+    const res = await fetchNym(
+      recipient,
+      {
+        ...request,
+        headers: { ...(request.headers ?? {}), range: `bytes=${offset}-` },
+      },
+      options,
+    );
+    if (res.error) throw new Error(res.error);
+    if (res.body.length === 0) throw new Error(`empty chunk at byte ${offset}`);
+    chunks.push(res.body);
+    offset += res.body.length;
+    if (offset > total) break;
+  }
+  return {
+    ...first,
+    status: first.status === 206 ? 200 : first.status,
+    body: mergeChunks(chunks, total),
+    headers: { ...first.headers, 'content-range': '' },
   };
 }
 

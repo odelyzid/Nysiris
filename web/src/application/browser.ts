@@ -12,7 +12,7 @@
 import type { StorageLike } from '../lib/storage.ts';
 import type { NavigationTarget } from './navigation.ts';
 
-export type PageKind = 'html' | 'text' | 'json' | 'image' | 'binary';
+export type PageKind = 'html' | 'text' | 'json' | 'image' | 'media' | 'pdf' | 'binary';
 
 export interface PageContent {
   kind: PageKind;
@@ -32,6 +32,8 @@ export interface BrowserTab {
   /** Nym service used to bind Social; empty for clearnet/blank tabs. */
   service: string;
   title: string;
+  /** Inline favicon (data URL) when the document declared one. */
+  favicon: string | null;
   content: PageContent | null;
   status: number | null;
   error: string | null;
@@ -47,6 +49,7 @@ export interface PageResult {
   status: number;
   contentType: string;
   body: string;
+  favicon?: string | null;
 }
 
 export interface NavigateOptions {
@@ -81,6 +84,7 @@ export function newBrowserTab(id: string): BrowserTab {
     path: '',
     service: '',
     title: '',
+    favicon: null,
     content: null,
     status: null,
     error: null,
@@ -148,6 +152,7 @@ export function applyPage(tab: BrowserTab, token: number, result: PageResult): B
     content: { kind, contentType: result.contentType, body: result.body },
     status: result.status,
     title: titleFromContent(kind, result.body) || tab.title,
+    favicon: result.favicon ?? null,
     // A successful Nym navigation binds the community client to this tab.
     service: tab.kind === 'nym' ? tab.address : '',
     error: null,
@@ -235,6 +240,8 @@ function contentKind(contentType: string, body: string): PageKind {
   if (type.includes('text/html') || type.includes('application/xhtml')) return 'html';
   if (type.includes('json')) return 'json';
   if (type.startsWith('image/')) return 'image';
+  if (type.startsWith('audio/') || type.startsWith('video/')) return 'media';
+  if (type.includes('application/pdf')) return 'pdf';
   if (type.includes('text/') || type.includes('xml') || type.includes('javascript') || type.includes('csv')) {
     return 'text';
   }
@@ -276,6 +283,7 @@ interface StoredTab {
   path: string;
   service: string;
   title: string;
+  favicon: string | null;
   history: string[];
   historyIndex: number;
 }
@@ -307,6 +315,7 @@ export function serializeBrowserTabs(tabs: BrowserTab[], activeId: string): stri
       path: tab.path,
       service: tab.service,
       title: tab.title,
+      favicon: cleanFavicon(tab.favicon),
       history: tab.history.slice(-MAX_HISTORY),
       historyIndex: tab.historyIndex,
     })),
@@ -359,6 +368,7 @@ export function restoreBrowserTabs(
       path: typeof stored.path === 'string' ? stored.path : '',
       service: kind === 'nym' && typeof stored.service === 'string' ? stored.service : '',
       title: typeof stored.title === 'string' ? stored.title.slice(0, 120) : '',
+      favicon: cleanFavicon(stored.favicon),
       history,
       historyIndex,
     });
@@ -392,4 +402,9 @@ function cleanUrl(value: unknown): string {
 
 function kindFromUrl(url: string): 'nym' | 'clearnet' {
   return /^nym:\/\//i.test(url) ? 'nym' : 'clearnet';
+}
+
+function cleanFavicon(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 256 * 1024) return null;
+  return /^data:image\//i.test(value) ? value : null;
 }

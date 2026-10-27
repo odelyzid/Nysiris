@@ -1607,6 +1607,21 @@ samp,
   white-space: nowrap;
 }
 
+.fly-tab-favicon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  object-fit: contain;
+}
+
+.fly-tab-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--fly-muted);
+}
+
 .fly-tab-spinner {
   width: 9px;
   height: 9px;
@@ -1717,6 +1732,82 @@ samp,
   border: 1px solid var(--fly-line);
   background: var(--fly-surface);
   object-fit: contain;
+}
+
+.fly-portal-media {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  margin: 8px 0;
+  background: var(--fly-surface);
+}
+
+.fly-pdf-frame {
+  display: block;
+  width: 100%;
+  height: clamp(420px, 72vh, 900px);
+  margin: 8px 0;
+  border: 1px solid var(--fly-line);
+  background: var(--fly-surface);
+}
+
+.fly-download-btn {
+  position: relative;
+  font-size: 18px;
+}
+
+.fly-download-count {
+  position: absolute;
+  top: -4px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border: 1px solid var(--fly-bg);
+  background: var(--fly-accent);
+  color: var(--fly-accent-ink);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+
+.fly-mb-2 {
+  margin-bottom: 8px;
+}
+
+.fly-download-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+
+.fly-download-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-top: 1px solid var(--fly-line);
+}
+
+.fly-download-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 260px;
+  font-size: 13px;
+}
+
+.fly-download-actions {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.fly-download-error {
+  color: var(--fly-bad);
+  font-size: 12px;
 }
 
 @media (max-width: 600px) {

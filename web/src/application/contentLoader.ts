@@ -23,7 +23,7 @@
  */
 import { b64encode } from '../lib/bytes.ts';
 
-export type ResourceKind = 'stylesheet' | 'image' | 'other';
+export type ResourceKind = 'stylesheet' | 'image' | 'media' | 'other';
 
 export interface ResourceResponse {
   status: number;
@@ -54,6 +54,8 @@ export interface PrepareOptions {
 export interface PreparedDocument {
   html: string;
   title: string;
+  /** Inline data URL for the declared icon (or a clearnet `/favicon.ico`). */
+  favicon: string | null;
   baseUrl: string;
   stats: LoadStats;
 }
@@ -73,9 +75,6 @@ const ACTIVE_TAGS = [
   'embed',
   'applet',
   'base',
-  'video',
-  'audio',
-  'source',
   'track',
   'portal',
   'fencedframe',
@@ -154,6 +153,7 @@ export async function prepareDocument(
     return {
       html: `<pre>${escapeHtml(html.slice(0, 200_000))}</pre>`,
       title: '',
+      favicon: null,
       baseUrl,
       stats: loader.stats,
     };
@@ -185,8 +185,31 @@ export async function prepareDocument(
     if (element.hasAttribute('srcset')) element.removeAttribute('srcset');
     if (element.hasAttribute('imagesrcset')) element.removeAttribute('imagesrcset');
     // Obsolete loaders that some engines still honour.
-    for (const name of ['lowsrc', 'dynsrc', 'poster']) element.removeAttribute(name);
+    for (const name of ['lowsrc', 'dynsrc']) element.removeAttribute(name);
   }
+
+  // Favicons are fetched before the non-stylesheet `<link>` cleanup below.
+  let favicon: string | null = null;
+  for (const link of [...doc.querySelectorAll('link[rel]')]) {
+    if (favicon) break;
+    const rel = (link.getAttribute('rel') ?? '').toLowerCase().split(/\s+/);
+    if (!rel.some((value) => value === 'icon' || value.endsWith('-icon'))) continue;
+    const href = link.getAttribute('href');
+    const absolute = href ? resolveResourceUrl(href, baseUrl) : null;
+    if (!absolute) continue;
+    if (absolute.startsWith('data:')) {
+      if (/^data:image\//i.test(absolute)) favicon = absolute;
+      continue;
+    }
+    favicon = await inlineImage(absolute, loader);
+  }
+  if (!favicon && /^https?:/i.test(baseUrl)) {
+    // Clearnet browsers silently probe /favicon.ico; do the same through the
+    // exit, but only when the page did not declare an icon.
+    const absolute = resolveResourceUrl('/favicon.ico', baseUrl);
+    if (absolute) favicon = await inlineImage(absolute, loader);
+  }
+  if (favicon && favicon.length > 200_000) favicon = null;
 
   // Stylesheets: fetch and inline so no relative URL reaches the browser.
   for (const link of [...doc.querySelectorAll('link')]) {
@@ -236,7 +259,40 @@ export async function prepareDocument(
     if (data) image.setAttribute('src', data);
     else image.setAttribute('src', TRANSPARENT_PIXEL);
   }
-  for (const element of [...doc.querySelectorAll('[src]:not(img):not(input)')]) {
+  // Embedded media. Direct `src` and `<source>` children are inlined under the
+  // same budget; poster images go through the image path. `<source>` elements
+  // that belong to `<picture>` are left to the image fallback (their srcset was
+  // removed above) and are dropped here.
+  for (const video of [...doc.querySelectorAll('video[poster]')]) {
+    const poster = video.getAttribute('poster') ?? '';
+    if (/^data:image\//i.test(poster)) continue;
+    const absolute = resolveResourceUrl(poster, baseUrl);
+    const data = absolute ? await inlineImage(absolute, loader) : null;
+    if (data) video.setAttribute('poster', data);
+    else video.removeAttribute('poster');
+  }
+  for (const media of [...doc.querySelectorAll('video[src], audio[src]')]) {
+    const raw = media.getAttribute('src') ?? '';
+    if (/^data:(audio|video)\//i.test(raw)) continue;
+    const absolute = resolveResourceUrl(raw, baseUrl);
+    const data = absolute ? await inlineMedia(absolute, loader) : null;
+    if (data) media.setAttribute('src', data);
+    else media.removeAttribute('src');
+  }
+  for (const source of [...doc.querySelectorAll('source')]) {
+    const parent = source.parentElement?.tagName.toLowerCase();
+    if (parent !== 'video' && parent !== 'audio') {
+      source.remove();
+      continue;
+    }
+    const raw = source.getAttribute('src') ?? '';
+    if (/^data:(audio|video)\//i.test(raw)) continue;
+    const absolute = resolveResourceUrl(raw, baseUrl);
+    const data = absolute ? await inlineMedia(absolute, loader) : null;
+    if (data) source.setAttribute('src', data);
+    else source.remove();
+  }
+  for (const element of [...doc.querySelectorAll('[src]:not(img):not(input):not(video):not(audio):not(source)')]) {
     element.removeAttribute('src');
   }
 
@@ -283,7 +339,7 @@ export async function prepareDocument(
   csp.setAttribute('http-equiv', 'Content-Security-Policy');
   csp.setAttribute(
     'content',
-    "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'",
+    "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; frame-src 'none'; form-action 'none'; base-uri 'none'",
   );
   doc.head.prepend(csp);
 
@@ -291,6 +347,7 @@ export async function prepareDocument(
   return {
     html: `<!doctype html>\n${doc.documentElement.outerHTML}`,
     title,
+    favicon,
     baseUrl,
     stats: loader.stats,
   };
@@ -401,8 +458,20 @@ async function replaceCssUrls(css: string, styleUrl: string, loader: ResourceLoa
 async function inlineImage(url: string, loader: ResourceLoader): Promise<string | null> {
   const response = await loader.load(url, 'image');
   if (!response) return null;
-  const contentType = normalizeContentType(response.contentType) || imageMimeFromUrl(url);
+  let contentType = normalizeContentType(response.contentType);
+  if (!contentType.startsWith('image/')) contentType = imageMimeFromUrl(url);
   if (!contentType.startsWith('image/')) return null;
+  return `data:${contentType};base64,${b64encode(response.bytes)}`;
+}
+
+async function inlineMedia(url: string, loader: ResourceLoader): Promise<string | null> {
+  const response = await loader.load(url, 'media');
+  if (!response) return null;
+  let contentType = normalizeContentType(response.contentType);
+  if (!contentType.startsWith('audio/') && !contentType.startsWith('video/')) {
+    contentType = mediaMimeFromUrl(url);
+  }
+  if (!contentType.startsWith('audio/') && !contentType.startsWith('video/')) return null;
   return `data:${contentType};base64,${b64encode(response.bytes)}`;
 }
 
@@ -447,6 +516,17 @@ function normalizeContentType(value: string): string {
     .split(';')[0]
     .trim()
     .toLowerCase();
+}
+
+function mediaMimeFromUrl(url: string): string {
+  const path = url.split('#')[0].split('?')[0].toLowerCase();
+  if (path.endsWith('.mp3')) return 'audio/mpeg';
+  if (path.endsWith('.ogg') || path.endsWith('.oga')) return 'audio/ogg';
+  if (path.endsWith('.wav')) return 'audio/wav';
+  if (path.endsWith('.m4a')) return 'audio/mp4';
+  if (path.endsWith('.mp4')) return 'video/mp4';
+  if (path.endsWith('.webm')) return 'video/webm';
+  return '';
 }
 
 function imageMimeFromUrl(url: string): string {

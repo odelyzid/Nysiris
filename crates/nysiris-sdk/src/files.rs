@@ -10,10 +10,13 @@
 //! * the resolved target is canonicalised and must stay inside the canonical
 //!   root, which also defeats symlink escapes;
 //! * only `GET`/`HEAD` are answered; anything else is `405`;
-//! * bodies are capped at one mixnet message ([`MAX_ONE_PACKET_BODY`] bytes of
-//!   raw body). Larger files return `413` until chunked transfer is wired
-//!   (`docs/08-hidden-services.md` §8.6).
+//! * a body over one mixnet message ([`MAX_ONE_PACKET_BODY`] bytes) is served
+//!   as a sequence of `206 Partial Content` chunks with `Content-Range`; the
+//!   browser's `fetchNymFull` reassembles them (`docs/08-hidden-services.md`
+//!   §8.6).
 
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use nym_hidden_service::{HiddenService, Request, Response};
@@ -22,8 +25,8 @@ use nym_hidden_service::{HiddenService, Request, Response};
 pub const DEFAULT_INDEX: &str = "index.html";
 
 /// Largest raw body that still fits one hidden-service envelope in a single
-/// Sphinx message (base64 + JSON overhead included). Larger files need
-/// chunking, which the messaging shape does not support yet.
+/// Sphinx message (base64 + JSON overhead included). Larger files are served
+/// in `Content-Range` chunks of at most this size.
 pub const MAX_ONE_PACKET_BODY: usize = 1400;
 
 /// A directory served as a hidden service.
@@ -116,30 +119,113 @@ impl StaticFiles {
             Ok(metadata) => metadata,
             Err(_) => return Response::error(404, "not found"),
         };
-        if metadata.len() as usize > self.max_bytes {
-            return Response::error(
-                413,
-                format!(
-                    "file is {} bytes; one mixnet message carries at most {} (chunking is not supported yet)",
-                    metadata.len(),
-                    self.max_bytes
-                ),
-            );
-        }
-        let body = if request.method == "HEAD" {
-            Vec::new()
-        } else {
-            match std::fs::read(&file) {
-                Ok(bytes) => bytes,
-                Err(err) => return Response::error(500, format!("read failed: {err}")),
-            }
+        let total = metadata.len() as usize;
+        let requested = match request.headers.get("range") {
+            Some(raw) => match parse_range(raw, total) {
+                Some(range) => Some(range),
+                None => return Response::error(416, "invalid Range header"),
+            },
+            None => None,
         };
-        let mut response = Response::ok(200, content_type_for(&file), &body);
+
+        if request.method == "HEAD" {
+            let mut response = Response::ok(200, content_type_for(&file), &[]);
+            response
+                .headers
+                .insert("content-length".to_string(), total.to_string());
+            response
+                .headers
+                .insert("accept-ranges".to_string(), "bytes".to_string());
+            response
+                .headers
+                .insert("x-nysiris-total-length".to_string(), total.to_string());
+            if let Some((start, end)) = requested {
+                response.status = 206;
+                response.headers.insert(
+                    "content-range".to_string(),
+                    format!("bytes {start}-{end}/{total}"),
+                );
+                response
+                    .headers
+                    .insert("content-length".to_string(), (end - start + 1).to_string());
+            }
+            return response;
+        }
+
+        let chunk_size = self.max_bytes.max(1);
+        let (start, end, status) = match requested {
+            Some((start, end)) => {
+                let capped_end = end.min(start + chunk_size - 1);
+                (start, capped_end, 206)
+            }
+            None if total > chunk_size => (0, chunk_size - 1, 206),
+            None => (0, total.saturating_sub(1), 200),
+        };
+        let length = if total == 0 { 0 } else { end - start + 1 };
+        let body = match read_slice(&file, start, length) {
+            Ok(body) => body,
+            Err(err) => return Response::error(500, format!("read failed: {err}")),
+        };
+
+        let mut response = Response::ok(status, content_type_for(&file), &body);
         response
             .headers
-            .insert("content-length".to_string(), metadata.len().to_string());
+            .insert("content-length".to_string(), body.len().to_string());
+        response
+            .headers
+            .insert("accept-ranges".to_string(), "bytes".to_string());
+        response
+            .headers
+            .insert("x-nysiris-total-length".to_string(), total.to_string());
+        if status == 206 {
+            response.headers.insert(
+                "content-range".to_string(),
+                format!("bytes {start}-{end}/{total}"),
+            );
+        }
         response
     }
+}
+
+/// Parse one `bytes=start-end`, `bytes=start-`, or suffix range.
+///
+/// Returns inclusive `(start, end)` clamped to the file; multi-range requests
+/// are rejected because the service answers with one chunk at a time.
+fn parse_range(raw: &str, total: usize) -> Option<(usize, usize)> {
+    let rest = raw.trim().strip_prefix("bytes=")?;
+    if rest.contains(',') || total == 0 {
+        return None;
+    }
+    let (start_raw, end_raw) = rest.split_once('-')?;
+    if start_raw.is_empty() {
+        let suffix = end_raw.trim().parse::<usize>().ok()?;
+        if suffix == 0 {
+            return None;
+        }
+        let start = total.saturating_sub(suffix);
+        return Some((start, total - 1));
+    }
+    let start = start_raw.trim().parse::<usize>().ok()?;
+    if start >= total {
+        return None;
+    }
+    let end = if end_raw.trim().is_empty() {
+        total - 1
+    } else {
+        end_raw.trim().parse::<usize>().ok()?.min(total - 1)
+    };
+    if end < start {
+        return None;
+    }
+    Some((start, end))
+}
+
+fn read_slice(file: &Path, start: usize, length: usize) -> std::io::Result<Vec<u8>> {
+    let mut handle = File::open(file)?;
+    handle.seek(SeekFrom::Start(start as u64))?;
+    let mut body = vec![0u8; length];
+    handle.read_exact(&mut body)?;
+    Ok(body)
 }
 
 impl HiddenService for StaticFiles {
@@ -282,14 +368,61 @@ mod tests {
     }
 
     #[test]
-    fn oversized_body_is_413() {
+    fn oversized_body_is_served_in_ranges() {
         let root = temp_root("oversize");
-        std::fs::write(root.join("big.html"), vec![b'x'; MAX_ONE_PACKET_BODY + 1]).unwrap();
+        let root_path = root.clone();
+        let bytes: Vec<u8> = (0..(MAX_ONE_PACKET_BODY + 1))
+            .map(|i| (i % 251) as u8)
+            .collect();
+        std::fs::write(root.join("big.html"), &bytes).unwrap();
         let service = StaticFiles::new(&root).unwrap();
 
-        let response = service.handle(&request("GET", "/big.html"));
-        assert_eq!(response.status, 413);
-        assert!(response.error.unwrap().contains("chunking"));
+        let first = service.handle(&request("GET", "/big.html"));
+        assert_eq!(first.status, 206);
+        assert_eq!(
+            first.headers.get("content-range"),
+            Some(&format!(
+                "bytes 0-{}/{}",
+                MAX_ONE_PACKET_BODY - 1,
+                bytes.len()
+            ))
+        );
+        assert_eq!(first.body().unwrap().len(), MAX_ONE_PACKET_BODY);
+
+        let mut ranged = request("GET", "/big.html");
+        ranged
+            .headers
+            .insert("range".to_string(), format!("bytes={MAX_ONE_PACKET_BODY}-"));
+        let second = service.handle(&ranged);
+        assert_eq!(second.status, 206);
+        assert_eq!(second.body().unwrap(), &bytes[MAX_ONE_PACKET_BODY..]);
+        let _ = std::fs::remove_dir_all(&root_path);
+    }
+
+    #[test]
+    fn head_advertises_ranges_and_invalid_ranges_are_416() {
+        let root = temp_root("range-head");
+        std::fs::write(root.join("big.html"), vec![b'x'; 5000]).unwrap();
+        let service = StaticFiles::new(&root).unwrap();
+
+        let head = service.handle(&request("HEAD", "/big.html"));
+        assert_eq!(head.status, 200);
+        assert_eq!(
+            head.headers.get("accept-ranges").map(String::as_str),
+            Some("bytes")
+        );
+        assert_eq!(
+            head.headers
+                .get("x-nysiris-total-length")
+                .map(String::as_str),
+            Some("5000")
+        );
+        assert!(head.body().unwrap().is_empty());
+
+        let mut bad = request("GET", "/big.html");
+        bad.headers
+            .insert("range".to_string(), "bytes=9999-".to_string());
+        assert_eq!(service.handle(&bad).status, 416);
         let _ = std::fs::remove_dir_all(&root);
     }
 }
