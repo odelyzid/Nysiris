@@ -11,9 +11,9 @@
 //!   root, which also defeats symlink escapes;
 //! * only `GET`/`HEAD` are answered; anything else is `405`;
 //! * a body over one mixnet message ([`MAX_ONE_PACKET_BODY`] bytes) is served
-//!   as a sequence of `206 Partial Content` chunks with `Content-Range`; the
-//!   browser's `fetchNymFull` reassembles them (`docs/08-hidden-services.md`
-//!   §8.6).
+//!   as `206 Partial Content` chunks with `Content-Range` when the caller sends
+//!   a `Range` (the browser's `fetchNymFull` reassembles them); an un-ranged
+//!   oversized read gets a clear `413` (`docs/08-hidden-services.md` §8.6).
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -26,7 +26,7 @@ pub const DEFAULT_INDEX: &str = "index.html";
 
 /// Largest raw body that still fits one hidden-service envelope in a single
 /// Sphinx message (base64 + JSON overhead included). Larger files are served
-/// in `Content-Range` chunks of at most this size.
+/// in `Content-Range` chunks of at most this size when the caller uses `Range`.
 pub const MAX_ONE_PACKET_BODY: usize = 1400;
 
 /// A directory served as a hidden service.
@@ -152,13 +152,21 @@ impl StaticFiles {
             return response;
         }
 
+        if requested.is_none() && total > self.max_bytes.max(1) {
+            return Response::error(
+                413,
+                format!(
+                    "file is {total} bytes; request a Range to read it in chunks (max {} per reply)",
+                    self.max_bytes.max(1)
+                ),
+            );
+        }
         let chunk_size = self.max_bytes.max(1);
         let (start, end, status) = match requested {
             Some((start, end)) => {
                 let capped_end = end.min(start + chunk_size - 1);
                 (start, capped_end, 206)
             }
-            None if total > chunk_size => (0, chunk_size - 1, 206),
             None => (0, total.saturating_sub(1), 200),
         };
         let length = if total == 0 { 0 } else { end - start + 1 };
@@ -377,7 +385,17 @@ mod tests {
         std::fs::write(root.join("big.html"), &bytes).unwrap();
         let service = StaticFiles::new(&root).unwrap();
 
-        let first = service.handle(&request("GET", "/big.html"));
+        let plain = service.handle(&request("GET", "/big.html"));
+        assert_eq!(
+            plain.status, 413,
+            "un-ranged oversized reads still fail clearly"
+        );
+
+        let mut first_request = request("GET", "/big.html");
+        first_request
+            .headers
+            .insert("range".to_string(), "bytes=0-".to_string());
+        let first = service.handle(&first_request);
         assert_eq!(first.status, 206);
         assert_eq!(
             first.headers.get("content-range"),

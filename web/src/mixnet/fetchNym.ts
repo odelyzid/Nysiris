@@ -216,7 +216,13 @@ export async function fetchNymFull(
 ): Promise<FetchNymResponse> {
   const maxBytes = options.maxBytes ?? 8 * 1024 * 1024;
   const maxChunks = options.maxChunks ?? 128;
-  const first = await fetchNym(recipient, request, options);
+  // Ask for a range explicitly: services that predate chunking ignore it, and
+  // static files only serve a large body in chunks when the caller opts in.
+  const firstRequest: FetchNymRequest = {
+    ...request,
+    headers: { ...(request.headers ?? {}), range: request.headers?.range ?? 'bytes=0-' },
+  };
+  const first = await fetchNym(recipient, firstRequest, options);
   if (first.error) return first;
   const total = responseTotal(first.headers);
   if (total === null) return first;
