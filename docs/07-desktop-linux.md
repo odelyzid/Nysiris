@@ -56,7 +56,16 @@ The launcher:
 * serves an SPA fallback to `index.html` for extension-less routes,
 * opens the app in a Chromium **`--app` window** (no tabs, no URL bar), falling
   back through `chromium → chromium-browser → google-chrome →
-  google-chrome-stable → brave-browser → microsoft-edge → xdg-open`.
+  google-chrome-stable → brave-browser → microsoft-edge → xdg-open`,
+* accepts a `nym://` link from the desktop entry (`Exec=nysiris %u`) or
+  `--open LINK` and forwards it to the app as `?open=<encoded link>`, so the
+  running shell opens it in a tab.
+
+The packaged desktop entry declares `MimeType=x-scheme-handler/nym;`, so
+`xdg-open nym://…` (and links from chat/email clients) starts the app with the
+link instead of a blank start page. The Electron shell registers the same
+scheme and forwards a second launch to the existing window via
+`postMessage({ type: 'nysiris:open', url })`.
 
 ### Build and install
 

@@ -96,9 +96,12 @@ different packages; both are lazily imported.
 
 ### Tunnel wrapper (`web/src/mixnet/tunnel.ts`)
 
-The tunnel is **one-shot per page**: a second `setupMixTunnel` rejects, and
-guarding on `getTunnelState()` races. Memoise a single promise so concurrent
-callers await one bring-up, and clear it on failure so a retry is possible.
+The tunnel is **one-shot per bring-up**: a second `setupMixTunnel` rejects,
+and guarding on `getTunnelState()` races. Memoise a single promise so
+concurrent callers await one bring-up, and clear it on failure so a retry is
+possible. Phase 4 adds `reconnectTunnel()`: it disconnects, resets the memo,
+and asks the wrapper for a fresh instance while the React tree stays mounted;
+the hard-reload path remains the fallback if the installed WASM refuses.
 
 ```ts
 let tunnelPromise: Promise<unknown> | undefined;
@@ -320,14 +323,12 @@ class MainActivity : BridgeActivity() {
   **foreground service** with an ongoing notification
   (`NysirisForegroundService`, driven by `web/src/adapters/driven/foreground.mjs`)
   to keep the process — and its tunnel — alive while backgrounded.
-* **One-shot tunnel.** The WASM tunnel cannot be rebuilt without a page reload.
-  On Capacitor, a full page reload is a `webView.reload()`; on PWA it is
-  `location.reload()`. Surface a clear "reconnect" action instead of silently
-  trying a second `setupMixTunnel`. This is implemented: after teardown (and
-  when the exit-rotation policy fires) the client shows an explicit
-  **Reconnect** button that reloads the page
-  (`web/src/adapters/driving/shell/App.tsx`; spent state exposed by
-  `web/src/mixnet/tunnel.ts`).
+* **Tunnel reconnect.** `mix-tunnel` documents the WASM as spent after
+  `disconnectMixTunnel`. Phase 4 attempts an in-place rebuild
+  (`reconnectTunnel()` in `web/src/mixnet/tunnel.ts`) while keeping tabs,
+  history, and documents mounted; only the transport and request clients reset.
+  If the runtime refuses to reinitialise, the UI explains the failure and offers
+  a hard reload (`location.reload()` / `webView.reload()`) as the fallback.
 * **Battery/data.** Cover traffic runs continuously while connected; show the
   user a data estimate and offer disconnect. Consider `disableCoverTraffic` only
   if the user explicitly accepts the privacy trade-off.

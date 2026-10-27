@@ -14,6 +14,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const WEB_ROOT = path.join(__dirname, 'web');
+const SCHEME = 'nym';
+let mainWindow = null;
+let pendingLink = null;
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -67,7 +71,73 @@ function startServer() {
   });
 }
 
+function launchLinkFromArgv(argv) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = String(argv[i] || '');
+    if (arg === '--open') {
+      const next = argv[i + 1];
+      if (typeof next === 'string' && next.startsWith('nym://')) return next;
+    }
+    if (arg.startsWith('--open=') && arg.slice('--open='.length).startsWith('nym://')) {
+      return arg.slice('--open='.length);
+    }
+    if (arg.startsWith('nym://')) return arg;
+  }
+  return null;
+}
+
+function appUrlWithLink(base, link) {
+  if (!link) return base;
+  const url = new URL(base);
+  url.searchParams.set('open', link);
+  return url.toString();
+}
+
+async function sendLaunchLink(link) {
+  if (!link) return;
+  if (!mainWindow) {
+    pendingLink = link;
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+  try {
+    await mainWindow.webContents.executeJavaScript(
+      `window.postMessage(${JSON.stringify({ type: 'nysiris:open', url: link })}, '*')`,
+    );
+  } catch {
+    // Renderer not ready yet; keep it for the next window load.
+    pendingLink = link;
+  }
+}
+
+function registerProtocol() {
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(SCHEME, process.execPath, [path.resolve(process.argv[1])]);
+  } else {
+    app.setAsDefaultProtocolClient(SCHEME);
+  }
+}
+
+// One instance owns the window; a second `nym://` launch is forwarded to it.
+const singleInstance = app.requestSingleInstanceLock();
+if (!singleInstance) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    void sendLaunchLink(launchLinkFromArgv(argv));
+  });
+}
+
+// macOS delivers custom-scheme opens through this event.
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  if (url.startsWith('nym://')) void sendLaunchLink(url);
+});
+
 async function main() {
+  pendingLink = pendingLink || launchLinkFromArgv(process.argv);
+  registerProtocol();
   const { url } = await startServer();
   const window = new BrowserWindow({
     width: 1100,
@@ -80,8 +150,20 @@ async function main() {
       sandbox: true,
     },
   });
+  mainWindow = window;
   window.removeMenu();
-  await window.loadURL(url);
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = null;
+  });
+  const initialLink = pendingLink;
+  pendingLink = null;
+  window.webContents.once('did-finish-load', () => {
+    if (!pendingLink) return;
+    const link = pendingLink;
+    pendingLink = null;
+    void sendLaunchLink(link);
+  });
+  await window.loadURL(appUrlWithLink(url, initialLink));
 }
 
 app.whenReady().then(main);

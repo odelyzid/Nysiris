@@ -16,4 +16,6 @@ Notes
   SHA256SUMS.txt (next to the download) verifies the download itself.
 - Command line: `nysiris-launcher.exe --help`. Pass extra flags after
   Nysiris.bat, e.g. `Nysiris.bat --port 8901`. `--no-open` serves only.
+  A `nym://...` argument (or `--open nym://...`) opens that link in a tab:
+  `Nysiris.bat "nym://<id>.<enc>@<gateway>/path"`.
 - Built from source? See docs/12-windows.md (MSYS2) in the repository.

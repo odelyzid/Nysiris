@@ -4,8 +4,10 @@
  * The Nym tunnel is one-shot per page: a second `setupMixTunnel` rejects with
  * "tunnel already initialised", and guarding on `getTunnelState()` races
  * (two call sites can both observe `connecting`). We therefore memoise a single
- * promise, and after a successful teardown we refuse to bring it up again —
- * the page must reload.
+ * promise. `reconnectTunnel()` is the explicit exception: it tears the runtime
+ * down, resets the memo, and asks the wrapper for a fresh instance while the
+ * React tree (tabs/history) stays mounted. If the WASM refuses, the UI falls
+ * back to a page reload.
  *
  * Security: the privacy guardrail (§5.8) fails closed if cover traffic or
  * Poisson pacing is disabled without explicit acknowledgement.
@@ -36,6 +38,8 @@ export interface SetupTunnelOpts {
 
 let tunnelPromise: Promise<unknown> | undefined;
 let spent = false;
+let lastOpts: SetupTunnelOpts | undefined;
+let reconnectPromise: Promise<void> | null = null;
 
 /**
  * Bring the tunnel up exactly once. Safe to call from many components; all
@@ -43,8 +47,9 @@ let spent = false;
  * retry is possible.
  */
 export function ensureTunnel(opts?: SetupTunnelOpts): Promise<unknown> {
+  if (opts) lastOpts = opts;
   if (spent) {
-    return Promise.reject(new Error('mixnet tunnel was torn down; reload the page to create a new one'));
+    return Promise.reject(new Error('mixnet tunnel was torn down; reconnect to create a new one'));
   }
 
   // §5.8 guardrail: refuse a silent privacy downgrade.
@@ -95,9 +100,44 @@ export async function teardownTunnel(): Promise<void> {
 }
 
 /**
- * True once the tunnel has been torn down. The one-shot WASM cannot be brought
- * up again in this page: the UI must offer an explicit reconnect (page reload)
- * rather than calling `ensureTunnel` again (§5.2.2).
+ * Rebuild the tunnel without reloading the page.
+ *
+ * `mix-tunnel` documents the WASM as spent after `disconnectMixTunnel`; in
+ * practice the wrapper recreates its worker handle on the next setup call. We
+ * reset our memo, attempt the setup, and keep the app/tabs alive either way.
+ * If the runtime really refuses, the caller shows the reload fallback instead
+ * of silently hanging.
+ */
+export async function reconnectTunnel(opts?: SetupTunnelOpts): Promise<void> {
+  if (reconnectPromise) return reconnectPromise;
+  const nextOpts = opts ?? lastOpts;
+  reconnectPromise = (async () => {
+    const mod = await import('@nymproject/mix-fetch');
+    try {
+      await mod.disconnectMixTunnel();
+    } catch {
+      // An already-dead tunnel is exactly the case reconnect must recover from.
+    }
+    spent = false;
+    tunnelPromise = undefined;
+    try {
+      await ensureTunnel(nextOpts);
+    } catch (err) {
+      spent = true;
+      throw err;
+    }
+  })();
+  try {
+    await reconnectPromise;
+  } finally {
+    reconnectPromise = null;
+  }
+}
+
+/**
+ * True once the tunnel has been torn down and not yet rebuilt. The UI offers
+ * `reconnectTunnel` first and only falls back to a reload if the runtime
+ * cannot create a fresh instance (§5.2.2).
  */
 export function tunnelSpent(): boolean {
   return spent;

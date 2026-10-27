@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { ensureTunnel, teardownTunnel, tunnelState, tunnelSpent, type TunnelStateView } from '../../../mixnet/tunnel';
-import { exitStatus, mixnetFetch, proveTunnel } from '../../../mixnet/fetch';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import {
+  ensureTunnel,
+  reconnectTunnel,
+  teardownTunnel,
+  tunnelState,
+  tunnelSpent,
+  type TunnelStateView,
+} from '../../../mixnet/tunnel';
+import { exitStatus, mixnetFetch, proveTunnel, resetExitPolicy } from '../../../mixnet/fetch';
 import { NymAddressClient, type IncomingMessage } from '../../../mixnet/messaging';
-import { fetchNym, fetchNymFull } from '../../../mixnet/fetchNym';
+import { fetchNym, fetchNymFull, stopFetchNymClient } from '../../../mixnet/fetchNym';
 import {
   addBlankTab,
   applyPage,
@@ -46,6 +53,22 @@ import {
   type RangeFetcher,
 } from '../../../application/downloadTransfer';
 import { loadScrollPositions, rememberScroll } from '../../../application/scrollStore';
+import { cycleMatch, findMatches, highlightSegments } from '../../../application/find';
+import { clampZoom, loadZoom, nextZoom, saveZoom } from '../../../application/zoom';
+import {
+  PermissionRegistry,
+  loadPermissions,
+  permissionScopeFor,
+  savePermissions,
+  type PermissionDecision,
+  type PermissionName,
+} from '../../../application/permissions';
+import { printDocument } from '../../../shared/print';
+import { isOnline, serviceWorkerSupported, watchConnectivity } from '../../../pwa';
+import { subscribeDeepLinks, takeInitialDeepLink } from '../../../adapters/driven/deepLink';
+import { BrowserTools } from './BrowserTools';
+import { PermissionsPanel } from './PermissionsPanel';
+import { clearFindHighlights, focusFindMatch, highlightFindMatches } from './findInDocument';
 import {
   addDownload,
   clearDownloads,
@@ -240,10 +263,10 @@ function retainPartialDownload(map: Map<string, Uint8Array>, id: string, bytes: 
 
 export function App() {
   const [status, setStatus] = useState<TunnelStateView>({ state: 'shutdown' });
-  // Set once the tunnel has been torn down: the one-shot WASM cannot be rebuilt
-  // without a page reload, so the UI offers an explicit reconnect instead of a
-  // second `ensureTunnel` call that is guaranteed to reject (§5.2.2).
+  // Set once the tunnel has been torn down. Phase 4 offers an in-place
+  // reconnect first; the hard-reload button remains as the SDK fallback.
   const [spent, setSpent] = useState(() => tunnelSpent());
+  const [reconnectEpoch, setReconnectEpoch] = useState(0);
   const [log, setLog] = useState<string[]>([]);
   const [clearnetIp, setClearnetIp] = useState<string>('');
   const [mixnetIp, setMixnetIp] = useState<string>('');
@@ -345,6 +368,26 @@ export function App() {
   const [authPass, setAuthPass] = useState('');
   const [authError, setAuthError] = useState('');
 
+  // Phase 4 browser controls.
+  const [zoom, setZoom] = useState(() => loadZoom(defaultStorage()));
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState('');
+  const [findCount, setFindCount] = useState(0);
+  const [findIndex, setFindIndex] = useState(-1);
+  const findMarksRef = useRef<HTMLElement[]>([]);
+  const findIndexRef = useRef(-1);
+  const findOpenRef = useRef(false);
+  const findQueryRef = useRef('');
+  findOpenRef.current = findOpen;
+  findQueryRef.current = findQuery;
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const permissionRegistryRef = useRef<PermissionRegistry | null>(null);
+  if (!permissionRegistryRef.current) permissionRegistryRef.current = loadPermissions(defaultStorage());
+  const [, setPermissionVersion] = useState(0);
+  const [online, setOnline] = useState(() => isOnline());
+  const [swControlled, setSwControlled] = useState(false);
+  const [initialDeepLink] = useState(() => takeInitialDeepLink());
+
   const append = useCallback((line: string) => {
     setLog((prev) => [...prev.slice(-99), `${new Date().toLocaleTimeString()}  ${line}`]);
   }, []);
@@ -379,12 +422,22 @@ export function App() {
       // the policy itself can only warn (the tunnel is one-shot, §5.2.2).
       if (next.recommendReconnect && !exitWarnedRef.current) {
         exitWarnedRef.current = true;
-        append(`exit reuse: ${next.requests} requests on one exit — reload the page to rotate your exit (§5.2.2)`);
+        append(`exit reuse: ${next.requests} requests on one exit — reconnect to rotate your exit (§5.2.2)`);
       }
       setExit(next);
     }, 2000);
     return () => window.clearInterval(id);
   }, [append]);
+
+  // Connectivity + offline-shell status for the banner/toolbar.
+  useEffect(() => watchConnectivity(setOnline), []);
+  useEffect(() => {
+    if (!serviceWorkerSupported()) return;
+    const update = () => setSwControlled(Boolean(navigator.serviceWorker.controller));
+    update();
+    navigator.serviceWorker.addEventListener('controllerchange', update);
+    return () => navigator.serviceWorker.removeEventListener('controllerchange', update);
+  }, []);
 
   // Keep the Android process alive (foreground service + notification) while the
   // tunnel is up, so Doze/App Standby cannot suspend it; stop it once the tunnel
@@ -465,9 +518,36 @@ export function App() {
     }
   }, [append]);
 
-  // The only way to bring the one-shot tunnel back (or to rotate the exit) is a
-  // full page reload: it rebuilds the WASM tunnel from scratch (§5.2.2).
-  const onReconnect = useCallback(() => {
+  /**
+   * Rebuild the tunnel in place. Tabs/history/documents stay mounted; only the
+   * transport and its per-request clients are reset. If the runtime refuses to
+   * recreate the WASM instance, `lastError` explains and the UI offers a hard
+   * reload fallback.
+   */
+  const onReconnect = useCallback(async () => {
+    setBusy(true);
+    setLastError(null);
+    try {
+      append('reconnecting tunnel in place…');
+      await stopFetchNymClient();
+      await reconnectTunnel({ debug: import.meta.env.DEV });
+      resetExitPolicy();
+      exitWarnedRef.current = false;
+      setSpent(tunnelSpent());
+      setStatus(await tunnelState());
+      setExit(exitStatus());
+      append('tunnel reconnected; tabs and history preserved');
+      setReconnectEpoch((value) => value + 1);
+    } catch (err) {
+      setSpent(tunnelSpent());
+      setLastError(err);
+      append(`reconnect failed: ${String(err)} — a reload is required if this persists`);
+    } finally {
+      setBusy(false);
+    }
+  }, [append]);
+
+  const onHardReload = useCallback(() => {
     window.location.reload();
   }, []);
 
@@ -568,6 +648,16 @@ export function App() {
       ),
     [contacts],
   );
+
+  const permissionScope = useMemo(
+    () => (activeTab?.url ? permissionScopeFor(activeTab.url) : 'app'),
+    [activeTab?.url],
+  );
+  const textFindMatches = useMemo(() => {
+    const content = activeTab?.content;
+    if (!content || content.kind === 'html') return [];
+    return findMatches(content.body.slice(0, 200_000), findQuery);
+  }, [activeTab?.content, findQuery]);
 
   /** mixnetFetch + cookies + auth + redirect chain for clearnet requests. */
   const requestClearnet = useCallback(async (url: string, init?: RequestInit): Promise<ClearnetResult> => {
@@ -1048,6 +1138,141 @@ export function App() {
     setNavigationError(null);
   }, []);
 
+  /* ---------------------------------------------------------- page tools */
+
+  const applyZoom = useCallback((value: number) => {
+    const next = clampZoom(value);
+    setZoom(next);
+    saveZoom(defaultStorage(), next);
+  }, []);
+
+  const onZoomIn = useCallback(() => applyZoom(nextZoom(zoom, 1)), [applyZoom, zoom]);
+  const onZoomOut = useCallback(() => applyZoom(nextZoom(zoom, -1)), [applyZoom, zoom]);
+  const onZoomReset = useCallback(() => applyZoom(1), [applyZoom]);
+
+  const runFindOnDoc = useCallback((doc: Document | null, query: string) => {
+    const marks = doc ? highlightFindMatches(doc, query) : [];
+    findMarksRef.current = marks;
+    const index = marks.length > 0 ? 0 : -1;
+    findIndexRef.current = index;
+    setFindCount(marks.length);
+    setFindIndex(index);
+    if (index >= 0) focusFindMatch(marks, index);
+  }, []);
+
+  const onFindQuery = useCallback((value: string) => setFindQuery(value), []);
+  const onFindClose = useCallback(() => {
+    setFindOpen(false);
+    const doc = frameRef.current?.contentDocument;
+    if (doc) clearFindHighlights(doc);
+    findMarksRef.current = [];
+    findIndexRef.current = -1;
+    setFindCount(0);
+    setFindIndex(-1);
+  }, []);
+  const onFindToggle = useCallback(() => {
+    if (findOpenRef.current) onFindClose();
+    else setFindOpen(true);
+  }, [onFindClose]);
+
+  const moveFind = useCallback(
+    (direction: 1 | -1) => {
+      if (activeTab?.content?.kind === 'html') {
+        const marks = findMarksRef.current;
+        const index = cycleMatch(findIndexRef.current, marks.length, direction);
+        if (index < 0) return;
+        findIndexRef.current = index;
+        setFindIndex(index);
+        focusFindMatch(marks, index);
+        return;
+      }
+      const index = cycleMatch(findIndexRef.current, textFindMatches.length, direction);
+      if (index < 0) return;
+      findIndexRef.current = index;
+      setFindIndex(index);
+    },
+    [activeTab?.content?.kind, textFindMatches.length],
+  );
+
+  const onFindNext = useCallback(() => moveFind(1), [moveFind]);
+  const onFindPrev = useCallback(() => moveFind(-1), [moveFind]);
+
+  // Keep iframe highlights in step with the query and the active document.
+  useEffect(() => {
+    if (!findOpen) return;
+    if (activeTab?.content?.kind === 'html') {
+      runFindOnDoc(frameRef.current?.contentDocument ?? null, findQuery);
+      return;
+    }
+    const index = textFindMatches.length > 0 ? 0 : -1;
+    findIndexRef.current = index;
+    setFindCount(textFindMatches.length);
+    setFindIndex(index);
+  }, [findOpen, findQuery, activeTab?.id, activeTab?.content?.body, activeTab?.content?.kind, textFindMatches.length, runFindOnDoc]);
+
+  const onPrint = useCallback(() => {
+    const content = activeTab?.content;
+    if (!content || !activeTab) return;
+    const title = tabTitle(activeTab);
+    let opened = false;
+    if (content.kind === 'html') opened = printDocument({ title, html: content.body });
+    else if (content.kind === 'text' || content.kind === 'json') opened = printDocument({ title, text: content.body });
+    else if (content.kind === 'image') opened = printDocument({ title, imageUrl: content.body });
+    else opened = printDocument({ title, text: `${content.contentType}\n${activeTab.url}\n` });
+    if (!opened) {
+      append('print window blocked; opening the system print dialog for the app shell');
+      window.print();
+    }
+  }, [activeTab, append]);
+
+  const onPermissionChange = useCallback(
+    (name: PermissionName, decision: PermissionDecision) => {
+      const registry = permissionRegistryRef.current;
+      if (!registry) return;
+      registry.set(permissionScope, name, decision);
+      savePermissions(defaultStorage(), registry);
+      setPermissionVersion((value) => value + 1);
+      append(`permission ${name}=${decision} for ${permissionScope}`);
+    },
+    [append, permissionScope],
+  );
+
+  const onPermissionReset = useCallback(() => {
+    const registry = permissionRegistryRef.current;
+    if (!registry) return;
+    registry.clear(permissionScope);
+    savePermissions(defaultStorage(), registry);
+    setPermissionVersion((value) => value + 1);
+    append(`permissions reset for ${permissionScope}`);
+  }, [append, permissionScope]);
+
+  // Browser keyboard shortcuts: find, zoom, escape.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const mod = event.ctrlKey || event.metaKey;
+      if (!mod) {
+        if (event.key === 'Escape' && findOpenRef.current) onFindClose();
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === 'f') {
+        event.preventDefault();
+        setFindOpen(true);
+      } else if (key === '+' || key === '=') {
+        event.preventDefault();
+        applyZoom(nextZoom(zoom, 1));
+      } else if (key === '-') {
+        event.preventDefault();
+        applyZoom(nextZoom(zoom, -1));
+      } else if (key === '0') {
+        event.preventDefault();
+        applyZoom(1);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [applyZoom, onFindClose, zoom]);
+
   /**
    * Attach link interception to the same-origin sandbox document. The document
    * has no scripts; `allow-same-origin` lets this parent handler turn a link
@@ -1098,7 +1323,8 @@ export function App() {
         { passive: true },
       );
     }
-  }, [goTo]);
+    if (findOpenRef.current) runFindOnDoc(doc, findQueryRef.current);
+  }, [goTo, runFindOnDoc]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -1114,6 +1340,27 @@ export function App() {
     });
     return () => cancelAnimationFrame(id);
   }, [activeTabId, activeTab?.url, activeTab?.content?.body]);
+
+  // Text/JSON pages scroll the app window rather than an iframe, so they need
+  // their own per-URL restore/save path.
+  useEffect(() => {
+    const url = activeTab?.url;
+    const kind = activeTab?.content?.kind;
+    if (view !== 'portal' || !url || (kind !== 'text' && kind !== 'json')) return;
+    const saved = loadScrollPositions(defaultStorage())[url] ?? 0;
+    const id = requestAnimationFrame(() => window.scrollTo(0, saved));
+    let timer = 0;
+    const onScroll = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => rememberScroll(defaultStorage(), url, window.scrollY), 150);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(id);
+      window.clearTimeout(timer);
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [activeTabId, activeTab?.url, activeTab?.content?.body, activeTab?.content?.kind, view]);
 
   /** Re-fetch a tab's current URL without pushing a history entry. */
   const reloadTab = useCallback(
@@ -1445,14 +1692,43 @@ export function App() {
   }, [downloads]);
 
   // On first mount, restore and load the active tab once (page bodies are not
-  // persisted). The ref keeps StrictMode's development double-effect in check.
+  // persisted). An OS launch link wins over the restored document; tabs and
+  // history are still restored underneath it.
   useEffect(() => {
     if (bootRestoredRef.current) return;
     bootRestoredRef.current = true;
+    if (initialDeepLink) {
+      onSelectView('portal');
+      void goTo(initialDeepLink);
+      return;
+    }
     const tab = tabs.find((candidate) => candidate.id === activeTabId);
     if (tab?.url && !tab.content && !tab.loading) void reloadTab(tab);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, []);
+
+  // Links delivered while the app is running (Electron postMessage, Android
+  // appUrlOpen, hash changes). The ref avoids re-subscribing on every render.
+  const goToRef = useRef(goTo);
+  goToRef.current = goTo;
+  useEffect(
+    () =>
+      subscribeDeepLinks((link) => {
+        append(`opening OS link ${link.slice(0, 96)}`);
+        onSelectView('portal');
+        void goToRef.current(link);
+      }),
+    [append, onSelectView],
+  );
+
+  // After an in-place reconnect, reload the visible document so it reflects the
+  // new tunnel. Other tabs keep their URLs/history and load on selection.
+  useEffect(() => {
+    if (reconnectEpoch === 0) return;
+    const tab = tabs.find((candidate) => candidate.id === activeTabId);
+    if (tab?.url) void reloadTab(tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reconnect only
+  }, [reconnectEpoch]);
 
   // "Run a Portal" tab: probe a running provider's address through the tunnel.
   const onProbePortal = useCallback(
@@ -1608,6 +1884,18 @@ export function App() {
 
   const currentFavorite = socialService ? isFavoritePortal(favorites, socialService) : false;
 
+  const displayedText =
+    activeTab?.content && (activeTab.content.kind === 'text' || activeTab.content.kind === 'json')
+      ? activeTab.content.body.slice(0, 200_000)
+      : '';
+  const textFindSegments = useMemo(
+    () =>
+      findOpen && findQuery
+        ? highlightSegments(displayedText, textFindMatches)
+        : [{ text: displayedText, match: false }],
+    [displayedText, findOpen, findQuery, textFindMatches],
+  );
+
   // The link a bookmark saves: the last opened private link (keeps any path),
   // otherwise the bound portal address.
   const bookmarkLink = uri.trim() || socialService;
@@ -1712,6 +2000,35 @@ export function App() {
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}
       />
+      <BrowserTools
+        zoom={zoom}
+        onZoomIn={onZoomIn}
+        onZoomOut={onZoomOut}
+        onZoomReset={onZoomReset}
+        findOpen={findOpen}
+        findQuery={findQuery}
+        findCount={findCount}
+        findIndex={findIndex}
+        onFindToggle={onFindToggle}
+        onFindQuery={onFindQuery}
+        onFindNext={onFindNext}
+        onFindPrev={onFindPrev}
+        onFindClose={onFindClose}
+        onPrint={onPrint}
+        printDisabled={!activeTab?.content}
+        permissionsOpen={permissionsOpen}
+        onPermissionsToggle={() => {
+          setPermissionsOpen((open) => !open);
+          onSelectView('portal');
+        }}
+        offline={!online}
+        swControlled={swControlled}
+      />
+      {!online && (
+        <p className="fly-callout-warn fly-offline-note" role="status">
+          Offline — the cached app shell is available, but new mixnet pages cannot load until the network returns.
+        </p>
+      )}
       <div className="fly-desktop" data-context={contextOpen ? 'open' : 'closed'}>
         <Roster
           portals={rosterPortals}
@@ -1794,7 +2111,7 @@ export function App() {
                   </p>
                   <div className="fly-row">
                     {spent ? (
-                      <button className="fly-btn fly-btn-primary" onClick={onReconnect}>
+                      <button className="fly-btn fly-btn-primary" onClick={() => void onReconnect()} disabled={busy}>
                         Reconnect
                       </button>
                     ) : (
@@ -1820,7 +2137,7 @@ export function App() {
                       Exit reuse limit reached ({exit.requests} requests on one exit). Reconnect to rotate your exit
                       (§5.2.2) — a fixed exit is a linking key at the destinations you visit.
                       <span className="fly-row fly-mt-2">
-                        <button className="fly-btn" onClick={onReconnect}>
+                        <button className="fly-btn" onClick={() => void onReconnect()} disabled={busy}>
                           Reconnect now
                         </button>
                       </span>
@@ -2165,6 +2482,16 @@ export function App() {
                 </section>
               )}
 
+              {permissionsOpen && permissionRegistryRef.current && (
+                <PermissionsPanel
+                  scope={permissionScope}
+                  registry={permissionRegistryRef.current}
+                  onChange={onPermissionChange}
+                  onReset={onPermissionReset}
+                  onClose={() => setPermissionsOpen(false)}
+                />
+              )}
+
               {/* Same-origin lets this parent intercept links; scripts, forms,
                   popups, and top-navigation remain blocked by the sandbox, and
                   the loader strips active content before rendering. */}
@@ -2180,17 +2507,36 @@ export function App() {
                   srcDoc={activeTab.content.body}
                   loading="lazy"
                   onLoad={onFrameLoad}
+                  style={{ zoom } as CSSProperties}
                 />
               )}
 
-              {activeTab?.content && (activeTab.content.kind === 'text' || activeTab.content.kind === 'json') && (
-                <pre className="fly-pre fly-portal-text" aria-label="Page content">
-                  {activeTab.content.body.slice(0, 200_000)}
+              {(activeTab?.content?.kind === 'text' || activeTab?.content?.kind === 'json') && (
+                <pre className="fly-pre fly-portal-text" aria-label="Page content" style={{ zoom } as CSSProperties}>
+                  {textFindSegments.map((segment, index) =>
+                    segment.match ? (
+                      <mark
+                        key={index}
+                        className={
+                          segment.index === findIndex ? 'fly-find-hit fly-find-current' : 'fly-find-hit'
+                        }
+                      >
+                        {segment.text}
+                      </mark>
+                    ) : (
+                      <span key={index}>{segment.text}</span>
+                    ),
+                  )}
                 </pre>
               )}
 
               {activeTab?.content?.kind === 'image' && (
-                <img className="fly-portal-image" src={activeTab.content.body} alt={tabTitle(activeTab)} />
+                <img
+                  className="fly-portal-image"
+                  src={activeTab.content.body}
+                  alt={tabTitle(activeTab)}
+                  style={{ zoom } as CSSProperties}
+                />
               )}
 
               {activeTab?.content?.kind === 'media' &&
@@ -2201,6 +2547,7 @@ export function App() {
                     controls
                     playsInline
                     aria-label={tabTitle(activeTab)}
+                    style={{ zoom } as CSSProperties}
                   />
                 ) : (
                   <audio
@@ -2328,14 +2675,17 @@ export function App() {
                       <Panel title="Connection (technical)" onClose={() => onClosePanel('connection')}>
                         <div className="fly-row">
                           {spent ? (
-                            <button className="fly-btn" onClick={onReconnect}>
-                              Reconnect
+                            <button className="fly-btn" onClick={() => void onReconnect()} disabled={busy}>
+                              Reconnect in place
                             </button>
                           ) : (
                             <button className="fly-btn" onClick={() => void onConnect()} disabled={busy}>
                               Connect
                             </button>
                           )}
+                          <button className="fly-btn" onClick={onHardReload}>
+                            Reload app
+                          </button>
                           <button className="fly-btn" onClick={() => void onProveTunnel()} disabled={busy}>
                             Prove tunnel (IP comparison)
                           </button>

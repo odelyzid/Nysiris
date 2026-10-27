@@ -1,7 +1,8 @@
 # 15. Browser Document, Tabs, and Unified Navigation
 
-**Status:** Phase 1 and Phase 3 are implemented. Phase 2 is implemented except
-the embedded PDF/object and media range-streaming items noted below.
+**Status:** Phase 1, Phase 3, and Phase 4 are implemented. Phase 2 is
+implemented except the embedded PDF/object and media range-streaming items
+noted below; Phase 5 remains.
 
 This document is the implementation plan for turning the Portal view into a
 real browser document model. It complements the browser-capability audit and
@@ -254,13 +255,39 @@ are followed and redirect cookies are retained; a reload revalidates with an
 a `401` prompts for credentials; a dropped download resumes from its offset;
 Stop aborts the transport instead of only hiding the result.
 
-### Phase 4 — browser lifecycle
+### Phase 4 — browser lifecycle (implemented)
 
-- In-place reconnect (no page reload) and tab restoration after reconnect.
-- Error boundary + crash recovery.
-- Session restore of tab scroll/position and service worker/offline.
-- Permissions, find, zoom, print.
-- OS protocol handling (`nym://`) on desktop and Android.
+- [x] In-place reconnect without a page reload; tabs/history stay mounted and
+      the active document reloads on the new tunnel.
+- [x] Tab restoration after reconnect (URLs/history persistence is unchanged;
+      other tabs load on selection).
+- [x] React error boundary plus a global async-error banner; recovery keeps the
+      app alive, and "Restart cleanly" clears only the offline shell cache.
+- [x] Session restore of iframe and text/JSON scroll positions.
+- [x] Service worker app-shell cache with offline start-up and an offline banner.
+- [x] Per-site permissions UI and persisted allow/ask/block decisions.
+- [x] Find-in-page for HTML (DOM matches) and text/JSON (highlighted segments),
+      with `Ctrl/Cmd+F`, Enter/Shift+Enter, and match count.
+- [x] Zoom controls (50–200 %, persisted) with `Ctrl/Cmd +/-/0`.
+- [x] Print the active document through a sanitised print window.
+- [x] OS `nym://` handling: Debian/desktop launcher `%u`, Electron protocol +
+      single-instance forwarding, Android `VIEW` intent, and Capacitor
+      `appUrlOpen`.
+
+**Implemented in** `web/src/mixnet/tunnel.ts` (`reconnectTunnel`),
+`web/src/pwa.ts` + `web/public/sw.js`, `web/src/application/zoom.ts`,
+`web/src/application/find.ts`, `web/src/application/permissions.ts`,
+`web/src/application/deepLinks.ts`, `web/src/shared/print.ts`,
+`web/src/adapters/driving/shell/ErrorBoundary.tsx`,
+`BrowserTools.tsx`, `PermissionsPanel.tsx`, `findInDocument.ts`, and
+`web/src/adapters/driven/deepLink.ts`.
+
+**Acceptance (met where the runtime allows):** switching off and reconnecting
+keeps the tab strip and history; a render throw shows a recoverable screen; the
+app shell starts offline; find/zoom/print work on both HTML and text documents;
+a second `nym://` launch opens in the running desktop instance. If the installed
+mix-tunnel WASM refuses to be reinitialised, the UI explains the failure and
+offers the documented hard-reload fallback.
 
 ### Phase 5 — portal/Osiris surface
 
@@ -288,6 +315,18 @@ Stop aborts the transport instead of only hiding the result.
 | `web/src/application/encoding.ts` | `Content-Encoding` decoding |
 | `web/src/application/downloadTransfer.ts` | Resumable `Range`/`If-Range` download assembly |
 | `web/src/application/ranges.ts` | `Content-Range` parsing/chunk assembly |
+| `web/src/application/zoom.ts` | Zoom steps, clamp, persistence |
+| `web/src/application/find.ts` | Find matches + text highlight segments |
+| `web/src/application/permissions.ts` | Per-site allow/ask/block decisions |
+| `web/src/application/deepLinks.ts` | `nym://` launch-link parsing/encoding |
+| `web/src/pwa.ts` | Service-worker registration + connectivity |
+| `web/public/sw.js` | App-shell/runtime cache worker |
+| `web/src/shared/print.ts` | Print-window document builder |
+| `web/src/adapters/driven/deepLink.ts` | Query/Electron/Capacitor launch listeners |
+| `web/src/adapters/driving/shell/ErrorBoundary.tsx` | Render boundary + async-error banner |
+| `web/src/adapters/driving/shell/BrowserTools.tsx` | Find/zoom/print/permission/offline controls |
+| `web/src/adapters/driving/shell/PermissionsPanel.tsx` | Per-site permission UI |
+| `web/src/adapters/driving/shell/findInDocument.ts` | DOM highlight/search for the iframe |
 | `web/src/lib/abort.ts` | AbortError + signal racing |
 | `web/src/mixnet/fetchNym.ts` | Nym envelope client, abortable waiters, chunk reassembly |
 | `crates/nysiris-sdk/src/files.rs` | Static files: `Range`, `ETag`/`304`, `If-Range` |
@@ -309,6 +348,12 @@ Stop aborts the transport instead of only hiding the result.
 | `web/test/encoding.test.mjs` | gzip/deflate/stacked decoding |
 | `web/test/downloadTransfer.test.mjs` | Resume, restart-on-200, abort, bounds |
 | `web/test/ranges.test.mjs` | `Content-Range` parsing and chunk assembly |
+| `web/test/zoom.test.mjs` | Zoom clamp/steps/persistence |
+| `web/test/find.test.mjs` | Match rules, segments, wraparound |
+| `web/test/permissions.test.mjs` | Per-site decisions and caps |
+| `web/test/deepLinks.test.mjs` | Launch URL/argv parsing |
+| `web/test/print.test.mjs` | Print document escaping |
+| `web/test/pwa.test.mjs` | Offline helper degradation |
 
 ## 15.9 Migration notes
 
@@ -325,3 +370,8 @@ Stop aborts the transport instead of only hiding the result.
   download shelf persists progress metadata (`received`, `total`, `ETag`) so a
   paused transfer can be resumed while the app stays open; after a reload the
   bytes are gone and the retry starts from byte zero.
+- Phase 4 preferences use `fly.browser.zoom.v1` and
+  `fly.browser.permissions.v1`. Both are device-local and safe to clear.
+- The service worker caches only the app shell/static assets
+  (`nysiris-shell-v1`, `nysiris-runtime-v1`); mixnet requests never pass through
+  it. "Restart cleanly" removes those caches without deleting app data.

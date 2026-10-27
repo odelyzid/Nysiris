@@ -42,6 +42,11 @@ export function exitStatus(): { requests: number; recommendReconnect: boolean } 
   };
 }
 
+/** Start a fresh exit window after an in-place reconnect. */
+export function resetExitPolicy(): void {
+  exitPolicy.reset();
+}
+
 /**
  * Compare the source IP a service sees over clearnet vs over the mixnet.
  * A mismatch is the simplest positive proof that the tunnel carried the request.

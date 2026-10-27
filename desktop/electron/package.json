@@ -22,6 +22,14 @@
   "build": {
     "appId": "app.tribewarez.oz.nysiris",
     "productName": "nysiris",
+    "protocols": [
+      {
+        "name": "Nysiris private link",
+        "schemes": [
+          "nym"
+        ]
+      }
+    ],
     "files": [
       "main.js",
       "web/**/*"

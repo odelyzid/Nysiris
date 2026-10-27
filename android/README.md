@@ -27,7 +27,7 @@ Requirements:
 
 ```sh
 npm --prefix ../web run build
-npm --prefix ../web i @capacitor/core @capacitor/android
+npm --prefix ../web i @capacitor/core @capacitor/app @capacitor/android
 npm --prefix ../web i -D @capacitor/cli
 npm --prefix ../web run android:add
 npm --prefix ../web run android:sync
@@ -41,6 +41,26 @@ The generated manifest lives at `web/android/app/src/main/AndroidManifest.xml`
 * `INTERNET` permission.
 * `android:usesCleartextTraffic="false"`.
 * `android:networkSecurityConfig="@xml/network_security_config"`.
+* The `VIEW`/`BROWSABLE` intent filter for `nym://` links.
+
+### Private links (`nym://`)
+
+The illustrative manifest includes:
+
+```xml
+<intent-filter>
+  <action android:name="android.intent.action.VIEW" />
+  <category android:name="android.intent.category.DEFAULT" />
+  <category android:name="android.intent.category.BROWSABLE" />
+  <data android:scheme="nym" />
+</intent-filter>
+```
+
+`@capacitor/app` is a web dependency. On native launch the shell reads
+`App.getLaunchUrl()` and, while running, listens for `appUrlOpen`; both feed
+`web/src/adapters/driven/deepLink.ts`, which validates the link and opens it in
+the active tab. Without the plugin the app still works, and `?open=nym://…`
+launches from desktop/PWA shortcuts keep working.
 
 Then copy `network_security_config.xml` to
 `android/app/src/main/res/xml/network_security_config.xml`.
@@ -53,9 +73,10 @@ Then copy `network_security_config.xml` to
   is up) with an ongoing notification, which raises process priority so the
   WebView — and the tunnel inside it — stays alive. Without it the tunnel would
   be foreground-only.
-* **One-shot WASM tunnel.** The tunnel cannot be rebuilt without a page reload.
-  Surface an explicit "Reconnect" action (`webView.reload()` / `location.reload()`)
-  rather than silently retrying `setupMixTunnel`.
+* **Tunnel reconnect.** The app calls `reconnectTunnel()` to rebuild the WASM
+  tunnel in place while tabs/history stay mounted. If the installed runtime
+  refuses to reinitialise the WASM instance, the shell shows the hard-reload
+  fallback rather than silently retrying.
 * **Network changes.** Wi-Fi↔cellular transitions drop the WSS to the entry
   gateway. Reconnect on `ConnectivityManager` callbacks.
 * **Battery and data.** Cover traffic runs continuously while connected. Show an

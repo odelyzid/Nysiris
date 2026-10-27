@@ -200,8 +200,9 @@ Web Worker (one per page)
 
 Consequences you must design around:
 
-* **One tunnel per page.** `setupMixTunnel` is one-shot; after
-  `disconnectMixTunnel` the page must reload. Memoise a single promise.
+* **One tunnel per page.** `setupMixTunnel` is one-shot per bring-up; after
+  `disconnectMixTunnel` the client calls `reconnectTunnel()` to rebuild it in
+  place, with a hard reload as the fallback. Memoise a single promise.
 * **Worker + CSP.** You need `worker-src 'self' blob:`; the worker is started
   from an object URL. `connect-src` must include `wss:` and the bootstrap host
   `https://validator.nymtech.net` (plain HTTPS, before any mixnet exists).

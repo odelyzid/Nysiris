@@ -40,6 +40,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Private links: nym://<id>.<enc>@<gateway>/path -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="nym" />
+            </intent-filter>
+
             <!-- Verified App Links, if services deep-link into the app:
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />

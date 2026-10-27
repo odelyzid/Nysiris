@@ -261,8 +261,8 @@ export class ExitPolicy {
   /** Why reconnection is needed, for the UI. */
   static get reconnectNote() {
     return (
-      'The Nym tunnel is one-shot per page and selects its exit at setup, so a ' +
-      'fresh exit requires a reconnect (page reload).'
+      'A fresh exit requires reconnecting: the client rebuilds the one-shot ' +
+      'tunnel in place (with a page reload as the fallback).'
     );
   }
 }

@@ -31,6 +31,8 @@ struct Config {
     port: u16,
     open: bool,
     browser: Option<String>,
+    /// `nym://` link passed by the OS (`%u`) or `--open`.
+    launch_url: Option<String>,
     /// Chrome/Chromium user-data-dir. A dedicated profile is important: it
     /// keeps the user's browser extensions (wallet injectors, content blockers)
     /// out of a privacy-sensitive app. Extensions can block same-origin
@@ -78,7 +80,10 @@ fn main() {
         .local_addr()
         .map(|a| a.port())
         .unwrap_or(config.port);
-    let url = format!("http://127.0.0.1:{port}/");
+    let url = match config.launch_url.as_deref() {
+        Some(link) => with_open_link(&format!("http://127.0.0.1:{port}/"), link),
+        None => format!("http://127.0.0.1:{port}/"),
+    };
     println!("nysiris serving {root:?}");
     println!("listening on {url}");
 
@@ -115,15 +120,19 @@ fn main() {
 }
 
 const USAGE: &str = "\
-Usage: nysiris-launcher [--root DIR] [--port N] [--browser CMD] [--no-open]
+Usage: nysiris-launcher [--root DIR] [--port N] [--browser CMD] [--no-open] [nym://link]
 
   --root DIR          directory containing the built web app (default: ./web/dist)
   --port N            loopback port to bind (default: 0 = choose a free port)
   --browser CMD       browser executable to prefer (default: auto-detect Chromium)
   --profile DIR        Chrome user-data-dir to use (default: a dedicated app profile)
   --allow-extensions   do NOT pass --disable-extensions (app profile keeps them out)
+  --open LINK         open a nym:// link instead of the blank start page
   --no-open           do not launch a browser (serve only; useful for tests)
   --help              show this help
+
+A nym:// link passed as the only positional argument (the desktop file uses
+%u) is forwarded to the app as ?open=...; the app opens it in a tab.
 
 The app runs in its own Chrome profile under
 $XDG_DATA_HOME/nysiris/chrome-profile so your personal extensions do not
@@ -135,6 +144,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
         port: DEFAULT_PORT,
         open: true,
         browser: None,
+        launch_url: None,
         profile: default_profile_dir(),
         allow_extensions: false,
     };
@@ -160,6 +170,14 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
             }
             "--allow-extensions" => config.allow_extensions = true,
             "--no-open" => config.open = false,
+            "--open" => {
+                let value = args.next().ok_or("--open needs a value")?;
+                if let Some(link) = as_nym_link(&value) {
+                    config.launch_url = Some(link.to_string());
+                } else {
+                    return Err(format!("--open expects a nym:// link, got {value:?}"));
+                }
+            }
             "--help" | "-h" => {
                 println!("{USAGE}");
                 std::process::exit(0);
@@ -167,10 +185,14 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
             other if other.starts_with('-') => {
                 return Err(format!("unknown argument: {other}"));
             }
-            // Ignore positional arguments. Desktop launchers sometimes pass a
-            // URL (`%u`) or file; there is no URL semantics for this app, and
-            // erroring here would make the menu entry fail to start.
-            _ => {}
+            // Desktop launchers pass the URL as `%u`; keep any nym:// link.
+            other => {
+                if let Some(link) = as_nym_link(other) {
+                    config.launch_url = Some(link.to_string());
+                }
+                // Other positional arguments are ignored: erroring here would
+                // make the menu entry fail to start.
+            }
         }
     }
     Ok(config)
@@ -357,6 +379,32 @@ fn hex_val(byte: u8) -> Option<u8> {
         b'A'..=b'F' => Some(byte - b'A' + 10),
         _ => None,
     }
+}
+
+/// Accept only a bounded `nym://` locator from the OS.
+fn as_nym_link(value: &str) -> Option<&str> {
+    let link = value.trim();
+    (link.len() > "nym://".len() && link.len() <= 4096 && link.starts_with("nym://"))
+        .then_some(link)
+}
+
+/// Forward a launch link to the web app as `?open=<percent-encoded link>`.
+fn with_open_link(base: &str, link: &str) -> String {
+    let separator = if base.contains('?') { '&' } else { '?' };
+    format!("{base}{separator}open={}", percent_encode_query(link))
+}
+
+fn percent_encode_query(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() * 3);
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(*byte as char)
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
 }
 
 fn mime_for(path: &Path) -> &'static str {
@@ -583,6 +631,41 @@ fn find_in_path(name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launch_links_are_validated_and_encoded() {
+        assert_eq!(
+            as_nym_link("nym://abc.def@gateway/p"),
+            Some("nym://abc.def@gateway/p")
+        );
+        assert_eq!(as_nym_link("  nym://a.b@g  "), Some("nym://a.b@g"));
+        assert_eq!(as_nym_link("https://example.com/"), None);
+        assert_eq!(as_nym_link("nym://"), None);
+        assert_eq!(
+            with_open_link("http://127.0.0.1:9/", "nym://a.b@g/p?x=1"),
+            "http://127.0.0.1:9/?open=nym%3A%2F%2Fa.b%40g%2Fp%3Fx%3D1"
+        );
+        assert_eq!(
+            with_open_link("http://127.0.0.1:9/?keep=1", "nym://a.b@g"),
+            "http://127.0.0.1:9/?keep=1&open=nym%3A%2F%2Fa.b%40g"
+        );
+    }
+
+    #[test]
+    fn positional_nym_links_are_kept_but_other_args_are_ignored() {
+        assert_eq!(
+            parse_args(["nym://abc.def@gateway/x".to_string()].into_iter())
+                .unwrap()
+                .launch_url
+                .as_deref(),
+            Some("nym://abc.def@gateway/x")
+        );
+        assert!(parse_args(["--no-open".to_string()].into_iter())
+            .unwrap()
+            .launch_url
+            .is_none());
+        assert!(parse_args(["--open".to_string(), "https://x".to_string()].into_iter()).is_err());
+    }
 
     #[test]
     fn mime_types_are_mapped() {
