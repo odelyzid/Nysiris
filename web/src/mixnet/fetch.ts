@@ -12,19 +12,26 @@
  */
 import { ensureTunnel } from './tunnel';
 import { ExitPolicy, ExitRotation } from './enforcement.mjs';
+import { raceWithAbort } from '../lib/abort';
 
 /** Bounded reuse (50 requests, ±10 jitter) balances P2 linkability against reconnect cost. */
 const exitPolicy = new ExitPolicy({ policy: ExitRotation.Every, maxRequests: 50, jitter: 10 });
 
 export async function mixnetFetch(input: string, init?: RequestInit): Promise<Response> {
-  await ensureTunnel();
-  const { mixFetch } = await import('@nymproject/mix-fetch');
-  const response = (await mixFetch(input, init as never)) as Response;
-  exitPolicy.recordRequest();
-  if (exitPolicy.shouldRecommendReconnect()) {
-    console.warn(`nym exit policy: ${exitPolicy.count} requests on one exit; ` + ExitPolicy.reconnectNote);
-  }
-  return response;
+  const pending = (async () => {
+    await ensureTunnel();
+    const { mixFetch } = await import('@nymproject/mix-fetch');
+    const response = (await mixFetch(input, init as never)) as Response;
+    exitPolicy.recordRequest();
+    if (exitPolicy.shouldRecommendReconnect()) {
+      console.warn(`nym exit policy: ${exitPolicy.count} requests on one exit; ` + ExitPolicy.reconnectNote);
+    }
+    return response;
+  })();
+  // The tunnel may not implement abort itself; racing the signal at least
+  // stops the navigation immediately and prevents a late response from
+  // touching a stopped tab.
+  return raceWithAbort(pending, init?.signal ?? undefined);
 }
 
 /** Current exit-rotation state, for the UI. */

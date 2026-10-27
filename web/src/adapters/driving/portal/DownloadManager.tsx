@@ -4,7 +4,7 @@
  * Only metadata is persisted; bytes are written to disk when the download
  * completes, and "Save again" re-fetches through the same mixnet transport.
  */
-import { formatSize, type DownloadRecord } from '../../../application/downloads';
+import { downloadProgress, formatSize, isResumable, type DownloadRecord } from '../../../application/downloads';
 
 export function DownloadManager({
   entries,
@@ -38,6 +38,12 @@ export function DownloadManager({
               <span className="fly-muted">
                 {formatSize(entry.size)} · {entry.contentType || 'unknown type'} · {statusLabel(entry)}
               </span>
+              {(entry.status === 'pending' || entry.status === 'partial') && entry.total ? (
+                <span className="fly-muted" role="status">
+                  {formatSize(entry.received ?? 0)} of {formatSize(entry.total)} received
+                  {downloadProgress(entry) === null ? '' : ` (${Math.round((downloadProgress(entry) ?? 0) * 100)}%)`}
+                </span>
+              ) : null}
               {entry.error && <span className="fly-download-error">{entry.error}</span>}
               <span className="fly-muted fly-break-all">{entry.url}</span>
             </div>
@@ -47,7 +53,11 @@ export function DownloadManager({
                 onClick={() => onSaveAgain(entry)}
                 disabled={entry.status === 'pending' || !entry.url}
               >
-                {entry.status === 'pending' ? 'Saving…' : 'Save again'}
+                {entry.status === 'pending'
+                  ? 'Saving…'
+                  : isResumable(entry) || entry.status === 'partial'
+                    ? 'Resume'
+                    : 'Save again'}
               </button>
               <button className="fly-btn fly-btn-sm" onClick={() => onRemove(entry.id)}>
                 Remove
@@ -62,6 +72,7 @@ export function DownloadManager({
 
 function statusLabel(entry: DownloadRecord): string {
   if (entry.status === 'pending') return 'saving';
+  if (entry.status === 'partial') return 'paused — can resume';
   if (entry.status === 'failed') return 'failed';
   return 'saved';
 }

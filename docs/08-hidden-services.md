@@ -130,9 +130,12 @@ Bulk transfer remains the weakest workload for anonymity (`05-security.md`
 Read responses from `nysiris-sdk` static files now use the same idea over HTTP
 semantics: a caller that sends `Range` gets `206` with `Content-Range`, and the
 browser's `fetchNymFull` requests the remaining chunks and reassembles them.
-An un-ranged oversized read still gets a clear `413` so older CLI clients are
-not silently truncated. The chunk module remains the lower-level primitive for
-request bodies and non-HTTP protocols.
+`HEAD` advertises length/type/`ETag`/range support without a body; a matching
+`If-None-Match` gets `304`, and `If-Range` lets a paused download resume only
+when the file is still the same representation. An un-ranged oversized read
+still gets a clear `413` so older CLI clients are not silently truncated. The
+chunk module remains the lower-level primitive for request bodies and non-HTTP
+protocols.
 
 ## 8.7 What this is not
 

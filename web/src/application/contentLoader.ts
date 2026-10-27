@@ -31,7 +31,11 @@ export interface ResourceResponse {
   bytes: Uint8Array;
 }
 
-export type ResourceFetcher = (url: string, kind: ResourceKind) => Promise<ResourceResponse | null>;
+export type ResourceFetcher = (
+  url: string,
+  kind: ResourceKind,
+  signal?: AbortSignal,
+) => Promise<ResourceResponse | null>;
 
 export interface ResourceLoader {
   load(url: string, kind: ResourceKind): Promise<ResourceResponse | null>;
@@ -49,6 +53,8 @@ export interface PrepareOptions {
   maxResourceBytes?: number;
   maxTotalBytes?: number;
   maxCssDepth?: number;
+  /** Cancels the resource fan-out for a stopped/abandoned navigation. */
+  signal?: AbortSignal;
 }
 
 export interface PreparedDocument {
@@ -101,6 +107,7 @@ export function createResourceLoader(
       return { ...stats };
     },
     load(url: string, kind: ResourceKind): Promise<ResourceResponse | null> {
+      if (options.signal?.aborted) return Promise.resolve(null);
       const cached = cache.get(url);
       if (cached) return cached;
       if (stats.resources >= maxResources) {
@@ -110,7 +117,7 @@ export function createResourceLoader(
       stats.resources += 1;
       const task = (async () => {
         try {
-          const response = await fetcher(url, kind);
+          const response = await fetcher(url, kind, options.signal);
           if (!response || response.status >= 400) {
             stats.failed += 1;
             return null;

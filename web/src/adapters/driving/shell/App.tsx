@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ensureTunnel, teardownTunnel, tunnelState, tunnelSpent, type TunnelStateView } from '../../../mixnet/tunnel';
 import { exitStatus, mixnetFetch, proveTunnel } from '../../../mixnet/fetch';
 import { NymAddressClient, type IncomingMessage } from '../../../mixnet/messaging';
@@ -16,15 +16,35 @@ import {
   newTabId,
   pageKindFor,
   saveBrowserTabs,
+  settlePage,
   stopPage,
   tabTitle,
   type BrowserTab,
 } from '../../../application/browser';
 import { resolveNavigationInput, type NavigationTarget, type ParsedInvite } from '../../../application/navigation';
 import { b64decode, b64encode } from '../../../lib/bytes';
+import { isAbortError } from '../../../lib/abort';
 import { prepareDocument, type ResourceKind, type ResourceResponse } from '../../../application/contentLoader';
 import { DocumentCache } from '../../../application/documentCache';
 import { CookieJar, loadCookieJar, saveCookieJar } from '../../../application/cookies';
+import { CredentialStore, authScopeFor, isSupportedChallenge, parseAuthChallenge, type AuthChallenge } from '../../../application/auth';
+import { clearnetFetch, type ClearnetResult } from '../../../application/clearnet';
+import { decodeContentEncoding } from '../../../application/encoding';
+import {
+  conditionalRequestHeaders,
+  filenameFromDisposition,
+  headerValue,
+  headersToRecord,
+  parseContentLength,
+  responseValidators,
+  type HeaderRecord,
+} from '../../../application/httpHeaders';
+import { responseTotal } from '../../../application/ranges';
+import {
+  TransferError,
+  transferRanges,
+  type RangeFetcher,
+} from '../../../application/downloadTransfer';
 import { loadScrollPositions, rememberScroll } from '../../../application/scrollStore';
 import {
   addDownload,
@@ -159,11 +179,63 @@ const DOWNLOAD_EXTENSIONS: Record<string, string> = {
   'image/svg+xml': '.svg',
 };
 
-function downloadName(title: string, contentType: string): string {
-  const base = (title || 'download').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'download';
+function downloadName(title: string, contentType: string, serverName?: string | null): string {
+  const heading = (serverName || title || 'download').trim();
+  const base =
+    heading
+      .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, '_')
+      .replace(/\s+/g, ' ')
+      .replace(/^[.\s_]+|[.\s_]+$/g, '') || 'download';
   const type = contentType.split(';')[0].trim().toLowerCase();
   const extension = DOWNLOAD_EXTENSIONS[type] ?? '';
   return base.toLowerCase().endsWith(extension) ? base : `${base}${extension}`;
+}
+
+/** Download metadata from a GET or HEAD response. */
+interface DownloadMeta {
+  contentType: string;
+  total: number | null;
+  etag: string | null;
+  acceptRanges: boolean;
+  filename: string | null;
+  url: string;
+}
+
+function metaFromHeaders(headers: HeaderRecord, url = ''): DownloadMeta {
+  return {
+    contentType: headerValue(headers, 'content-type'),
+    total: responseTotal(headers) ?? parseContentLength(headerValue(headers, 'content-length')),
+    etag: responseValidators(headers).etag,
+    acceptRanges: /(^|,)\s*bytes\s*(,|$)/i.test(headerValue(headers, 'accept-ranges')),
+    filename: filenameFromDisposition(headerValue(headers, 'content-disposition')),
+    url,
+  };
+}
+
+/** A pending `401` prompt, bound to the tab that hit it. */
+interface AuthPrompt {
+  tabId: string;
+  target: NavigationTarget;
+  scope: string;
+  challenge: AuthChallenge;
+  wrong: boolean;
+}
+
+/** Partial download bytes are session-only; keep the retained set bounded. */
+const MAX_RETAINED_DOWNLOAD_BYTES = 64 * 1024 * 1024;
+
+function retainPartialDownload(map: Map<string, Uint8Array>, id: string, bytes: Uint8Array): void {
+  map.delete(id);
+  map.set(id, bytes);
+  let total = 0;
+  for (const value of map.values()) total += value.length;
+  for (const key of map.keys()) {
+    if (total <= MAX_RETAINED_DOWNLOAD_BYTES || map.size <= 1) break;
+    const value = map.get(key);
+    if (!value) continue;
+    map.delete(key);
+    total -= value.length;
+  }
 }
 
 export function App() {
@@ -255,7 +327,23 @@ export function App() {
   const documentCacheRef = useRef(new DocumentCache());
   const cookieJarRef = useRef<CookieJar | null>(null);
   if (!cookieJarRef.current) cookieJarRef.current = loadCookieJar(defaultStorage());
+  const credentialsRef = useRef<CredentialStore | null>(null);
+  if (!credentialsRef.current) credentialsRef.current = new CredentialStore();
+  /** One AbortController per tab: Stop/new navigation aborts the transport. */
+  const abortRef = useRef(new Map<string, AbortController>());
+  /** Bytes retained for a paused download, keyed by download id (session only). */
+  const downloadPartsRef = useRef(new Map<string, Uint8Array>());
+  /** Download ids with a transfer currently running (prevents double-start). */
+  const activeDownloadsRef = useRef(new Set<string>());
+  /** Response metadata from the document GET, used to name/prefill downloads. */
+  const pageMetaRef = useRef(new Map<string, DownloadMeta>());
+  /** mix-fetch's `Response` shim cannot represent a null-body 304; fall back. */
+  const clearnetConditionalBrokenRef = useRef(false);
   const [downloads, setDownloads] = useState<DownloadRecord[]>(() => loadDownloads(defaultStorage()));
+  const [authPrompt, setAuthPrompt] = useState<AuthPrompt | null>(null);
+  const [authUser, setAuthUser] = useState('');
+  const [authPass, setAuthPass] = useState('');
+  const [authError, setAuthError] = useState('');
 
   const append = useCallback((line: string) => {
     setLog((prev) => [...prev.slice(-99), `${new Date().toLocaleTimeString()}  ${line}`]);
@@ -458,9 +546,10 @@ export function App() {
         { method: 'GET', path: hsPath },
         { timeoutMs: 120_000, maxBytes: MAX_PAGE_BYTES },
       );
-      const text = new TextDecoder().decode(res.body);
+      const bytes = await decodeContentEncoding(res.body, headerValue(res.headers, 'content-encoding'));
+      const text = new TextDecoder().decode(bytes);
       setHsResult(`status=${res.status} error=${res.error ?? 'none'}\n${text.slice(0, 2000)}`);
-      append(`fetchNym done: status=${res.status} body=${res.body.length}B`);
+      append(`fetchNym done: status=${res.status} body=${bytes.length}B`);
     } catch (err) {
       setLastError(err);
       append(`fetchNym failed: ${String(err)}`);
@@ -480,29 +569,19 @@ export function App() {
     [contacts],
   );
 
-  /** mixnetFetch plus the app-level cookie jar for clearnet requests. */
-  const mixnetRequest = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
+  /** mixnetFetch + cookies + auth + redirect chain for clearnet requests. */
+  const requestClearnet = useCallback(async (url: string, init?: RequestInit): Promise<ClearnetResult> => {
     const jar = cookieJarRef.current;
-    const cookie = jar?.headerFor(url) ?? '';
-    const headers: Record<string, string> = {};
-    if (init?.headers) {
-      if (init.headers instanceof Headers) init.headers.forEach((value, key) => (headers[key] = value));
-      else if (Array.isArray(init.headers)) for (const [key, value] of init.headers) headers[key] = value;
-      else Object.assign(headers, init.headers);
+    try {
+      return await clearnetFetch(url, init, {
+        fetch: mixnetFetch,
+        jar: jar ?? undefined,
+        credentials: credentialsRef.current ?? undefined,
+      });
+    } finally {
+      // Redirect hops may have updated the jar even if a later hop failed.
+      if (jar) saveCookieJar(defaultStorage(), jar);
     }
-    if (cookie) headers.cookie = cookie;
-    const res = await mixnetFetch(url, { ...init, headers });
-    const withSetCookie = res.headers as Headers & { getSetCookie?: () => string[] };
-    const setCookies = withSetCookie.getSetCookie?.() ?? [];
-    if (setCookies.length === 0) {
-      const single = res.headers.get('set-cookie');
-      if (single) setCookies.push(single);
-    }
-    if (jar && setCookies.length > 0) {
-      for (const value of setCookies) jar.setFromHeader(url, value);
-      saveCookieJar(defaultStorage(), jar);
-    }
-    return res;
   }, []);
 
   /**
@@ -510,45 +589,68 @@ export function App() {
    * The content loader only ever receives this callback, never native fetch.
    */
   const fetchSubresource = useCallback(
-    async (url: string, kind: ResourceKind): Promise<ResourceResponse | null> => {
+    async (url: string, kind: ResourceKind, signal?: AbortSignal): Promise<ResourceResponse | null> => {
       let target: NavigationTarget;
       try {
         target = resolveNavigationInput(url);
       } catch {
         return null;
       }
+      const accept =
+        kind === 'image'
+          ? 'image/*,*/*;q=0.8'
+          : kind === 'stylesheet'
+            ? 'text/css,*/*;q=0.1'
+            : kind === 'media'
+              ? 'audio/*,video/*,*/*;q=0.1'
+              : '*/*';
       try {
         if (target.kind === 'nym') {
-          const accept =
-            kind === 'image'
-              ? 'image/*,*/*;q=0.8'
-              : kind === 'stylesheet'
-                ? 'text/css,*/*;q=0.1'
-                : kind === 'media'
-                  ? 'audio/*,video/*,*/*;q=0.1'
-                  : '*/*';
+          const headers: Record<string, string> = { accept };
+          const authorization = credentialsRef.current?.authorizationFor(target.address) ?? '';
+          if (authorization) headers.authorization = authorization;
           const res = await fetchNymFull(
             target.address,
-            { method: 'GET', path: target.path, headers: { accept } },
+            { method: 'GET', path: target.path, headers },
             {
               timeoutMs: 30_000,
               maxBytes: kind === 'other' ? 32 * 1024 * 1024 : 4 * 1024 * 1024,
+              signal,
             },
           );
-          if (res.error) return null;
-          return { status: res.status, contentType: res.headers['content-type'] ?? '', bytes: res.body };
+          if (res.error || res.status >= 400) return null;
+          const body = await decodeContentEncoding(res.body, headerValue(res.headers, 'content-encoding'));
+          return { status: res.status, contentType: headerValue(res.headers, 'content-type'), bytes: body };
         }
-        const res = await mixnetRequest(url);
-        return {
-          status: res.status,
-          contentType: res.headers.get('content-type') ?? '',
-          bytes: new Uint8Array(await res.arrayBuffer()),
-        };
+        const result = await requestClearnet(url, { headers: { accept }, signal });
+        if (result.response.status >= 400) return null;
+        const headers = headersToRecord(result.response.headers);
+        const raw = new Uint8Array(await result.response.arrayBuffer());
+        const bytes = await decodeContentEncoding(raw, headerValue(headers, 'content-encoding'));
+        return { status: result.response.status, contentType: headerValue(headers, 'content-type'), bytes };
       } catch {
         return null;
       }
     },
-    [mixnetRequest],
+    [requestClearnet],
+  );
+
+  /** Surface a `401` as an in-page sign-in card instead of a page error. */
+  const requestAuth = useCallback(
+    (tabId: string, target: NavigationTarget, token: number, challenge: AuthChallenge, wrong: boolean) => {
+      const scope = authScopeFor(target.kind === 'nym' ? target.address : target.url);
+      setTabs((prev) => prev.map((tab) => (tab.id === tabId ? settlePage(tab, token) : tab)));
+      setAuthPrompt({ tabId, target, scope, challenge, wrong });
+      setAuthUser('');
+      setAuthPass('');
+      setAuthError(wrong ? 'That username and password were not accepted.' : '');
+      append(
+        wrong
+          ? `sign-in failed for ${scope}`
+          : `${scope} needs sign-in (${challenge.label}${challenge.realm ? `, realm “${challenge.realm}”` : ''})`,
+      );
+    },
+    [append],
   );
 
   /**
@@ -560,8 +662,16 @@ export function App() {
     async (
       target: NavigationTarget,
       tabId: string,
-      options: { push: boolean; historyIndex?: number; token: number; force?: boolean; redirects?: number },
+      options: {
+        push: boolean;
+        historyIndex?: number;
+        token: number;
+        force?: boolean;
+        redirects?: number;
+        signal?: AbortSignal;
+      },
     ) => {
+      if (options.signal?.aborted) return;
       setLastError(null);
       setNavigationError(null);
       setTabs((prev) =>
@@ -577,8 +687,8 @@ export function App() {
       );
       setUri(target.url);
 
-      const cached = options.force ? null : documentCacheRef.current.get(target.url);
-      if (cached) {
+      const cached = documentCacheRef.current.get(target.url);
+      if (cached && !options.force) {
         setTabs((prev) =>
           prev.map((tab) =>
             tab.id === tabId
@@ -593,9 +703,29 @@ export function App() {
         );
         return;
       }
+      // Reload/back-forward revalidation: ask the origin whether the cached
+      // body is still current. A 304 reuses the prepared document.
+      const conditional = cached ? conditionalRequestHeaders(cached) : {};
 
       activeLoadsRef.current += 1;
       setBusy(true);
+
+      const applyCached = (status: number) => {
+        if (!cached) return false;
+        setTabs((prev) =>
+          prev.map((tab) =>
+            tab.id === tabId
+              ? applyPage(tab, options.token, {
+                  status,
+                  contentType: cached.contentType,
+                  body: cached.body,
+                  favicon: cached.favicon,
+                })
+              : tab,
+          ),
+        );
+        return true;
+      };
 
       if (target.kind === 'nym') {
         if (target.invite) {
@@ -612,23 +742,31 @@ export function App() {
         }
         append(`nym:// fetch ${target.path} @ ${target.address.slice(0, 12)}…`);
         try {
+          const headers: Record<string, string> = { accept: 'text/html', ...conditional };
+          const authorization = credentialsRef.current?.authorizationFor(target.address) ?? '';
+          if (authorization) headers.authorization = authorization;
           const res = await fetchNymFull(
             target.address,
-            { method: 'GET', path: target.path, headers: { accept: 'text/html' } },
-            { timeoutMs: 120_000, maxBytes: MAX_PAGE_BYTES },
+            { method: 'GET', path: target.path, headers },
+            { timeoutMs: 120_000, maxBytes: MAX_PAGE_BYTES, signal: options.signal },
           );
-          if (res.body.length > MAX_PAGE_BYTES) {
-            setTabs((prev) =>
-              prev.map((tab) =>
-                tab.id === tabId ? failPage(tab, options.token, `page is too large (${res.body.length} bytes)`) : tab,
-              ),
-            );
-            append(`nym:// page too large: ${res.body.length} bytes`);
-            return;
+          if (options.signal?.aborted) return;
+          const resHeaders = res.headers ?? {};
+
+          if (res.status === 401) {
+            const challenge = parseAuthChallenge(headerValue(resHeaders, 'www-authenticate'));
+            if (challenge) {
+              requestAuth(tabId, target, options.token, challenge, Boolean(authorization));
+              return;
+            }
           }
-          const contentType = res.headers['content-type'] ?? '';
-          const error = res.error;
-          if (!error && res.status >= 300 && res.status < 400 && res.headers.location) {
+          if (res.status === 304) {
+            if (applyCached(cached?.status ?? 200)) {
+              append(`nym:// not modified (304) ${target.path}`);
+              return;
+            }
+          }
+          if (!res.error && res.status >= 300 && res.status < 400 && headerValue(resHeaders, 'location')) {
             const redirects = (options.redirects ?? 0) + 1;
             if (redirects > 5) {
               setTabs((prev) =>
@@ -638,7 +776,10 @@ export function App() {
             }
             let next: NavigationTarget;
             try {
-              next = resolveNavigationInput(new URL(res.headers.location, target.url).toString());
+              next = resolveNavigationInput(
+                new URL(headerValue(resHeaders, 'location'), target.url).toString(),
+                { petnames: navigationPetnames },
+              );
             } catch (redirectError) {
               setTabs((prev) =>
                 prev.map((tab) =>
@@ -650,27 +791,41 @@ export function App() {
             append(`redirect ${res.status} -> ${next.url}`);
             await loadInto(next, tabId, {
               push: false,
-              token: (navigationSeqRef.current += 1),
+              token: options.token,
               redirects,
+              signal: options.signal,
             });
             return;
           }
-          const text = new TextDecoder().decode(res.body);
-          if (error) {
-            setTabs((prev) => prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, error) : tab)));
-            setHsResult(`status=${res.status} error=${error}`);
-            append(`nym:// done with service error: ${error}`);
+          if (res.error) {
+            setTabs((prev) => prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, res.error ?? '') : tab)));
+            setHsResult(`status=${res.status} error=${res.error}`);
+            append(`nym:// done with service error: ${res.error}`);
             return;
           }
+          const decoded = await decodeContentEncoding(res.body, headerValue(resHeaders, 'content-encoding'));
+          if (options.signal?.aborted) return;
+          if (decoded.length > MAX_PAGE_BYTES) {
+            setTabs((prev) =>
+              prev.map((tab) =>
+                tab.id === tabId ? failPage(tab, options.token, `page is too large (${decoded.length} bytes)`) : tab,
+              ),
+            );
+            append(`nym:// page too large: ${decoded.length} bytes`);
+            return;
+          }
+          const contentType = headerValue(resHeaders, 'content-type');
+          const text = new TextDecoder().decode(decoded);
           const kind = pageKindFor(contentType, text);
           let body = text;
           let effectiveType = contentType;
           let favicon: string | null = null;
           if (kind === 'image' || kind === 'media' || kind === 'pdf' || kind === 'binary') {
-            body = dataUrlFor(res.body, contentType);
+            body = dataUrlFor(decoded, contentType);
           } else if (kind === 'html') {
             try {
-              const prepared = await prepareDocument(text, target.url, fetchSubresource);
+              const prepared = await prepareDocument(text, target.url, fetchSubresource, { signal: options.signal });
+              if (options.signal?.aborted) return;
               body = prepared.html;
               effectiveType = 'text/html; charset=utf-8';
               favicon = prepared.favicon;
@@ -681,6 +836,7 @@ export function App() {
                 );
               }
             } catch (err) {
+              if (options.signal?.aborted || isAbortError(err)) return;
               setTabs((prev) =>
                 prev.map((tab) =>
                   tab.id === tabId ? failPage(tab, options.token, `could not prepare this page: ${String(err)}`) : tab,
@@ -691,6 +847,7 @@ export function App() {
               return;
             }
           }
+          const validators = responseValidators(resHeaders);
           setTabs((prev) =>
             prev.map((tab) =>
               tab.id === tabId
@@ -703,15 +860,20 @@ export function App() {
             contentType: effectiveType,
             body,
             favicon,
+            ...validators,
+            finalUrl: target.url,
           });
+          const meta = metaFromHeaders(resHeaders, target.url);
+          pageMetaRef.current.set(target.url, { ...meta, total: meta.total ?? decoded.length });
           setRecentPortals((prev) => {
             const next = rememberPortal(prev, target.address);
             saveRecentPortals(next, defaultViewStorage());
             return next;
           });
-          setHsResult(`status=${res.status} body=${res.body.length}B (rendered in the tab)`);
-          append(`nym:// done: status=${res.status} body=${res.body.length}B`);
+          setHsResult(`status=${res.status} body=${decoded.length}B (rendered in the tab)`);
+          append(`nym:// done: status=${res.status} body=${decoded.length}B`);
         } catch (err) {
+          if (options.signal?.aborted || isAbortError(err)) return;
           setTabs((prev) => prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, String(err)) : tab)));
           setLastError(err);
           append(`nym:// failed: ${String(err)}`);
@@ -724,8 +886,41 @@ export function App() {
 
       append(`https fetch ${target.url}`);
       try {
-        const res = await mixnetRequest(target.url);
-        const bytes = new Uint8Array(await res.arrayBuffer());
+        let result: ClearnetResult;
+        // The mix-fetch shim wraps the WASM reply in a DOM `Response`; status
+        // 304 requires a null body and throws there. Disable conditional
+        // clearnet requests for the session after the first such failure.
+        const conditionalClearnet = clearnetConditionalBrokenRef.current ? {} : conditional;
+        try {
+          result = await requestClearnet(target.url, { headers: conditionalClearnet, signal: options.signal });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const unsupported304 =
+            Object.keys(conditionalClearnet).length > 0 &&
+            !options.signal?.aborted &&
+            /invalid response status code 304/i.test(message);
+          if (!unsupported304) throw err;
+          clearnetConditionalBrokenRef.current = true;
+          append('clearnet transport cannot represent 304; conditional reloads disabled for this session');
+          result = await requestClearnet(target.url, { signal: options.signal });
+        }
+        if (options.signal?.aborted) return;
+        const res = result.response;
+        const resHeaders = headersToRecord(res.headers);
+        if (result.authChallenge) {
+          requestAuth(tabId, target, options.token, result.authChallenge, result.authenticated);
+          return;
+        }
+        if (res.status === 304) {
+          if (applyCached(cached?.status ?? 200)) {
+            append(`web not modified (304) ${target.url}`);
+            return;
+          }
+        }
+        const raw = new Uint8Array(await res.arrayBuffer());
+        if (options.signal?.aborted) return;
+        const bytes = await decodeContentEncoding(raw, headerValue(resHeaders, 'content-encoding'));
+        if (options.signal?.aborted) return;
         if (bytes.length > MAX_PAGE_BYTES) {
           setTabs((prev) =>
             prev.map((tab) =>
@@ -735,7 +930,7 @@ export function App() {
           append(`web page too large: ${bytes.length} bytes`);
           return;
         }
-        const contentType = res.headers.get('content-type') ?? '';
+        const contentType = headerValue(resHeaders, 'content-type');
         const decoded = new TextDecoder().decode(bytes);
         const kind = pageKindFor(contentType, decoded);
         const text = kind === 'image' || kind === 'media' || kind === 'pdf' || kind === 'binary' ? '' : decoded;
@@ -748,8 +943,9 @@ export function App() {
           try {
             // `mixnetFetch` follows redirects; resolve relative assets against
             // the final document URL, not the one the user typed.
-            const documentUrl = res.url || target.url;
-            const prepared = await prepareDocument(text, documentUrl, fetchSubresource);
+            const documentUrl = result.url || res.url || target.url;
+            const prepared = await prepareDocument(text, documentUrl, fetchSubresource, { signal: options.signal });
+            if (options.signal?.aborted) return;
             body = prepared.html;
             effectiveType = 'text/html; charset=utf-8';
             favicon = prepared.favicon;
@@ -760,6 +956,7 @@ export function App() {
               );
             }
           } catch (err) {
+            if (options.signal?.aborted || isAbortError(err)) return;
             setTabs((prev) =>
               prev.map((tab) =>
                 tab.id === tabId ? failPage(tab, options.token, `could not prepare this page: ${String(err)}`) : tab,
@@ -770,6 +967,14 @@ export function App() {
             return;
           }
         }
+        if (res.status >= 400 && !body) {
+          setTabs((prev) =>
+            prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, `server returned ${res.status}`) : tab)),
+          );
+          append(`web error: status=${res.status}`);
+          return;
+        }
+        const validators = responseValidators(resHeaders);
         setTabs((prev) =>
           prev.map((tab) =>
             tab.id === tabId
@@ -782,10 +987,15 @@ export function App() {
           contentType: effectiveType,
           body,
           favicon,
+          ...validators,
+          finalUrl: result.url || target.url,
         });
+        const meta = metaFromHeaders(resHeaders, result.url || target.url);
+        pageMetaRef.current.set(target.url, { ...meta, total: meta.total ?? bytes.length });
         setHsResult(`status=${res.status} body=${body.length}B (rendered in the tab)`);
         append(`web done: status=${res.status} body=${body.length}B`);
       } catch (err) {
+        if (options.signal?.aborted || isAbortError(err)) return;
         setTabs((prev) => prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, String(err)) : tab)));
         setLastError(err);
         append(`web failed: ${String(err)}`);
@@ -794,8 +1004,20 @@ export function App() {
         setBusy(activeLoadsRef.current > 0);
       }
     },
-    [append, fetchSubresource, mixnetRequest],
+    [append, fetchSubresource, navigationPetnames, requestAuth, requestClearnet],
   );
+
+  /**
+   * Start a navigation for a tab: abort the previous transport, mint a token,
+   * and clear any auth prompt that belonged to the superseded load.
+   */
+  const beginNavigation = useCallback((tabId: string) => {
+    abortRef.current.get(tabId)?.abort();
+    const controller = new AbortController();
+    abortRef.current.set(tabId, controller);
+    setAuthPrompt((prev) => (prev && prev.tabId === tabId ? null : prev));
+    return { token: (navigationSeqRef.current += 1), controller, signal: controller.signal };
+  }, []);
 
   const goTo = useCallback(
     async (raw: string) => {
@@ -810,11 +1032,11 @@ export function App() {
       }
       const tabId = activeTab?.id ?? tabs[0]?.id;
       if (!tabId) return;
-      const token = (navigationSeqRef.current += 1);
+      const { token, signal } = beginNavigation(tabId);
       onSelectView('portal');
-      await loadInto(target, tabId, { push: true, token });
+      await loadInto(target, tabId, { push: true, token, signal });
     },
-    [activeTab?.id, append, loadInto, navigationPetnames, onSelectView, tabs],
+    [activeTab?.id, append, beginNavigation, loadInto, navigationPetnames, onSelectView, tabs],
   );
 
   const onGo = useCallback(() => {
@@ -896,6 +1118,7 @@ export function App() {
   /** Re-fetch a tab's current URL without pushing a history entry. */
   const reloadTab = useCallback(
     async (tab: BrowserTab, historyIndex?: number) => {
+      if (!tab.url) return;
       let target: NavigationTarget;
       try {
         target = resolveNavigationInput(tab.url);
@@ -903,17 +1126,16 @@ export function App() {
         setNavigationError(err instanceof Error ? err.message : String(err));
         return;
       }
-      const token = (navigationSeqRef.current += 1);
-      await loadInto(target, tab.id, { push: false, historyIndex, token, force: true });
+      const { token, signal } = beginNavigation(tab.id);
+      await loadInto(target, tab.id, { push: false, historyIndex, token, force: true, signal });
     },
-    [loadInto],
+    [beginNavigation, loadInto],
   );
 
   const onBack = useCallback(() => {
     if (!activeTab) return;
     const entry = historyEntry(activeTab, -1);
     if (!entry) return;
-    const token = (navigationSeqRef.current += 1);
     let target: NavigationTarget;
     try {
       target = resolveNavigationInput(entry.url);
@@ -921,14 +1143,14 @@ export function App() {
       setNavigationError(err instanceof Error ? err.message : String(err));
       return;
     }
-    void loadInto(target, activeTab.id, { push: false, historyIndex: entry.index, token });
-  }, [activeTab, loadInto]);
+    const { token, signal } = beginNavigation(activeTab.id);
+    void loadInto(target, activeTab.id, { push: false, historyIndex: entry.index, token, signal });
+  }, [activeTab, beginNavigation, loadInto]);
 
   const onForward = useCallback(() => {
     if (!activeTab) return;
     const entry = historyEntry(activeTab, 1);
     if (!entry) return;
-    const token = (navigationSeqRef.current += 1);
     let target: NavigationTarget;
     try {
       target = resolveNavigationInput(entry.url);
@@ -936,8 +1158,9 @@ export function App() {
       setNavigationError(err instanceof Error ? err.message : String(err));
       return;
     }
-    void loadInto(target, activeTab.id, { push: false, historyIndex: entry.index, token });
-  }, [activeTab, loadInto]);
+    const { token, signal } = beginNavigation(activeTab.id);
+    void loadInto(target, activeTab.id, { push: false, historyIndex: entry.index, token, signal });
+  }, [activeTab, beginNavigation, loadInto]);
 
   const onReload = useCallback(() => {
     if (!activeTab?.url) return;
@@ -946,8 +1169,12 @@ export function App() {
 
   const onStop = useCallback(() => {
     if (!activeTab) return;
+    abortRef.current.get(activeTab.id)?.abort();
+    abortRef.current.delete(activeTab.id);
+    setAuthPrompt((prev) => (prev && prev.tabId === activeTab.id ? null : prev));
     setTabs((prev) => prev.map((tab) => (tab.id === activeTab.id ? stopPage(tab) : tab)));
-  }, [activeTab]);
+    append('load stopped');
+  }, [activeTab, append]);
 
   const onSelectTab = useCallback(
     (id: string) => {
@@ -975,6 +1202,9 @@ export function App() {
 
   const onCloseTab = useCallback(
     (id: string) => {
+      abortRef.current.get(id)?.abort();
+      abortRef.current.delete(id);
+      setAuthPrompt((prev) => (prev && prev.tabId === id ? null : prev));
       const result = closeBrowserTab(tabs, id, activeTabId);
       setTabs(result.tabs);
       setActiveTabId(result.activeId);
@@ -987,7 +1217,8 @@ export function App() {
   const saveCurrentPage = useCallback(() => {
     if (!activeTab?.content || !activeTab.url) return;
     const contentType = activeTab.content.contentType;
-    const name = downloadName(activeTab.title || tabTitle(activeTab), contentType);
+    const meta = pageMetaRef.current.get(activeTab.url) ?? null;
+    const name = downloadName(activeTab.title || tabTitle(activeTab), contentType, meta?.filename);
     const size = downloadDataUrl(activeTab.content.body, name);
     if (size === null) return;
     setDownloads((prev) =>
@@ -999,35 +1230,198 @@ export function App() {
         size,
         status: 'saved',
         createdAt: Date.now(),
+        received: size,
+        total: meta?.total ?? size,
+        etag: meta?.etag ?? null,
       }),
     );
   }, [activeTab]);
 
+  /** HEAD metadata for a download: name, length, validator, range support. */
+  const headTarget = useCallback(
+    async (target: NavigationTarget): Promise<DownloadMeta | null> => {
+      try {
+        if (target.kind === 'nym') {
+          const headers: Record<string, string> = { accept: '*/*' };
+          const authorization = credentialsRef.current?.authorizationFor(target.address) ?? '';
+          if (authorization) headers.authorization = authorization;
+          const res = await fetchNym(
+            target.address,
+            { method: 'HEAD', path: target.path, headers },
+            { timeoutMs: 30_000 },
+          );
+          if (res.error || res.status >= 400) return null;
+          return metaFromHeaders(res.headers ?? {}, target.url);
+        }
+        const result = await requestClearnet(target.url, {
+          method: 'HEAD',
+          headers: { accept: '*/*', 'accept-encoding': 'identity' },
+        });
+        if (result.response.status >= 400) return null;
+        return metaFromHeaders(headersToRecord(result.response.headers), result.url || target.url);
+      } catch {
+        return null;
+      }
+    },
+    [requestClearnet],
+  );
+
+  /** One Range GET per loop iteration for the resumable downloader. */
+  const rangeFetcherFor = useCallback(
+    (target: NavigationTarget): RangeFetcher => {
+      if (target.kind === 'nym') {
+        return async (request, signal) => {
+          const headers: Record<string, string> = { accept: '*/*', range: `bytes=${request.start}-` };
+          if (request.start > 0 && request.etag) headers['if-range'] = request.etag;
+          const authorization = credentialsRef.current?.authorizationFor(target.address) ?? '';
+          if (authorization) headers.authorization = authorization;
+          const res = await fetchNym(
+            target.address,
+            { method: 'GET', path: target.path, headers },
+            { timeoutMs: 90_000, signal },
+          );
+          return { status: res.status, headers: res.headers ?? {}, body: res.body };
+        };
+      }
+      return async (request, signal) => {
+        // `identity` keeps Range offsets aligned with the bytes on the wire:
+        // a compressed chunk cannot be decoded independently.
+        const headers: Record<string, string> = {
+          accept: '*/*',
+          'accept-encoding': 'identity',
+          range: `bytes=${request.start}-`,
+        };
+        if (request.start > 0 && request.etag) headers['if-range'] = request.etag;
+        const result = await requestClearnet(target.url, { headers, signal });
+        const record = headersToRecord(result.response.headers);
+        const raw = new Uint8Array(await result.response.arrayBuffer());
+        const body = await decodeContentEncoding(raw, headerValue(record, 'content-encoding'));
+        return { status: result.response.status, headers: record, body };
+      };
+    },
+    [requestClearnet],
+  );
+
   const saveDownloadAgain = useCallback(
     async (entry: DownloadRecord) => {
-      setDownloads((prev) => updateDownload(prev, entry.id, { status: 'pending', error: undefined }));
-      const res = await fetchSubresource(entry.url, 'other');
-      if (!res) {
+      if (activeDownloadsRef.current.has(entry.id)) return;
+      activeDownloadsRef.current.add(entry.id);
+      let target: NavigationTarget;
+      try {
+        target = resolveNavigationInput(entry.url);
+      } catch (err) {
+        activeDownloadsRef.current.delete(entry.id);
         setDownloads((prev) =>
           updateDownload(prev, entry.id, {
             status: 'failed',
-            error: 'Could not fetch the file again through the mixnet.',
+            error: err instanceof Error ? err.message : String(err),
           }),
         );
         return;
       }
-      saveBlob(res.bytes, res.contentType || entry.contentType, entry.name);
+
+      setDownloads((prev) => updateDownload(prev, entry.id, { status: 'pending', error: undefined }));
+      const head = await headTarget(target);
+      const contentType = head?.contentType || entry.contentType;
+      const serverName = head?.filename ?? null;
+      const name = serverName
+        ? downloadName(serverName, contentType, serverName)
+        : entry.name || downloadName('download', contentType);
+      const total = head?.total ?? entry.total ?? null;
+      const etag = head?.etag ?? entry.etag ?? null;
+
+      // Resume only when the retained bytes belong to the same validator.
+      const previous = downloadPartsRef.current.get(entry.id);
+      const canResume = entry.status === 'partial' || entry.status === 'failed';
+      const keepPrevious = Boolean(previous && previous.length > 0 && (!entry.etag || !etag || entry.etag === etag));
+      const initial = canResume && keepPrevious && previous ? previous : new Uint8Array(0);
+
       setDownloads((prev) =>
-        updateDownload(prev, entry.id, {
-          status: 'saved',
-          size: res.bytes.length,
-          contentType: res.contentType || entry.contentType,
-          error: undefined,
-        }),
+        updateDownload(prev, entry.id, { name, contentType, total, etag, received: initial.length, size: initial.length }),
       );
+
+      try {
+        const result = await transferRanges(rangeFetcherFor(target), {
+          initial,
+          total,
+          etag,
+          maxBytes: 32 * 1024 * 1024,
+          onProgress: (received, progressTotal) => {
+            setDownloads((prev) =>
+              updateDownload(prev, entry.id, {
+                status: 'pending',
+                received,
+                total: progressTotal,
+                size: received,
+              }),
+            );
+          },
+        });
+        saveBlob(result.bytes, contentType || entry.contentType, name);
+        downloadPartsRef.current.delete(entry.id);
+        setDownloads((prev) =>
+          updateDownload(prev, entry.id, {
+            status: 'saved',
+            name,
+            size: result.received,
+            contentType: contentType || entry.contentType,
+            received: result.received,
+            total: result.total,
+            etag: result.etag,
+            error: undefined,
+          }),
+        );
+        append(`download saved: ${name} (${formatSize(result.received)})`);
+      } catch (err) {
+        const transfer = err instanceof TransferError ? err : null;
+        const partial = transfer?.bytes ?? initial;
+        if (partial.length > 0) retainPartialDownload(downloadPartsRef.current, entry.id, partial);
+        const aborted = isAbortError(err);
+        const message = aborted
+          ? 'Download paused — resume to continue.'
+          : err instanceof Error
+            ? err.message
+            : String(err);
+        setDownloads((prev) =>
+          updateDownload(prev, entry.id, {
+            status: partial.length > 0 ? 'partial' : 'failed',
+            size: partial.length,
+            received: partial.length,
+            total: transfer?.total ?? total,
+            etag: transfer?.etag ?? etag,
+            error: message,
+          }),
+        );
+        append(`download ${aborted ? 'paused' : 'failed'}: ${message}`);
+      } finally {
+        activeDownloadsRef.current.delete(entry.id);
+      }
     },
-    [fetchSubresource],
+    [append, headTarget, rangeFetcherFor],
   );
+
+  const onAuthSubmit = useCallback(
+    (event: FormEvent) => {
+      event.preventDefault();
+      const prompt = authPrompt;
+      if (!prompt || !isSupportedChallenge(prompt.challenge)) return;
+      credentialsRef.current?.set(prompt.scope, prompt.challenge.realm, authUser, authPass);
+      setAuthPrompt(null);
+      setAuthError('');
+      const { token, signal } = beginNavigation(prompt.tabId);
+      append(`signing in to ${prompt.scope}`);
+      void loadInto(prompt.target, prompt.tabId, { push: false, token, force: true, signal });
+    },
+    [append, authPass, authPrompt, authUser, beginNavigation, loadInto],
+  );
+
+  const onAuthCancel = useCallback(() => {
+    setAuthPrompt(null);
+    setAuthError('');
+    setAuthUser('');
+    setAuthPass('');
+    append('sign-in cancelled');
+  }, [append]);
 
   const onOpenDownloads = useCallback(() => {
     setAdvanced(true);
@@ -1719,6 +2113,58 @@ export function App() {
                 </section>
               )}
 
+              {authPrompt && authPrompt.tabId === activeTab?.id && (
+                <section className="fly-card" role="region" aria-label="Sign in to this site">
+                  <h2 className="fly-h2-flush">Sign in required</h2>
+                  <p className="fly-muted fly-break-word">
+                    {authPrompt.scope} asked for {authPrompt.challenge.label} authentication
+                    {authPrompt.challenge.realm ? ` (realm “${authPrompt.challenge.realm}”)` : ''}. Credentials are kept
+                    in memory for this session only.
+                  </p>
+                  {!isSupportedChallenge(authPrompt.challenge) && (
+                    <p className="fly-callout-warn" role="note">
+                      This site requested {authPrompt.challenge.label} authentication. This build supports Basic
+                      authentication only.
+                    </p>
+                  )}
+                  <form className="fly-row" onSubmit={onAuthSubmit} aria-label="Credentials">
+                    <input
+                      className="fly-input"
+                      placeholder="Username"
+                      value={authUser}
+                      onChange={(event) => setAuthUser(event.target.value)}
+                      autoComplete="username"
+                      spellCheck={false}
+                      aria-label="Username"
+                    />
+                    <input
+                      className="fly-input"
+                      type="password"
+                      placeholder="Password"
+                      value={authPass}
+                      onChange={(event) => setAuthPass(event.target.value)}
+                      autoComplete="current-password"
+                      aria-label="Password"
+                    />
+                    <button
+                      className="fly-btn fly-btn-primary"
+                      type="submit"
+                      disabled={!isSupportedChallenge(authPrompt.challenge) || (!authUser && !authPass)}
+                    >
+                      Sign in
+                    </button>
+                    <button className="fly-btn" type="button" onClick={onAuthCancel}>
+                      Cancel
+                    </button>
+                  </form>
+                  {authError && (
+                    <p className="fly-callout-warn" role="alert">
+                      {authError}
+                    </p>
+                  )}
+                </section>
+              )}
+
               {/* Same-origin lets this parent intercept links; scripts, forms,
                   popups, and top-navigation remain blocked by the sandbox, and
                   the loader strips active content before rendering. */}
@@ -1791,14 +2237,18 @@ export function App() {
                 </p>
               )}
 
-              {activeTab?.url && !activeTab.content && !activeTab.loading && !activeTab.error && (
-                <section className="fly-card" aria-label="Restored tab">
-                  <p className="fly-muted">This tab was restored. Load it when you’re ready.</p>
-                  <button className="fly-btn fly-btn-primary" onClick={() => void reloadTab(activeTab)}>
-                    Load {activeTab.kind === 'nym' ? shortenAddress(activeTab.address) : activeTab.address}
-                  </button>
-                </section>
-              )}
+              {activeTab?.url &&
+                !activeTab.content &&
+                !activeTab.loading &&
+                !activeTab.error &&
+                !(authPrompt && authPrompt.tabId === activeTab.id) && (
+                  <section className="fly-card" aria-label="Restored tab">
+                    <p className="fly-muted">This tab was restored. Load it when you’re ready.</p>
+                    <button className="fly-btn fly-btn-primary" onClick={() => void reloadTab(activeTab)}>
+                      Load {activeTab.kind === 'nym' ? shortenAddress(activeTab.address) : activeTab.address}
+                    </button>
+                  </section>
+                )}
 
               {socialService && (
                 <Social key={socialService} service={socialService} trustMap={trustMap} onVerdict={onVerdict} />
@@ -2012,8 +2462,14 @@ export function App() {
                         <DownloadManager
                           entries={downloads}
                           onSaveAgain={(entry) => void saveDownloadAgain(entry)}
-                          onRemove={(id) => setDownloads((prev) => removeDownload(prev, id))}
-                          onClear={() => setDownloads(clearDownloads())}
+                          onRemove={(id) => {
+                            downloadPartsRef.current.delete(id);
+                            setDownloads((prev) => removeDownload(prev, id));
+                          }}
+                          onClear={() => {
+                            downloadPartsRef.current.clear();
+                            setDownloads(clearDownloads());
+                          }}
                         />
                       </Panel>
                     )}

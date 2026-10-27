@@ -18,6 +18,7 @@
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use nym_hidden_service::{HiddenService, Request, Response};
 
@@ -120,16 +121,40 @@ impl StaticFiles {
             Err(_) => return Response::error(404, "not found"),
         };
         let total = metadata.len() as usize;
+        let etag = etag_for(&metadata, total);
+        let content_type = content_type_for(&file);
+
+        // Revalidation: a matching validator means the caller's cached body is
+        // still current, so answer 304 without reading the file.
+        if if_none_match_matches(request.headers.get("if-none-match"), &etag) {
+            let mut response = Response::ok(304, content_type, &[]);
+            response.headers.insert("etag".to_string(), etag.clone());
+            response
+                .headers
+                .insert("content-length".to_string(), "0".to_string());
+            response
+                .headers
+                .insert("accept-ranges".to_string(), "bytes".to_string());
+            return response;
+        }
+
+        // If-Range keeps a resumed transfer on the same representation. A
+        // stale validator means the Range must be ignored and the full file
+        // served instead.
+        let range_allowed = request
+            .headers
+            .get("if-range")
+            .is_none_or(|value| if_range_matches(value, &etag));
         let requested = match request.headers.get("range") {
-            Some(raw) => match parse_range(raw, total) {
+            Some(raw) if range_allowed => match parse_range(raw, total) {
                 Some(range) => Some(range),
                 None => return Response::error(416, "invalid Range header"),
             },
-            None => None,
+            _ => None,
         };
 
         if request.method == "HEAD" {
-            let mut response = Response::ok(200, content_type_for(&file), &[]);
+            let mut response = Response::ok(200, content_type, &[]);
             response
                 .headers
                 .insert("content-length".to_string(), total.to_string());
@@ -139,6 +164,7 @@ impl StaticFiles {
             response
                 .headers
                 .insert("x-nysiris-total-length".to_string(), total.to_string());
+            response.headers.insert("etag".to_string(), etag);
             if let Some((start, end)) = requested {
                 response.status = 206;
                 response.headers.insert(
@@ -175,7 +201,7 @@ impl StaticFiles {
             Err(err) => return Response::error(500, format!("read failed: {err}")),
         };
 
-        let mut response = Response::ok(status, content_type_for(&file), &body);
+        let mut response = Response::ok(status, content_type, &body);
         response
             .headers
             .insert("content-length".to_string(), body.len().to_string());
@@ -185,6 +211,7 @@ impl StaticFiles {
         response
             .headers
             .insert("x-nysiris-total-length".to_string(), total.to_string());
+        response.headers.insert("etag".to_string(), etag);
         if status == 206 {
             response.headers.insert(
                 "content-range".to_string(),
@@ -193,6 +220,40 @@ impl StaticFiles {
         }
         response
     }
+}
+
+/// Strong-looking entity tag derived from length + modification time.
+///
+/// Static files are immutable in practice (the browser only revalidates after
+/// a reload), so a metadata fingerprint is enough; no hashing is performed.
+fn etag_for(metadata: &std::fs::Metadata, total: usize) -> String {
+    let stamp = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("\"{total:x}-{stamp:x}\"")
+}
+
+/// RFC 9110 weak comparison for `If-None-Match`, including `*` and lists.
+fn if_none_match_matches(header: Option<&String>, etag: &str) -> bool {
+    let Some(raw) = header else { return false };
+    raw.split(',')
+        .map(str::trim)
+        .filter(|tag| !tag.is_empty())
+        .any(|tag| tag == "*" || strip_weak(tag) == strip_weak(etag))
+}
+
+/// `If-Range` requires a strong comparison; a weak or stale tag means the
+/// ranged request is answered with the full 200 representation.
+fn if_range_matches(header: &str, etag: &str) -> bool {
+    let value = header.trim();
+    !value.starts_with("W/") && value == etag
+}
+
+fn strip_weak(tag: &str) -> &str {
+    tag.trim().strip_prefix("W/").unwrap_or(tag.trim())
 }
 
 /// Parse one `bytes=start-end`, `bytes=start-`, or suffix range.
@@ -316,6 +377,72 @@ mod tests {
             response.headers.get("content-length").map(String::as_str),
             Some("11")
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn etag_revalidation_and_if_range() {
+        let root = temp_root("etag");
+        std::fs::write(root.join("index.html"), b"hello world").unwrap();
+        let service = StaticFiles::new(&root).unwrap();
+
+        let first = service.handle(&request("GET", "/index.html"));
+        assert_eq!(first.status, 200);
+        let etag = first
+            .headers
+            .get("etag")
+            .expect("GET advertises an ETag")
+            .clone();
+        assert!(etag.starts_with('"') && etag.ends_with('"'));
+
+        let mut revalidate = request("GET", "/index.html");
+        revalidate
+            .headers
+            .insert("if-none-match".to_string(), etag.clone());
+        let not_modified = service.handle(&revalidate);
+        assert_eq!(not_modified.status, 304);
+        assert!(not_modified.body().unwrap().is_empty());
+        assert_eq!(
+            not_modified.headers.get("etag").map(String::as_str),
+            Some(etag.as_str())
+        );
+        assert!(
+            !not_modified.headers.contains_key("x-nysiris-total-length"),
+            "304 must not advertise a body to assemble"
+        );
+
+        let mut star = request("GET", "/index.html");
+        star.headers
+            .insert("if-none-match".to_string(), "*".to_string());
+        assert_eq!(service.handle(&star).status, 304);
+
+        let mut changed = request("GET", "/index.html");
+        changed
+            .headers
+            .insert("if-none-match".to_string(), "\"stale\"".to_string());
+        assert_eq!(service.handle(&changed).status, 200);
+
+        // If-Range with the current tag: serve the requested slice.
+        let mut ranged = request("GET", "/index.html");
+        ranged
+            .headers
+            .insert("range".to_string(), "bytes=0-4".to_string());
+        ranged.headers.insert("if-range".to_string(), etag.clone());
+        let slice = service.handle(&ranged);
+        assert_eq!(slice.status, 206);
+        assert_eq!(slice.body().unwrap(), b"hello");
+
+        // If-Range with a stale tag: ignore Range, return the full body.
+        let mut stale = request("GET", "/index.html");
+        stale
+            .headers
+            .insert("range".to_string(), "bytes=0-4".to_string());
+        stale
+            .headers
+            .insert("if-range".to_string(), "\"stale\"".to_string());
+        let full = service.handle(&stale);
+        assert_eq!(full.status, 200);
+        assert_eq!(full.body().unwrap(), b"hello world");
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -27,12 +27,23 @@ export function parseContentRange(value: unknown): ContentRange | null {
 
 /** Total response length, if the service advertised it. */
 export function responseTotal(headers: Record<string, string>): number | null {
-  const range = parseContentRange(headers['content-range']);
+  const range = parseContentRange(headerLookup(headers, 'content-range'));
   if (range?.total != null) return range.total;
-  const raw = headers['x-nysiris-total-length'];
+  const raw = headerLookup(headers, 'x-nysiris-total-length');
   if (!raw) return null;
   const total = Number(raw);
   return Number.isSafeInteger(total) && total >= 0 ? total : null;
+}
+
+/** Case-insensitive lookup: Nym services are not required to lowercase keys. */
+function headerLookup(headers: Record<string, string>, name: string): string | undefined {
+  const direct = headers[name];
+  if (direct !== undefined) return direct;
+  const wanted = name.toLowerCase();
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === wanted) return headers[key];
+  }
+  return undefined;
 }
 
 export function mergeChunks(chunks: Uint8Array[], total: number): Uint8Array {

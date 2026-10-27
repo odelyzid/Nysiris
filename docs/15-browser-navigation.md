@@ -1,8 +1,7 @@
 # 15. Browser Document, Tabs, and Unified Navigation
 
-**Status:** Phase 1 and Phase 2 are implemented, and the Phase 3 core (redirects,
-cookies, range chunking, larger static files) is implemented. Remaining items
-are listed in each phase below.
+**Status:** Phase 1 and Phase 3 are implemented. Phase 2 is implemented except
+the embedded PDF/object and media range-streaming items noted below.
 
 This document is the implementation plan for turning the Portal view into a
 real browser document model. It complements the browser-capability audit and
@@ -18,8 +17,8 @@ spaces it can already reach:
 | Clearnet / exit-gateway Web | `mixnetFetch` + `@nymproject/mix-fetch` | `http://…` / `https://…` |
 
 Clearnet responses currently render in the same sandboxed document viewer as
-portal pages. Subresource loading, scripts, forms, cookies, and a real page
-engine are later phases (see §15.7).
+portal pages. Scripts, forms, and a real page engine are later phases (see
+§15.7).
 
 ---
 
@@ -124,7 +123,7 @@ address bar / saved link / contact / back / forward / reload
                               │
         ┌─────────────────────┴─────────────────────┐
         │ nym                                       │ clearnet
-   fetchNym(address, path, Accept: text/html)   mixnetFetch(url)
+   fetchNym(address, path, Accept: text/html)   clearnetFetch(url)
         │                                           │
         └─────────────────────┬─────────────────────┘
                               │
@@ -134,8 +133,23 @@ address bar / saved link / contact / back / forward / reload
 ```
 
 Back/forward move `historyIndex` and re-fetch that URL without pushing a new
-entry. Reload re-fetches the current URL. Stop increments `navToken` so the
-late result is ignored. All state changes are applied by tab id + token.
+entry. Reload re-fetches the current URL. Stop aborts the per-tab
+`AbortController`: the Nym envelope client drops its correlation waiter and the
+clearnet fetch races the signal, so a late reply cannot write into the tab.
+All state changes are applied by tab id + token.
+
+Every request also goes through the shared HTTP semantics:
+
+- clearnet redirects are followed by `clearnetFetch`; when the transport exposes
+  each hop (`redirect: 'manual'`), its `Set-Cookie` updates the jar and the
+  final URL becomes the document base;
+- `401` + `WWW-Authenticate: Basic` opens the in-page sign-in card and retries
+  with an in-memory credential (passwords are never persisted);
+- `ETag`/`Last-Modified` from a cached document become `If-None-Match` /
+  `If-Modified-Since` on reload; `304` reuses the prepared body (back/forward
+  serves the in-session cache immediately);
+- `Content-Encoding` (`gzip`, `deflate`, `br` where the engine supports it) is
+  decoded before rendering or inlining.
 
 ## 15.6 Persistence
 
@@ -179,7 +193,8 @@ load, close a tab, and reload the app — the tab list and histories survive.
 - [x] In-session document cache (24 pages / 16 MiB LRU).
 - [x] Top-level media (`audio`/`video`), PDF viewer, and embedded media inlining.
 - [x] Download shelf: save page, save again, remove/clear, metadata persistence.
-- [ ] `Content-Disposition` filename parsing and a resume-capable downloader.
+- [x] `Content-Disposition` filename parsing and a resume-capable downloader
+      (`HEAD` metadata + `Range`/`If-Range`, partial bytes retained in memory).
 - [ ] Embedded PDF/object documents and media range streaming.
 
 **Implemented in** `web/src/application/contentLoader.ts`. Fetched documents
@@ -195,29 +210,49 @@ clearnet requests; clicking an in-page link stays in the tab. Scripts, forms,
 and embedded PDFs remain deliberately disabled; clearnet cookies are handled by
 the Phase 3 jar.
 
-### Phase 3 — HTTP semantics (core implemented)
+### Phase 3 — HTTP semantics (implemented)
 
-- [x] Clearnet redirects followed by `mixnetFetch`; the final `Response.url`
-      is used as the document base.
+- [x] Clearnet redirects followed by `clearnetFetch`; when the transport honours
+      `redirect: 'manual'`, each hop's `Set-Cookie` updates the per-origin jar
+      and the final URL becomes the document base.
 - [x] Nym `3xx` + `Location` redirects with a five-hop limit.
 - [x] Per-origin cookie jar (domain/path/expiry/secure) wired into clearnet
       requests and `Set-Cookie` responses.
-- [x] `Range`/`206` support in `nysiris-sdk` static files.
+- [x] `Basic` authentication UI for clearnet and Nym documents; credentials are
+      session-only (never written to `localStorage`).
+- [x] Cache validators: `ETag`/`Last-Modified` stored with the prepared document
+      and sent back as `If-None-Match`/`If-Modified-Since`; `304` reuses the
+      cached body without re-rendering. (`@nymproject/mix-fetch` 2.1.1 cannot
+      construct a null-body `Response` for a clearnet `304`; the shell detects
+      that once, falls back to an unconditional reload, and keeps revalidation
+      for Nym and future transports.)
+- [x] `Content-Encoding` decoding before rendering/inlining.
+- [x] `Range`/`206` support in `nysiris-sdk` static files, with
+      `If-None-Match`/`304` and `If-Range` revalidation.
 - [x] `fetchNymFull` reassembles `Content-Range` chunks.
 - [x] Static files larger than one mixnet message are served in chunks instead
       of `413`; pages/downloads accept up to 8/32 MiB.
-- [ ] Auth UI, redirect-response cookies, cache validators (`ETag`/`If-None-Match`),
-      content-encoding, HEAD-driven metadata, and a resumable downloader.
-- [ ] Per-in-flight-request cancellation (Stop currently ignores the result but
-      does not abort the transport call).
+- [x] Download metadata comes from `HEAD` (`Content-Length`,
+      `Content-Type`, `Content-Disposition`, `ETag`, `Accept-Ranges`).
+- [x] Resumable downloads: failed/timeout attempts keep received bytes in
+      memory, resume with `Range: bytes=<received>-` and `If-Range`, and restart
+      cleanly if the server answers `200`.
+- [x] Per-in-flight-request cancellation: Stop aborts the tab's
+      `AbortController`, removes the Nym correlation waiter, aborts subresource
+      loading, and races clearnet transport promises.
 
 **Implemented in** `web/src/application/cookies.ts`,
-`web/src/application/ranges.ts`, `web/src/mixnet/fetchNym.ts`, and
+`web/src/application/auth.ts`, `web/src/application/clearnet.ts`,
+`web/src/application/httpHeaders.ts`, `web/src/application/encoding.ts`,
+`web/src/application/downloadTransfer.ts`, `web/src/application/ranges.ts`,
+`web/src/mixnet/fetchNym.ts`, `web/src/lib/abort.ts`, and
 `crates/nysiris-sdk/src/files.rs`.
 
-**Acceptance (met for the core):** a multi-KB static page is served and
-rendered; redirects are followed; large static responses are assembled from
-range chunks.
+**Acceptance (met):** a multi-KB static page is served and rendered; redirects
+are followed and redirect cookies are retained; a reload revalidates with an
+`ETag` and renders a `304` from cache; gzip/deflate responses render correctly;
+a `401` prompts for credentials; a dropped download resumes from its offset;
+Stop aborts the transport instead of only hiding the result.
 
 ### Phase 4 — browser lifecycle
 
@@ -247,7 +282,15 @@ range chunks.
 | `web/src/application/scrollStore.ts` | Per-URL scroll positions |
 | `web/src/application/downloads.ts` | Download shelf metadata |
 | `web/src/application/cookies.ts` | Clearnet cookie jar |
+| `web/src/application/auth.ts` | `WWW-Authenticate` parsing + session credentials |
+| `web/src/application/clearnet.ts` | Redirect chain, per-hop cookies, auth header, final URL |
+| `web/src/application/httpHeaders.ts` | Validators, `Content-Disposition`, redirect/range headers |
+| `web/src/application/encoding.ts` | `Content-Encoding` decoding |
+| `web/src/application/downloadTransfer.ts` | Resumable `Range`/`If-Range` download assembly |
 | `web/src/application/ranges.ts` | `Content-Range` parsing/chunk assembly |
+| `web/src/lib/abort.ts` | AbortError + signal racing |
+| `web/src/mixnet/fetchNym.ts` | Nym envelope client, abortable waiters, chunk reassembly |
+| `crates/nysiris-sdk/src/files.rs` | Static files: `Range`, `ETag`/`304`, `If-Range` |
 | `web/src/adapters/driving/shell/BrowserChrome.tsx` | Tab strip + navigation controls |
 | `web/src/adapters/driving/shell/PdfView.tsx` | Blob-backed PDF viewer |
 | `web/src/adapters/driving/portal/DownloadManager.tsx` | Download shelf UI |
@@ -260,6 +303,11 @@ range chunks.
 | `web/test/scrollStore.test.mjs` | Scroll persistence and caps |
 | `web/test/downloads.test.mjs` | Shelf add/update/remove/persist |
 | `web/test/cookies.test.mjs` | Cookie domain/path/expiry matching |
+| `web/test/auth.test.mjs` | Challenge parsing and credential lookup |
+| `web/test/clearnet.test.mjs` | Redirect cookies, auth retry, final URL, limits |
+| `web/test/httpHeaders.test.mjs` | Validators, filenames, redirects |
+| `web/test/encoding.test.mjs` | gzip/deflate/stacked decoding |
+| `web/test/downloadTransfer.test.mjs` | Resume, restart-on-200, abort, bounds |
 | `web/test/ranges.test.mjs` | `Content-Range` parsing and chunk assembly |
 
 ## 15.9 Migration notes
@@ -273,3 +321,7 @@ range chunks.
   the same navigation pipeline as the address bar.
 - A tab with no URL is a blank document, not a hidden portal. Opening a saved
   link in the current tab pushes a history entry.
+- HTTP credentials and partially received download bytes are session-only. The
+  download shelf persists progress metadata (`received`, `total`, `ETag`) so a
+  paused transfer can be resumed while the app stays open; after a reload the
+  bytes are gone and the retry starts from byte zero.

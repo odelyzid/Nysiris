@@ -29,6 +29,8 @@
 import { NymAddressClient } from './messaging';
 import { decodeResponse, dispatchReply, encodeRequest } from './hiddenService.mjs';
 import { b64decode, b64encode } from '../lib/bytes';
+import { abortError, throwIfAborted } from '../lib/abort';
+import { headerValue } from '../application/httpHeaders';
 import { mergeChunks, parseContentRange, responseTotal } from '../application/ranges';
 
 const NYM_API_URL = 'https://validator.nymtech.net/api';
@@ -53,6 +55,8 @@ export interface FetchNymOptions {
   nymApiUrl?: string;
   /** How long to wait for the SURB reply. Default 90 s (mixnet latency). */
   timeoutMs?: number;
+  /** Cancels the wait and removes the correlation waiter. */
+  signal?: AbortSignal;
 }
 
 export interface FetchNymFullOptions extends FetchNymOptions {
@@ -141,6 +145,7 @@ async function runOnce(
   request: FetchNymRequest,
   options?: FetchNymOptions,
 ): Promise<FetchNymResponse> {
+  throwIfAborted(options?.signal);
   // Tag every request, not just parallel ones. Responses to repeated reads
   // (e.g. an unchanged `/health` or an empty `/feed` page) are byte-identical,
   // and `NymAddressClient` deduplicates inbound replies by content for 25 h.
@@ -157,14 +162,23 @@ async function runOnce(
   });
 
   const timeoutMs = options?.timeoutMs ?? 90_000;
+  const signal = options?.signal;
   const client = await ensureClient(options?.nymApiUrl ?? NYM_API_URL);
+  throwIfAborted(signal);
 
   const reply = await new Promise<string>((resolve, reject) => {
     let settled = false;
     let timer = 0;
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(abortError());
+    };
     const cleanup = () => {
       window.clearTimeout(timer);
-      currentWaiter = null;
+      signal?.removeEventListener('abort', onAbort);
+      if (currentWaiter === settle) currentWaiter = null;
       parallelWaiters.delete(tag);
     };
     const settle = (text: string) => {
@@ -183,6 +197,7 @@ async function runOnce(
     // `dispatchReply` routes a tagged reply here; the serial waiter above
     // handles legacy untagged providers. Whichever fires first wins.
     parallelWaiters.set(tag, settle);
+    signal?.addEventListener('abort', onAbort, { once: true });
     client.send(recipient, envelope).catch((err: unknown) => {
       if (settled) return;
       settled = true;
@@ -214,6 +229,7 @@ export async function fetchNymFull(
   request: FetchNymRequest,
   options: FetchNymFullOptions = {},
 ): Promise<FetchNymResponse> {
+  throwIfAborted(options.signal);
   const maxBytes = options.maxBytes ?? 8 * 1024 * 1024;
   const maxChunks = options.maxChunks ?? 128;
   // Ask for a range explicitly: services that predate chunking ignore it, and
@@ -224,15 +240,17 @@ export async function fetchNymFull(
   };
   const first = await fetchNym(recipient, firstRequest, options);
   if (first.error) return first;
+  if (first.status === 304 || first.status === 204) return first;
   const total = responseTotal(first.headers);
   if (total === null) return first;
   if (total > maxBytes) throw new Error(`response is too large (${total} bytes; limit ${maxBytes})`);
   if (first.body.length >= total) return first.status === 206 ? { ...first, status: 200 } : first;
 
   const chunks: Uint8Array[] = [first.body];
-  const firstRange = parseContentRange(first.headers['content-range']);
-  let offset = firstRange && firstRange.start === 0 ? firstRange.end + 1 : first.body.length;
+  const firstRange = parseContentRange(headerValue(first.headers, 'content-range'));
+  let offset = firstRange ? firstRange.end + 1 : first.body.length;
   while (offset < total) {
+    throwIfAborted(options.signal);
     if (chunks.length >= maxChunks) throw new Error('response chunk limit reached');
     const res = await fetchNym(
       recipient,
@@ -288,7 +306,7 @@ export async function fetchNymParallel(
       next += 1;
       if (i >= requests.length) return;
       try {
-        results[i] = await runTagged(client, recipient, requests[i], timeoutMs);
+        results[i] = await runTagged(client, recipient, requests[i], timeoutMs, options?.signal);
       } catch (err) {
         failed = err;
         return;
@@ -310,7 +328,9 @@ function runTagged(
   recipient: string,
   request: FetchNymRequest,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<FetchNymResponse> {
+  throwIfAborted(signal);
   const tag = nextTag();
   const envelope = encodeRequest({
     method: request.method ?? 'GET',
@@ -320,7 +340,15 @@ function runTagged(
     tag,
   });
   return new Promise<FetchNymResponse>((resolve, reject) => {
-    const done = () => parallelWaiters.delete(tag);
+    const done = () => {
+      signal?.removeEventListener('abort', onAbort);
+      parallelWaiters.delete(tag);
+    };
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      done();
+      reject(abortError());
+    };
     const timer = window.setTimeout(() => {
       done();
       reject(new Error(`fetchNym timed out after ${timeoutMs} ms waiting for the SURB reply`));
@@ -340,6 +368,7 @@ function runTagged(
         reject(err);
       }
     });
+    signal?.addEventListener('abort', onAbort, { once: true });
     client.send(recipient, envelope).catch((err: unknown) => {
       window.clearTimeout(timer);
       done();

@@ -20,6 +20,7 @@ import {
   saveBrowserTabs,
   serializeBrowserTabs,
   stopPage,
+  settlePage,
   tabTitle,
 } from '../src/application/browser.ts';
 import { resolveNavigationInput } from '../src/application/navigation.ts';
@@ -145,6 +146,15 @@ test('failPage and stopPage invalidate in-flight work', () => {
   assert.equal(state.loading, false);
   assert.equal(state.navToken, 3);
   assert.equal(applyPage(state, 2, { status: 200, contentType: 'text/plain', body: 'late' }).content, null);
+});
+
+test('settlePage stops the spinner without inventing content or an error', () => {
+  const state = go(tab(), 'https://example.com/', 1);
+  const settled = settlePage(state, 1);
+  assert.equal(settled.loading, false);
+  assert.equal(settled.content, null);
+  assert.equal(settled.error, null);
+  assert.equal(settlePage(state, 99), state, 'a stale token cannot settle a newer load');
 });
 
 test('page kind follows content type with an HTML fallback', () => {

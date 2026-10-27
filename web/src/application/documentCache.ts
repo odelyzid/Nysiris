@@ -14,6 +14,11 @@ export interface CachedPage {
   body: string;
   favicon: string | null;
   savedAt: number;
+  /** Validators from the response that produced this body. */
+  etag?: string | null;
+  lastModified?: string | null;
+  /** Final URL after redirects (relative assets were inlined already). */
+  finalUrl?: string;
 }
 
 export const DEFAULT_MAX_CACHE_ENTRIES = 24;

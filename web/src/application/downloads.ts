@@ -7,7 +7,7 @@
  */
 import type { StorageLike } from '../lib/storage.ts';
 
-export type DownloadStatus = 'pending' | 'saved' | 'failed';
+export type DownloadStatus = 'pending' | 'partial' | 'saved' | 'failed';
 
 export interface DownloadRecord {
   id: string;
@@ -18,6 +18,12 @@ export interface DownloadRecord {
   status: DownloadStatus;
   createdAt: number;
   error?: string;
+  /** Bytes already received (kept in memory for a resumed transfer). */
+  received?: number;
+  /** Total advertised by HEAD/Content-Range, when known. */
+  total?: number | null;
+  /** Validator used for a resumable `If-Range` request. */
+  etag?: string | null;
 }
 
 export const DOWNLOADS_KEY = 'fly.browser.downloads.v1';
@@ -79,16 +85,41 @@ export function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** 0–1 when both progress values are known, else null. */
+export function downloadProgress(entry: DownloadRecord): number | null {
+  const total = entry.total ?? 0;
+  const received = entry.received ?? 0;
+  if (!Number.isFinite(total) || total <= 0) return null;
+  return Math.max(0, Math.min(1, received / total));
+}
+
+/** A failed/partial record with received bytes can continue with Range. */
+export function isResumable(entry: DownloadRecord): boolean {
+  return (entry.status === 'partial' || entry.status === 'failed') && Boolean(entry.url) && (entry.received ?? 0) > 0;
+}
+
 function isRecord(value: unknown): value is DownloadRecord {
   if (!value || typeof value !== 'object') return false;
   const record = value as Partial<DownloadRecord>;
+  const validStatus =
+    record.status === 'pending' ||
+    record.status === 'partial' ||
+    record.status === 'saved' ||
+    record.status === 'failed';
+  const validProgress =
+    (record.received === undefined || (typeof record.received === 'number' && Number.isFinite(record.received))) &&
+    (record.total === undefined ||
+      record.total === null ||
+      (typeof record.total === 'number' && Number.isFinite(record.total))) &&
+    (record.etag === undefined || record.etag === null || typeof record.etag === 'string');
   return (
     typeof record.id === 'string' &&
     record.id.length > 0 &&
     typeof record.name === 'string' &&
     typeof record.url === 'string' &&
-    (record.status === 'pending' || record.status === 'saved' || record.status === 'failed') &&
+    validStatus &&
     typeof record.size === 'number' &&
-    Number.isFinite(record.size)
+    Number.isFinite(record.size) &&
+    validProgress
   );
 }

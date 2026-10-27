@@ -16,6 +16,7 @@ test('parses standard Content-Range values', () => {
 test('responseTotal prefers Content-Range and falls back to the explicit header', () => {
   assert.equal(responseTotal({ 'content-range': 'bytes 0-99/1234' }), 1234);
   assert.equal(responseTotal({ 'x-nysiris-total-length': '2048' }), 2048);
+  assert.equal(responseTotal({ 'Content-Range': 'bytes 0-99/1234' }), 1234, 'header names are case-insensitive');
   assert.equal(responseTotal({}), null);
   assert.equal(responseTotal({ 'x-nysiris-total-length': 'NaN' }), null);
 });

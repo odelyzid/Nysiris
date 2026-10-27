@@ -6,7 +6,9 @@ import {
   MAX_DOWNLOADS,
   addDownload,
   clearDownloads,
+  downloadProgress,
   formatSize,
+  isResumable,
   loadDownloads,
   removeDownload,
   saveDownloads,
@@ -83,4 +85,28 @@ test('formatSize is stable and readable', () => {
   assert.equal(formatSize(1536), '1.5 KB');
   assert.equal(formatSize(2.5 * 1024 * 1024), '2.5 MB');
   assert.equal(formatSize(Number.NaN), '—');
+});
+
+test('partial downloads persist progress and can resume', () => {
+  const storage = memoryStorage();
+  const partial = record('p', {
+    status: 'partial',
+    received: 512,
+    total: 2048,
+    etag: '"v1"',
+    error: 'connection lost',
+  });
+  saveDownloads(storage, [partial]);
+  const [loaded] = loadDownloads(storage);
+  assert.equal(loaded.status, 'partial');
+  assert.equal(loaded.received, 512);
+  assert.equal(loaded.total, 2048);
+  assert.equal(loaded.etag, '"v1"');
+  assert.equal(downloadProgress(loaded), 0.25);
+  assert.equal(isResumable(loaded), true);
+
+  assert.equal(downloadProgress(record('saved')), null, 'no total means no percentage');
+  assert.equal(isResumable(record('saved')), false);
+  assert.equal(isResumable(record('failed', { status: 'failed', received: 0 })), false);
+  assert.equal(isResumable(record('failed', { status: 'failed', received: 10 })), true);
 });

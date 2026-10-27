@@ -166,6 +166,12 @@ export function failPage(tab: BrowserTab, token: number, message: string): Brows
   return { ...tab, loading: false, error: message, status: null };
 }
 
+/** Finish a navigation without a document or an error (e.g. auth prompt). */
+export function settlePage(tab: BrowserTab, token: number): BrowserTab {
+  if (tab.navToken !== token) return tab;
+  return { ...tab, loading: false };
+}
+
 /** Cancel the in-flight load; its eventual response is ignored by token. */
 export function stopPage(tab: BrowserTab): BrowserTab {
   return { ...tab, loading: false, navToken: tab.navToken + 1 };

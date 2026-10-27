@@ -128,7 +128,7 @@ and body. `petname` reads/writes the private registry from
 | Service | Behaviour | Limits |
 |---|---|---|
 | `echo` | echoes the method, path, and body | one envelope |
-| `files` | `GET`/`HEAD` a local directory | one message body; `413` above [`MAX_ONE_PACKET_BODY`] |
+| `files` | `GET`/`HEAD` a local directory, with `Range`/`ETag` semantics | one chunk (`MAX_ONE_PACKET_BODY`) per reply |
 
 `files` is deliberately conservative:
 
@@ -138,10 +138,14 @@ and body. `petname` reads/writes the private registry from
 * the resolved target is canonicalised and must stay inside the canonical
   root, which also defeats symlink escapes;
 * only `GET`/`HEAD` are answered; anything else is `405`;
-* bodies are capped at one mixnet message (`nysiris_sdk::files::
-  MAX_ONE_PACKET_BODY` = 1400 raw bytes). Larger files return `413` until
-  chunked transfer is wired (`docs/08-hidden-services.md` §8.6). `--max-bytes`
-  raises the cap but oversized replies will not fit one Sphinx message.
+* a body larger than one mixnet message (`MAX_ONE_PACKET_BODY` = 1400 raw
+  bytes) is served as `206` + `Content-Range` chunks when the caller sends
+  `Range`; `fetchNymFull` reassembles them. An un-ranged oversized read still
+  returns a clear `413` (`docs/08-hidden-services.md` §8.6);
+* `HEAD` advertises `Content-Length`, `Accept-Ranges`, `ETag`, and
+  `X-Nysiris-Total-Length` without a body;
+* `If-None-Match` (including `*` and weak tags) returns `304`, and `If-Range`
+  either resumes the same representation or falls back to the full `200` body.
 
 ## 13.6 Files
 
