@@ -80,7 +80,7 @@ checksums). `VERSION` is the source of truth; `./build.sh bump <version>`
 updates it, commits the bump, and creates the tag. Push the branch and tag
 together, and never tag before the bump commit exists.
 
-- Current counts: 113 Rust tests, 243 web tests, zero clippy warnings.
+- Current counts: 113 Rust tests, 249 web tests, zero clippy warnings.
 - Focused runs: `node --test web/test/<name>.test.mjs` (from repo root),
   `cargo test -p <crate>`, `./build.sh services social`.
 - CI (`check` job) runs `./build.sh check` on Node 24 **and then the full web
@@ -111,6 +111,10 @@ together, and never tag before the bump commit exists.
   `application/navigation.ts`. Keep `App.tsx` as orchestration; every page load
   goes through the tab model's navigation token (never ad-hoc
   `fetchNym` + `setState`), or stale tab responses will leak across tabs.
+- Never inject fetched service HTML directly into `srcDoc`: run it through
+  `application/contentLoader.ts` (`prepareDocument`) first. It removes active
+  content, routes every CSS/image resource through the injected mixnet fetcher,
+  and rewrites links for tab interception.
 - Styling: `fly-btn` for buttons, `fly-input` for text inputs. Exceptions are
   contextual selectors, not omissions: `.fly-conv-list button`, `.fly-nav-btn`,
   `.fly-status`, `.fly-tab`. Never put `fly-btn` on conversation-list rows.

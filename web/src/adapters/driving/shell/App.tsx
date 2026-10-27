@@ -14,12 +14,15 @@ import {
   loadBrowserTabs,
   navigateTab,
   newTabId,
+  pageKindFor,
   saveBrowserTabs,
   stopPage,
   tabTitle,
   type BrowserTab,
 } from '../../../application/browser';
 import { resolveNavigationInput, type NavigationTarget, type ParsedInvite } from '../../../application/navigation';
+import { b64decode, b64encode } from '../../../lib/bytes';
+import { prepareDocument, type ResourceKind, type ResourceResponse } from '../../../application/contentLoader';
 import { BrowserChrome } from './BrowserChrome';
 import { startForeground, stopForeground } from '../../../adapters/driven/foreground.mjs';
 import { Social } from '../social/Social';
@@ -91,6 +94,32 @@ import {
 } from '../../../application/shell';
 
 const NYM_API_URL = 'https://validator.nymtech.net/api';
+const MAX_PAGE_BYTES = 8 * 1024 * 1024;
+
+/** Self-contained representation of a top-level image/binary response. */
+function dataUrlFor(bytes: Uint8Array, contentType: string): string {
+  const type =
+    String(contentType ?? '')
+      .split(';')[0]
+      .trim() || 'application/octet-stream';
+  return `data:${type};base64,${b64encode(bytes)}`;
+}
+
+/** Save a top-level binary response without navigating to a `data:` URL. */
+function downloadDataUrl(dataUrl: string, name: string): void {
+  const match = /^data:([^;,]*);base64,(.*)$/s.exec(dataUrl);
+  if (!match) return;
+  const bytes = b64decode(match[2]);
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  const blob = new Blob([copy.buffer], { type: match[1] || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name || 'download';
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
 
 export function App() {
   const [status, setStatus] = useState<TunnelStateView>({ state: 'shutdown' });
@@ -176,6 +205,8 @@ export function App() {
   const navigationSeqRef = useRef(0);
   const activeLoadsRef = useRef(0);
   const bootRestoredRef = useRef(false);
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const linkedFrameDocsRef = useRef(new WeakSet<Document>());
 
   const append = useCallback((line: string) => {
     setLog((prev) => [...prev.slice(-99), `${new Date().toLocaleTimeString()}  ${line}`]);
@@ -397,6 +428,39 @@ export function App() {
   );
 
   /**
+   * Fetch one page subresource through the same transport as the document.
+   * The content loader only ever receives this callback, never native fetch.
+   */
+  const fetchSubresource = useCallback(async (url: string, kind: ResourceKind): Promise<ResourceResponse | null> => {
+    let target: NavigationTarget;
+    try {
+      target = resolveNavigationInput(url);
+    } catch {
+      return null;
+    }
+    try {
+      if (target.kind === 'nym') {
+        const accept = kind === 'image' ? 'image/*,*/*;q=0.8' : kind === 'stylesheet' ? 'text/css,*/*;q=0.1' : '*/*';
+        const res = await fetchNym(
+          target.address,
+          { method: 'GET', path: target.path, headers: { accept } },
+          { timeoutMs: 30_000 },
+        );
+        if (res.error) return null;
+        return { status: res.status, contentType: res.headers['content-type'] ?? '', bytes: res.body };
+      }
+      const res = await mixnetFetch(url);
+      return {
+        status: res.status,
+        contentType: res.headers.get('content-type') ?? '',
+        bytes: new Uint8Array(await res.arrayBuffer()),
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /**
    * Execute one resolved navigation into one tab. Callers own the history
    * decision and the navigation token; this function only does I/O + guarded
    * state updates.
@@ -444,6 +508,15 @@ export function App() {
             { method: 'GET', path: target.path, headers: { accept: 'text/html' } },
             { timeoutMs: 120_000 },
           );
+          if (res.body.length > MAX_PAGE_BYTES) {
+            setTabs((prev) =>
+              prev.map((tab) =>
+                tab.id === tabId ? failPage(tab, options.token, `page is too large (${res.body.length} bytes)`) : tab,
+              ),
+            );
+            append(`nym:// page too large: ${res.body.length} bytes`);
+            return;
+          }
           const text = new TextDecoder().decode(res.body);
           const contentType = res.headers['content-type'] ?? '';
           const error = res.error;
@@ -453,9 +526,38 @@ export function App() {
             append(`nym:// done with service error: ${error}`);
             return;
           }
+          const kind = pageKindFor(contentType, text);
+          let body = text;
+          let effectiveType = contentType;
+          if (kind === 'image' || kind === 'binary') {
+            body = dataUrlFor(res.body, contentType);
+          } else if (kind === 'html') {
+            try {
+              const prepared = await prepareDocument(text, target.url, fetchSubresource);
+              body = prepared.html;
+              effectiveType = 'text/html; charset=utf-8';
+              if (prepared.stats.resources > 0) {
+                append(
+                  `page assets: ${prepared.stats.resources} fetched, ${prepared.stats.failed} unavailable` +
+                    (prepared.stats.truncated ? ' (capped)' : ''),
+                );
+              }
+            } catch (err) {
+              setTabs((prev) =>
+                prev.map((tab) =>
+                  tab.id === tabId ? failPage(tab, options.token, `could not prepare this page: ${String(err)}`) : tab,
+                ),
+              );
+              setLastError(err);
+              append(`page prepare failed: ${String(err)}`);
+              return;
+            }
+          }
           setTabs((prev) =>
             prev.map((tab) =>
-              tab.id === tabId ? applyPage(tab, options.token, { status: res.status, contentType, body: text }) : tab,
+              tab.id === tabId
+                ? applyPage(tab, options.token, { status: res.status, contentType: effectiveType, body })
+                : tab,
             ),
           );
           setRecentPortals((prev) => {
@@ -479,15 +581,58 @@ export function App() {
       append(`https fetch ${target.url}`);
       try {
         const res = await mixnetFetch(target.url);
-        const text = await res.text();
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (bytes.length > MAX_PAGE_BYTES) {
+          setTabs((prev) =>
+            prev.map((tab) =>
+              tab.id === tabId ? failPage(tab, options.token, `page is too large (${bytes.length} bytes)`) : tab,
+            ),
+          );
+          append(`web page too large: ${bytes.length} bytes`);
+          return;
+        }
         const contentType = res.headers.get('content-type') ?? '';
+        const decoded = new TextDecoder().decode(bytes);
+        const kind = pageKindFor(contentType, decoded);
+        const text = kind === 'image' || kind === 'binary' ? '' : decoded;
+        let body = text;
+        let effectiveType = contentType;
+        if (kind === 'image' || kind === 'binary') {
+          body = dataUrlFor(bytes, contentType);
+        } else if (kind === 'html') {
+          try {
+            // `mixnetFetch` follows redirects; resolve relative assets against
+            // the final document URL, not the one the user typed.
+            const documentUrl = res.url || target.url;
+            const prepared = await prepareDocument(text, documentUrl, fetchSubresource);
+            body = prepared.html;
+            effectiveType = 'text/html; charset=utf-8';
+            if (prepared.stats.resources > 0) {
+              append(
+                `page assets: ${prepared.stats.resources} fetched, ${prepared.stats.failed} unavailable` +
+                  (prepared.stats.truncated ? ' (capped)' : ''),
+              );
+            }
+          } catch (err) {
+            setTabs((prev) =>
+              prev.map((tab) =>
+                tab.id === tabId ? failPage(tab, options.token, `could not prepare this page: ${String(err)}`) : tab,
+              ),
+            );
+            setLastError(err);
+            append(`page prepare failed: ${String(err)}`);
+            return;
+          }
+        }
         setTabs((prev) =>
           prev.map((tab) =>
-            tab.id === tabId ? applyPage(tab, options.token, { status: res.status, contentType, body: text }) : tab,
+            tab.id === tabId
+              ? applyPage(tab, options.token, { status: res.status, contentType: effectiveType, body })
+              : tab,
           ),
         );
-        setHsResult(`status=${res.status} body=${text.length}B (rendered in the tab)`);
-        append(`web done: status=${res.status} body=${text.length}B`);
+        setHsResult(`status=${res.status} body=${body.length}B (rendered in the tab)`);
+        append(`web done: status=${res.status} body=${body.length}B`);
       } catch (err) {
         setTabs((prev) => prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, String(err)) : tab)));
         setLastError(err);
@@ -528,6 +673,30 @@ export function App() {
     setUri(value);
     setNavigationError(null);
   }, []);
+
+  /**
+   * Attach link interception to the same-origin sandbox document. The document
+   * has no scripts; `allow-same-origin` lets this parent handler turn a link
+   * click into a tab navigation instead of letting the iframe navigate itself.
+   */
+  const onFrameLoad = useCallback(() => {
+    const doc = frameRef.current?.contentDocument;
+    if (!doc || linkedFrameDocsRef.current.has(doc)) return;
+    linkedFrameDocsRef.current.add(doc);
+    const activate = (event: Event) => {
+      const target = event.target as Element | null;
+      const anchor =
+        target && typeof target.closest === 'function'
+          ? target.closest('a[data-nysiris-href], area[data-nysiris-href]')
+          : null;
+      const href = anchor?.getAttribute('data-nysiris-href');
+      if (!href) return;
+      event.preventDefault();
+      void goTo(href);
+    };
+    doc.addEventListener('click', activate);
+    doc.addEventListener('auxclick', activate);
+  }, [goTo]);
 
   /** Re-fetch a tab's current URL without pushing a history entry. */
   const reloadTab = useCallback(
@@ -1292,21 +1461,45 @@ export function App() {
                 </section>
               )}
 
+              {/* Same-origin lets this parent intercept links; scripts, forms,
+                  popups, and top-navigation remain blocked by the sandbox, and
+                  the loader strips active content before rendering. */}
               {activeTab?.content?.kind === 'html' && (
                 <iframe
+                  ref={frameRef}
                   id="fly-page"
                   className="fly-portal-frame"
-                  sandbox=""
+                  sandbox="allow-same-origin"
+                  referrerPolicy="no-referrer"
                   title={tabTitle(activeTab)}
                   srcDoc={activeTab.content.body}
                   loading="lazy"
+                  onLoad={onFrameLoad}
                 />
               )}
 
-              {activeTab?.content && activeTab.content.kind !== 'html' && (
+              {activeTab?.content && (activeTab.content.kind === 'text' || activeTab.content.kind === 'json') && (
                 <pre className="fly-pre fly-portal-text" aria-label="Page content">
                   {activeTab.content.body.slice(0, 200_000)}
                 </pre>
+              )}
+
+              {activeTab?.content?.kind === 'image' && (
+                <img className="fly-portal-image" src={activeTab.content.body} alt={tabTitle(activeTab)} />
+              )}
+
+              {activeTab?.content?.kind === 'binary' && (
+                <section className="fly-card" aria-label="Download">
+                  <p className="fly-muted">
+                    {activeTab.content.contentType || 'Binary content'} — this build does not render this file type.
+                  </p>
+                  <button
+                    className="fly-btn fly-btn-primary"
+                    onClick={() => downloadDataUrl(activeTab.content?.body ?? '', tabTitle(activeTab))}
+                  >
+                    Download file
+                  </button>
+                </section>
               )}
 
               {activeTab?.loading && (

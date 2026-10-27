@@ -12,7 +12,7 @@
 import type { StorageLike } from '../lib/storage.ts';
 import type { NavigationTarget } from './navigation.ts';
 
-export type PageKind = 'html' | 'text' | 'json';
+export type PageKind = 'html' | 'text' | 'json' | 'image' | 'binary';
 
 export interface PageContent {
   kind: PageKind;
@@ -234,8 +234,13 @@ function contentKind(contentType: string, body: string): PageKind {
   const type = contentType.toLowerCase();
   if (type.includes('text/html') || type.includes('application/xhtml')) return 'html';
   if (type.includes('json')) return 'json';
+  if (type.startsWith('image/')) return 'image';
+  if (type.includes('text/') || type.includes('xml') || type.includes('javascript') || type.includes('csv')) {
+    return 'text';
+  }
   if (!type && /^\s*<(!doctype|html)/i.test(body)) return 'html';
-  return 'text';
+  if (!type) return 'text';
+  return 'binary';
 }
 
 const ENTITIES: Record<string, string> = {

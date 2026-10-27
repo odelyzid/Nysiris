@@ -148,6 +148,9 @@ test('failPage and stopPage invalidate in-flight work', () => {
 test('page kind follows content type with an HTML fallback', () => {
   assert.equal(pageKindFor('application/json'), 'json');
   assert.equal(pageKindFor('text/plain'), 'text');
+  assert.equal(pageKindFor('application/xml'), 'text');
+  assert.equal(pageKindFor('image/png'), 'image');
+  assert.equal(pageKindFor('application/pdf'), 'binary');
   assert.equal(pageKindFor(''), 'text');
   assert.equal(pageKindFor('', '<!doctype html><html></html>'), 'html');
 });

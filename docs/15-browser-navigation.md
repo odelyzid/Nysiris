@@ -1,6 +1,7 @@
 # 15. Browser Document, Tabs, and Unified Navigation
 
-**Status:** Phase 1 implemented; later phases scaffolded below.
+**Status:** Phase 1 and the Phase 2 content-loader core are implemented; later
+phases and the remaining Phase 2 items are listed below.
 
 This document is the implementation plan for turning the Portal view into a
 real browser document model. It complements the browser-capability audit and
@@ -164,16 +165,27 @@ single blank tab.
 `https://` URL, switch between them, use back/forward, reload, stop a slow
 load, close a tab, and reload the app — the tab list and histories survive.
 
-### Phase 2 — content loader
+### Phase 2 — content loader (core implemented)
 
-- Base URL and subresource fetching through the same transport.
-- MIME dispatch: HTML, CSS, images, JSON, text, download.
-- Link interception inside the sandboxed document.
-- `<title>`/favicon extraction.
-- Per-tab document cache and scroll position.
+- [x] Base URL and subresource fetching through the same transport.
+- [x] HTML/CSS/images inlined; JSON/text rendered by the tab viewer.
+- [x] Link interception inside the sandboxed document (`data-nysiris-href`).
+- [x] `<title>` extraction and tab labels.
+- [x] Budgeted resource loading (24 resources, 2 MiB each, 8 MiB total).
+- [ ] Generic downloads / `Content-Disposition`.
+- [ ] Per-tab document cache, favicons, and scroll restoration.
+- [ ] Media/PDF rendering.
 
-**Acceptance:** a portal page with local CSS and images renders without
-clearnet requests; clicking an in-page link stays in the tab.
+**Implemented in** `web/src/application/contentLoader.ts`. Fetched documents
+are sanitised: scripts, frames, plugins, media, meta refresh, event handlers,
+and external SVG references are removed; every CSS `url(...)`/`@import` and
+image source is routed through the injected fetcher and replaced with a data
+URL. Links become `data-nysiris-href` values that the app shell intercepts and
+opens in the owning tab.
+
+**Acceptance (met for the core):** a portal page with local CSS and images
+renders without clearnet requests; clicking an in-page link stays in the tab.
+Scripts, forms, cookies, and media remain deliberately disabled.
 
 ### Phase 3 — HTTP semantics
 
@@ -208,11 +220,13 @@ followed; a range download resumes.
 |---|---|
 | `web/src/application/browser.ts` | Tab/document model, history, serialization |
 | `web/src/application/navigation.ts` | Address/petname resolution |
+| `web/src/application/contentLoader.ts` | Sanitising content loader, CSS/image inlining, link rewriting |
 | `web/src/adapters/driving/shell/BrowserChrome.tsx` | Tab strip + navigation controls |
 | `web/src/adapters/driving/shell/App.tsx` | Navigation orchestration and page rendering |
 | `web/src/adapters/driving/shell/DesktopShell.tsx` | Desktop top bar (view nav/status) |
 | `web/test/browser.test.mjs` | Model/history/serialization tests |
 | `web/test/navigation.test.mjs` | URL/petname resolution tests |
+| `web/test/contentLoader.test.mjs` | Resource resolution, CSS inlining, and budgets |
 
 ## 15.9 Migration notes
 
