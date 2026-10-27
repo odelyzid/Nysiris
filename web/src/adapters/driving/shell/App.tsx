@@ -1,9 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ensureTunnel, teardownTunnel, tunnelState, tunnelSpent, type TunnelStateView } from '../../../mixnet/tunnel';
-import { exitStatus, proveTunnel } from '../../../mixnet/fetch';
+import { exitStatus, mixnetFetch, proveTunnel } from '../../../mixnet/fetch';
 import { NymAddressClient, type IncomingMessage } from '../../../mixnet/messaging';
 import { fetchNym } from '../../../mixnet/fetchNym';
-import { parseInviteLink } from '../../../mixnet/hiddenService.mjs';
+import {
+  addBlankTab,
+  applyPage,
+  canGoBack,
+  canGoForward,
+  closeBrowserTab,
+  failPage,
+  historyEntry,
+  loadBrowserTabs,
+  navigateTab,
+  newTabId,
+  saveBrowserTabs,
+  stopPage,
+  tabTitle,
+  type BrowserTab,
+} from '../../../application/browser';
+import { resolveNavigationInput, type NavigationTarget, type ParsedInvite } from '../../../application/navigation';
+import { BrowserChrome } from './BrowserChrome';
 import { startForeground, stopForeground } from '../../../adapters/driven/foreground.mjs';
 import { Social } from '../social/Social';
 import { verifyInvite } from '../../../domain/identity';
@@ -12,7 +29,13 @@ import { Panel } from '../shared/Panel';
 import { Toolbar } from './Toolbar';
 import { ContactsPanel, type PendingInvite } from './ContactsPanel';
 import { PortalSync } from '../portal/PortalSync';
-import { addContact, defaultContactStorage, loadContacts, saveContacts, type Contact } from '../../../application/contacts';
+import {
+  addContact,
+  defaultContactStorage,
+  loadContacts,
+  saveContacts,
+  type Contact,
+} from '../../../application/contacts';
 import {
   addBookmark,
   defaultBookmarkStorage,
@@ -50,7 +73,6 @@ import {
   threadUnread,
   isContactThread,
   contactAddressOf,
-  formatFetchedBody,
 } from '../../../shared/share';
 import { ContextPanel, Roster, TopBar, type RosterPortal } from './DesktopShell';
 import { SavedLinks } from './SavedLinks';
@@ -105,9 +127,17 @@ export function App() {
   const [hsPath, setHsPath] = useState('/');
   const [hsResult, setHsResult] = useState('');
 
-  // The service the URI bar last navigated to. The Social section binds to
-  // this: navigating *is* connecting the social client to that service.
-  const [socialService, setSocialService] = useState('');
+  // Browser tabs/documents. The model lives in `application/browser.ts`; this
+  // component only orchestrates I/O and rendering. Restore URLs/history from
+  // the previous session (page bodies are intentionally not persisted).
+  const initialBrowserRef = useRef<ReturnType<typeof loadBrowserTabs> | null>(null);
+  if (!initialBrowserRef.current) initialBrowserRef.current = loadBrowserTabs(defaultStorage());
+  const initialBrowser = initialBrowserRef.current;
+  const [tabs, setTabs] = useState<BrowserTab[]>(initialBrowser.tabs);
+  const [activeTabId, setActiveTabId] = useState(initialBrowser.activeId);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null;
+  // The Social section binds to the active tab only; clearnet tabs never do.
+  const socialService = activeTab?.service ?? '';
   // Recently opened portals for the desktop roster, newest first.
   const [recentPortals, setRecentPortals] = useState<string[]>(() => loadRecentPortals(defaultViewStorage()));
   // Favourited portals: pinned above the recents in the roster, persisted.
@@ -139,10 +169,13 @@ export function App() {
 
   const [petname, setPetname] = useState('');
 
-  // Top URI bar: paste a private link and go. Behaviour unchanged —
-  // `parseInviteLink` → `fetchNym` → bind the Portal to the service.
-  const [uri, setUri] = useState('');
-  const [pageHtml, setPageHtml] = useState<string | null>(null);
+  // Unified address bar. `navigate()` decides between fetchNym (nym://) and
+  // mixnetFetch (http/https); the active tab owns the resulting document.
+  const [uri, setUri] = useState(initialBrowser.tabs.find((tab) => tab.id === initialBrowser.activeId)?.url ?? '');
+  const [navigationError, setNavigationError] = useState<string | null>(null);
+  const navigationSeqRef = useRef(0);
+  const activeLoadsRef = useRef(0);
+  const bootRestoredRef = useRef(false);
 
   const append = useCallback((line: string) => {
     setLog((prev) => [...prev.slice(-99), `${new Date().toLocaleTimeString()}  ${line}`]);
@@ -178,9 +211,7 @@ export function App() {
       // the policy itself can only warn (the tunnel is one-shot, §5.2.2).
       if (next.recommendReconnect && !exitWarnedRef.current) {
         exitWarnedRef.current = true;
-        append(
-          `exit reuse: ${next.requests} requests on one exit — reload the page to rotate your exit (§5.2.2)`,
-        );
+        append(`exit reuse: ${next.requests} requests on one exit — reload the page to rotate your exit (§5.2.2)`);
       }
       setExit(next);
     }, 2000);
@@ -354,19 +385,51 @@ export function App() {
     }
   }, [hsAddress, hsPath, append]);
 
-  const goTo = useCallback(
-    async (raw: string) => {
-      if (!raw) return;
+  // Petnames (contacts) are resolved in the address bar, case-insensitively.
+  const navigationPetnames = useMemo(
+    () =>
+      Object.fromEntries(
+        contacts
+          .map((contact) => [contact.name.trim().toLowerCase(), contact.address] as const)
+          .filter(([name, address]) => Boolean(name && address)),
+      ),
+    [contacts],
+  );
+
+  /**
+   * Execute one resolved navigation into one tab. Callers own the history
+   * decision and the navigation token; this function only does I/O + guarded
+   * state updates.
+   */
+  const loadInto = useCallback(
+    async (
+      target: NavigationTarget,
+      tabId: string,
+      options: { push: boolean; historyIndex?: number; token: number },
+    ) => {
+      activeLoadsRef.current += 1;
       setBusy(true);
       setLastError(null);
-      setPageHtml(null);
-      try {
-        // Invite links carry a #invite= fragment: parse it, but never send it.
-        const { address, path, invite } = parseInviteLink(raw);
-        if (invite) {
+      setNavigationError(null);
+      setTabs((prev) =>
+        prev.map((tab) =>
+          tab.id === tabId
+            ? navigateTab(tab, target, {
+                push: options.push,
+                historyIndex: options.historyIndex,
+                token: options.token,
+              })
+            : tab,
+        ),
+      );
+      setUri(target.url);
+
+      if (target.kind === 'nym') {
+        if (target.invite) {
+          const invite = target.invite as ParsedInvite;
           setPendingInvite({
-            address,
-            path,
+            address: target.address,
+            path: target.path,
             inviter: invite.inviter,
             note: invite.note,
             invite,
@@ -374,50 +437,203 @@ export function App() {
           setPetname('');
           append(`invite from ${invite.inviter.slice(0, 12)}…: “${invite.note}”`);
         }
-        append(`nym:// fetch ${path} @ ${address.slice(0, 12)}…`);
-        const res = await fetchNym(
-          address,
-          { method: 'GET', path, headers: { accept: 'text/html' } },
-          { timeoutMs: 120_000 },
+        append(`nym:// fetch ${target.path} @ ${target.address.slice(0, 12)}…`);
+        try {
+          const res = await fetchNym(
+            target.address,
+            { method: 'GET', path: target.path, headers: { accept: 'text/html' } },
+            { timeoutMs: 120_000 },
+          );
+          const text = new TextDecoder().decode(res.body);
+          const contentType = res.headers['content-type'] ?? '';
+          const error = res.error;
+          if (error) {
+            setTabs((prev) => prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, error) : tab)));
+            setHsResult(`status=${res.status} error=${error}`);
+            append(`nym:// done with service error: ${error}`);
+            return;
+          }
+          setTabs((prev) =>
+            prev.map((tab) =>
+              tab.id === tabId ? applyPage(tab, options.token, { status: res.status, contentType, body: text }) : tab,
+            ),
+          );
+          setRecentPortals((prev) => {
+            const next = rememberPortal(prev, target.address);
+            saveRecentPortals(next, defaultViewStorage());
+            return next;
+          });
+          setHsResult(`status=${res.status} body=${res.body.length}B (rendered in the tab)`);
+          append(`nym:// done: status=${res.status} body=${res.body.length}B`);
+        } catch (err) {
+          setTabs((prev) => prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, String(err)) : tab)));
+          setLastError(err);
+          append(`nym:// failed: ${String(err)}`);
+        } finally {
+          activeLoadsRef.current = Math.max(0, activeLoadsRef.current - 1);
+          setBusy(activeLoadsRef.current > 0);
+        }
+        return;
+      }
+
+      append(`https fetch ${target.url}`);
+      try {
+        const res = await mixnetFetch(target.url);
+        const text = await res.text();
+        const contentType = res.headers.get('content-type') ?? '';
+        setTabs((prev) =>
+          prev.map((tab) =>
+            tab.id === tabId ? applyPage(tab, options.token, { status: res.status, contentType, body: text }) : tab,
+          ),
         );
-        if (res.error) {
-          setHsResult(`status=${res.status} error=${res.error}`);
-          append(`nym:// done with service error: ${res.error}`);
-          return;
-        }
-        // Successful navigation binds the social client to this service, so its
-        // timeline, composer, and DMs operate on what you just fetched.
-        setSocialService(address);
-        setRecentPortals((prev) => {
-          const next = rememberPortal(prev, address);
-          saveRecentPortals(next, defaultViewStorage());
-          return next;
-        });
-        const text = new TextDecoder().decode(res.body);
-        const contentType = res.headers['content-type'] ?? '';
-        if (contentType.includes('html')) {
-          // Sandboxed: no scripts, no forms, opaque origin. Service HTML is
-          // rendered, never executed.
-          setPageHtml(text);
-          setHsResult(`status=${res.status} body=${res.body.length}B (rendered below)`);
-        } else {
-          setHsResult(`status=${res.status}\n${formatFetchedBody(text, contentType)}`);
-        }
-        append(`nym:// done: status=${res.status} body=${res.body.length}B`);
+        setHsResult(`status=${res.status} body=${text.length}B (rendered in the tab)`);
+        append(`web done: status=${res.status} body=${text.length}B`);
       } catch (err) {
+        setTabs((prev) => prev.map((tab) => (tab.id === tabId ? failPage(tab, options.token, String(err)) : tab)));
         setLastError(err);
-        append(`nym:// failed: ${String(err)}`);
+        append(`web failed: ${String(err)}`);
       } finally {
-        setBusy(false);
+        activeLoadsRef.current = Math.max(0, activeLoadsRef.current - 1);
+        setBusy(activeLoadsRef.current > 0);
       }
     },
     [append],
   );
 
+  const goTo = useCallback(
+    async (raw: string) => {
+      if (!raw.trim()) return;
+      let target: NavigationTarget;
+      try {
+        target = resolveNavigationInput(raw, { petnames: navigationPetnames });
+      } catch (err) {
+        setNavigationError(err instanceof Error ? err.message : String(err));
+        append(`navigation: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+      const tabId = activeTab?.id ?? tabs[0]?.id;
+      if (!tabId) return;
+      const token = (navigationSeqRef.current += 1);
+      onSelectView('portal');
+      await loadInto(target, tabId, { push: true, token });
+    },
+    [activeTab?.id, append, loadInto, navigationPetnames, onSelectView, tabs],
+  );
+
   const onGo = useCallback(() => {
     void goTo(uri);
+  }, [goTo, uri]);
+
+  const onAddressChange = useCallback((value: string) => {
+    setUri(value);
+    setNavigationError(null);
+  }, []);
+
+  /** Re-fetch a tab's current URL without pushing a history entry. */
+  const reloadTab = useCallback(
+    async (tab: BrowserTab, historyIndex?: number) => {
+      let target: NavigationTarget;
+      try {
+        target = resolveNavigationInput(tab.url);
+      } catch (err) {
+        setNavigationError(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      const token = (navigationSeqRef.current += 1);
+      await loadInto(target, tab.id, { push: false, historyIndex, token });
+    },
+    [loadInto],
+  );
+
+  const onBack = useCallback(() => {
+    if (!activeTab) return;
+    const entry = historyEntry(activeTab, -1);
+    if (!entry) return;
+    const token = (navigationSeqRef.current += 1);
+    let target: NavigationTarget;
+    try {
+      target = resolveNavigationInput(entry.url);
+    } catch (err) {
+      setNavigationError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    void loadInto(target, activeTab.id, { push: false, historyIndex: entry.index, token });
+  }, [activeTab, loadInto]);
+
+  const onForward = useCallback(() => {
+    if (!activeTab) return;
+    const entry = historyEntry(activeTab, 1);
+    if (!entry) return;
+    const token = (navigationSeqRef.current += 1);
+    let target: NavigationTarget;
+    try {
+      target = resolveNavigationInput(entry.url);
+    } catch (err) {
+      setNavigationError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    void loadInto(target, activeTab.id, { push: false, historyIndex: entry.index, token });
+  }, [activeTab, loadInto]);
+
+  const onReload = useCallback(() => {
+    if (!activeTab?.url) return;
+    void reloadTab(activeTab);
+  }, [activeTab, reloadTab]);
+
+  const onStop = useCallback(() => {
+    if (!activeTab) return;
+    setTabs((prev) => prev.map((tab) => (tab.id === activeTab.id ? stopPage(tab) : tab)));
+  }, [activeTab]);
+
+  const onSelectTab = useCallback(
+    (id: string) => {
+      const tab = tabs.find((candidate) => candidate.id === id);
+      setActiveTabId(id);
+      setNavigationError(null);
+      onSelectView('portal');
+      if (!tab) return;
+      setUri(tab.url);
+      // Restored tabs have no body yet: load the document on first selection.
+      if (tab.url && !tab.content && !tab.loading && !tab.error) void reloadTab(tab);
+    },
+    [onSelectView, reloadTab, tabs],
+  );
+
+  const onNewTab = useCallback(() => {
+    const result = addBlankTab(tabs, newTabId);
+    const created = result.tabs.length > tabs.length;
+    setTabs(result.tabs);
+    setActiveTabId(result.tab.id);
+    setUri(created ? '' : result.tab.url);
+    setNavigationError(null);
     onSelectView('portal');
-  }, [goTo, uri, onSelectView]);
+  }, [onSelectView, tabs]);
+
+  const onCloseTab = useCallback(
+    (id: string) => {
+      const result = closeBrowserTab(tabs, id, activeTabId);
+      setTabs(result.tabs);
+      setActiveTabId(result.activeId);
+      setUri(result.tabs.find((tab) => tab.id === result.activeId)?.url ?? '');
+      setNavigationError(null);
+    },
+    [activeTabId, tabs],
+  );
+
+  // Persist the tab list and histories. Page bodies never go to storage.
+  useEffect(() => {
+    saveBrowserTabs(defaultStorage(), tabs, activeTabId);
+  }, [tabs, activeTabId]);
+
+  // On first mount, restore and load the active tab once (page bodies are not
+  // persisted). The ref keeps StrictMode's development double-effect in check.
+  useEffect(() => {
+    if (bootRestoredRef.current) return;
+    bootRestoredRef.current = true;
+    const tab = tabs.find((candidate) => candidate.id === activeTabId);
+    if (tab?.url && !tab.content && !tab.loading) void reloadTab(tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
+  }, []);
 
   // "Run a Portal" tab: probe a running provider's address through the tunnel.
   const onProbePortal = useCallback(
@@ -652,13 +868,28 @@ export function App() {
         statusDetail={statusDetail}
         onRetry={onConnect}
         busy={busy}
-        uri={uri}
-        onUriChange={setUri}
-        onGo={onGo}
         advanced={advanced}
         onToggleAdvanced={onToggleAdvanced}
         contextOpen={contextOpen}
         onToggleContext={onToggleContext}
+      />
+      <BrowserChrome
+        tabs={tabs}
+        activeTabId={activeTabId}
+        canBack={canGoBack(activeTab)}
+        canForward={canGoForward(activeTab)}
+        loading={Boolean(activeTab?.loading)}
+        error={navigationError}
+        uri={uri}
+        onUriChange={onAddressChange}
+        onSubmit={onGo}
+        onBack={onBack}
+        onForward={onForward}
+        onReload={onReload}
+        onStop={onStop}
+        onNewTab={onNewTab}
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
       />
       <div className="fly-desktop" data-context={contextOpen ? 'open' : 'closed'}>
         <Roster
@@ -673,9 +904,7 @@ export function App() {
         <div className="fly-main">
           <header className="fly-classic-header">
             <h1 className="fly-h1">Nysiris</h1>
-            <p className="fly-muted">
-              Browse and chat over the private network.
-            </p>
+            <p className="fly-muted">Browse and chat over the private network.</p>
           </header>
 
           <AppNav
@@ -791,7 +1020,7 @@ export function App() {
               <section
                 className="fly-card"
                 aria-label="Open a private link"
-                style={socialService ? { display: 'none' } : undefined}
+                style={activeTab?.url ? { display: 'none' } : undefined}
               >
                 <h2>Open a private link</h2>
                 <p>Paste a link someone shared with you. It opens privately on this device.</p>
@@ -800,7 +1029,7 @@ export function App() {
                     className="fly-input"
                     placeholder="Paste a private link, then press Enter"
                     value={uri}
-                    onChange={(e) => setUri(e.target.value)}
+                    onChange={(e) => onAddressChange(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') void onGo();
                     }}
@@ -892,19 +1121,14 @@ export function App() {
                       </div>
                     </div>
                     <div>
-                      <h3 className="fly-h3">
-                        {activeThread ? threadLabel(activeThread, contacts) : 'Conversation'}
-                      </h3>
+                      <h3 className="fly-h3">{activeThread ? threadLabel(activeThread, contacts) : 'Conversation'}</h3>
                       {!activeThread && <p className="fly-muted">Pick a chat, or paste an address to start one.</p>}
                       <ul className="fly-plain-list">
                         {activeMessages.map((m, i) => (
                           <li key={i} className="fly-preview-msg">
                             <span className="fly-break-word">{m.text}</span>{' '}
                             {m.senderTag && (
-                              <button
-                                className="fly-btn fly-btn-sm fly-mt-1"
-                                onClick={() => void onReply(m)}
-                              >
+                              <button className="fly-btn fly-btn-sm fly-mt-1" onClick={() => void onReply(m)}>
                                 Reply
                               </button>
                             )}
@@ -948,7 +1172,7 @@ export function App() {
               <section
                 className="fly-card"
                 aria-label="Open a private link"
-                style={socialService ? { display: 'none' } : undefined}
+                style={activeTab?.url ? { display: 'none' } : undefined}
               >
                 <p>Open a private site or community. The address bar below is bound to what you see.</p>
                 <div className="fly-row">
@@ -956,7 +1180,7 @@ export function App() {
                     className="fly-input"
                     placeholder="Paste a private link, then press Enter"
                     value={uri}
-                    onChange={(e) => setUri(e.target.value)}
+                    onChange={(e) => onAddressChange(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') void onGo();
                     }}
@@ -976,9 +1200,7 @@ export function App() {
               {socialService && (
                 <>
                   <div className="fly-portal-bar" aria-label="Current portal">
-                    <span className="fly-muted fly-break-all">
-                      {shortenAddress(socialService)}
-                    </span>
+                    <span className="fly-muted fly-break-all">{shortenAddress(socialService)}</span>
                     <button
                       className={currentFavorite ? 'fly-btn fly-btn-secondary' : 'fly-btn'}
                       aria-pressed={currentFavorite}
@@ -1058,22 +1280,53 @@ export function App() {
                 </section>
               )}
 
-              {pageHtml !== null && (
+              {activeTab?.error && (
+                <section className="fly-card" role="alert" aria-label="Page error">
+                  <h2 className="fly-h2-flush">This page didn’t load</h2>
+                  <p className="fly-muted fly-break-word">{activeTab.error}</p>
+                  {activeTab.url && (
+                    <button className="fly-btn" onClick={() => void reloadTab(activeTab)}>
+                      Try again
+                    </button>
+                  )}
+                </section>
+              )}
+
+              {activeTab?.content?.kind === 'html' && (
                 <iframe
+                  id="fly-page"
                   className="fly-portal-frame"
                   sandbox=""
-                  title="Portal page"
-                  srcDoc={pageHtml}
+                  title={tabTitle(activeTab)}
+                  srcDoc={activeTab.content.body}
                   loading="lazy"
                 />
               )}
 
-              <Social
-                service={socialService}
-                onServiceChange={setSocialService}
-                trustMap={trustMap}
-                onVerdict={onVerdict}
-              />
+              {activeTab?.content && activeTab.content.kind !== 'html' && (
+                <pre className="fly-pre fly-portal-text" aria-label="Page content">
+                  {activeTab.content.body.slice(0, 200_000)}
+                </pre>
+              )}
+
+              {activeTab?.loading && (
+                <p className="fly-muted" role="status">
+                  Loading {activeTab.kind === 'clearnet' ? 'web page' : 'portal'}…
+                </p>
+              )}
+
+              {activeTab?.url && !activeTab.content && !activeTab.loading && !activeTab.error && (
+                <section className="fly-card" aria-label="Restored tab">
+                  <p className="fly-muted">This tab was restored. Load it when you’re ready.</p>
+                  <button className="fly-btn fly-btn-primary" onClick={() => void reloadTab(activeTab)}>
+                    Load {activeTab.kind === 'nym' ? shortenAddress(activeTab.address) : activeTab.address}
+                  </button>
+                </section>
+              )}
+
+              {socialService && (
+                <Social key={socialService} service={socialService} trustMap={trustMap} onVerdict={onVerdict} />
+              )}
             </main>
           )}
 
@@ -1189,9 +1442,7 @@ export function App() {
                           >
                             Start messaging client
                           </button>
-                          {selfAddress && (
-                            <p className="fly-meta fly-break-all">My address: {selfAddress}</p>
-                          )}
+                          {selfAddress && <p className="fly-meta fly-break-all">My address: {selfAddress}</p>}
                           <div className="fly-row fly-mt-2">
                             <input
                               className="fly-input"
@@ -1248,9 +1499,7 @@ export function App() {
                             Fetch
                           </button>
                         </div>
-                        {hsResult && (
-                          <pre className="fly-pre fly-mt-2">{hsResult}</pre>
-                        )}
+                        {hsResult && <pre className="fly-pre fly-mt-2">{hsResult}</pre>}
                       </Panel>
                     )}
 

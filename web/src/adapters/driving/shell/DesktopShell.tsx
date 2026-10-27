@@ -24,9 +24,6 @@ export function TopBar({
   statusDetail,
   onRetry,
   busy,
-  uri,
-  onUriChange,
-  onGo,
   advanced,
   onToggleAdvanced,
   contextOpen,
@@ -38,9 +35,6 @@ export function TopBar({
   statusDetail?: string;
   onRetry: () => void;
   busy: boolean;
-  uri: string;
-  onUriChange: (uri: string) => void;
-  onGo: () => void;
   advanced: boolean;
   onToggleAdvanced: (next: boolean) => void;
   contextOpen: boolean;
@@ -65,20 +59,6 @@ export function TopBar({
       <StatusPill status={status} detail={statusDetail} onRetry={onRetry} busy={busy} />
       {busy && <span className="fly-ie-spinner" role="status" aria-label="Loading" title="Loading…" />}
       <span className="fly-topbar-spacer" />
-      <input
-        className="fly-input uri-input"
-        placeholder="Private link or address"
-        value={uri}
-        onChange={(e) => onUriChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') onGo();
-        }}
-        spellCheck={false}
-        aria-label="Private link"
-      />
-      <button className="fly-btn fly-btn-primary" onClick={onGo} disabled={busy || !uri}>
-        Open
-      </button>
       <button
         className="btn btn-ghost"
         aria-pressed={advanced}

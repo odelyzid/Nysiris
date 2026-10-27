@@ -35,12 +35,10 @@ import type { Post } from './model';
 
 export function Social({
   service,
-  onServiceChange,
   trustMap,
   onVerdict,
 }: {
   service: string;
-  onServiceChange: (service: string) => void;
   /** Explicit Trust/Block verdicts, owned by App so invites can write them too. */
   trustMap: Record<string, Verdict>;
   onVerdict: (author: string, verdict: Verdict | null) => void;
