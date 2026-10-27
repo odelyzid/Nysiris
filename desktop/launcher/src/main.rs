@@ -16,7 +16,7 @@
 
 use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
@@ -100,7 +100,12 @@ fn main() {
                 let root = root.clone();
                 std::thread::spawn(move || {
                     if let Err(err) = handle_connection(stream, &root) {
-                        eprintln!("connection error: {err}");
+                        // Browsers routinely open speculative connections and
+                        // cancel subresource loads; those aborts (WSAECONNABORTED
+                        // 10053 on Windows) are not server failures.
+                        if !is_disconnect(&err) {
+                            eprintln!("connection error: {err}");
+                        }
                     }
                 });
             }
@@ -175,10 +180,38 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Config, String> {
 // Request handling
 // ---------------------------------------------------------------------------
 
+fn is_disconnect(err: &std::io::Error) -> bool {
+    matches!(
+        err.kind(),
+        ErrorKind::ConnectionAborted
+            | ErrorKind::ConnectionReset
+            | ErrorKind::BrokenPipe
+            | ErrorKind::UnexpectedEof
+    )
+}
+
 fn handle_connection(mut stream: TcpStream, root: &Path) -> std::io::Result<()> {
     let mut buffer = vec![0u8; MAX_HEADER_BYTES];
-    let read = stream.read(&mut buffer)?;
-    let request = &buffer[..read];
+    let mut filled = 0;
+    // Read the complete header block. A browser may split headers across
+    // segments; a preconnect that is closed immediately reads 0 bytes.
+    loop {
+        if filled == buffer.len() {
+            break;
+        }
+        match stream.read(&mut buffer[filled..]) {
+            Ok(0) => return Ok(()),
+            Ok(n) => {
+                filled += n;
+                if buffer[..filled].windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            Err(err) if is_disconnect(&err) => return Ok(()),
+            Err(err) => return Err(err),
+        }
+    }
+    let request = &buffer[..filled];
     let head = String::from_utf8_lossy(request);
     let request_line = head.lines().next().unwrap_or("");
     let mut parts = request_line.split_whitespace();
@@ -642,6 +675,43 @@ mod tests {
         );
         assert_eq!(windows_install_candidates_from(Some(pf), None).len(), 2);
         assert!(windows_install_candidates_from(None, None).is_empty());
+    }
+
+    #[test]
+    fn closed_preconnect_is_not_an_error() {
+        let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let root = env::temp_dir().join("fly-launcher-preconnect");
+            let _ = fs::create_dir_all(&root);
+            let _ = fs::write(root.join("index.html"), b"<html>ok</html>");
+            handle_connection(stream, &fs::canonicalize(&root).unwrap())
+        });
+        // Chrome preconnects and closes without sending a request.
+        drop(TcpStream::connect(addr).unwrap());
+        assert!(handle.join().unwrap().is_ok());
+    }
+
+    #[test]
+    fn request_headers_split_across_reads_are_reassembled() {
+        let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let root = env::temp_dir().join("fly-launcher-split-headers");
+            let _ = fs::create_dir_all(&root);
+            let _ = fs::write(root.join("index.html"), b"<html>ok</html>");
+            handle_connection(stream, &fs::canonicalize(&root).unwrap())
+        });
+        let mut client = TcpStream::connect(addr).unwrap();
+        client.write_all(b"GET / HTTP/1.1\r\nHost: x\r\n").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        client.write_all(b"\r\n").unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        handle.join().unwrap().unwrap();
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     }
 
     #[test]
