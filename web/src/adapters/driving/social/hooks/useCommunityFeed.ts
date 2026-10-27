@@ -80,6 +80,8 @@ export function useCommunityFeed({
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const [fetchingIds, setFetchingIds] = useState<string[]>([]);
   const [unavailableIds, setUnavailableIds] = useState<string[]>([]);
+  const activeServiceRef = useRef(service);
+  activeServiceRef.current = service;
   const cursorRef = useRef(0);
   cursorRef.current = cursor;
   // Consecutive transport failures and the paused flag, read by the poller
@@ -291,14 +293,18 @@ export function useCommunityFeed({
    * fresh navigation). A definitive service error pauses the automatic poller;
    * a transport failure schedules the next poll with exponential backoff.
    */
+  const refreshInFlightRef = useRef(false);
   const refreshFeed = useCallback(
     async (force = false) => {
-      if (!service) return;
+      const svc = service;
+      if (!svc) return;
+      if (refreshInFlightRef.current && !force) return;
       if (force) {
         feedFailuresRef.current = 0;
         feedStoppedRef.current = false;
         setFeedStopped(false);
       }
+      refreshInFlightRef.current = true;
       setSyncing(true);
       try {
         let since = cursorRef.current;
@@ -318,7 +324,7 @@ export function useCommunityFeed({
             // Fall through to since=0.
           }
         }
-        const res = await fetchNym(service, {
+        const res = await fetchNym(svc, {
           method: 'GET',
           path: `/feed?since=${since}&limit=20`,
         });
@@ -357,7 +363,10 @@ export function useCommunityFeed({
         setFeedError(msg);
         append(`feed failed: ${msg}`);
       } finally {
-        setSyncing(false);
+        refreshInFlightRef.current = false;
+        if (activeServiceRef.current === svc) {
+          setSyncing(false);
+        }
       }
     },
     [service, append, checkPost],
@@ -405,6 +414,8 @@ export function useCommunityFeed({
     setCursor(0);
     setFeedError(null);
     setLastSyncedAt(null);
+    setSyncing(false);
+    refreshInFlightRef.current = false;
     feedFailuresRef.current = 0;
     feedStoppedRef.current = false;
     setFeedStopped(false);
