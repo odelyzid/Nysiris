@@ -52,7 +52,7 @@ reference Sphinx implementation (`crates/sphinx-core`). Live-network delivery
   `workspace.members`. `nysiris-cli` also depends on the workspace-member
   `crates/nysiris-sdk` by path; keep the SDK nym-free so `check` stays fast.
 - `web/`: React PWA (`src/`), `test/` (node unit tests), `android/`,
-  `extension/` (MV3, desktop-only). `docs/` is numbered `01–14` by
+  `extension/` (MV3, desktop-only). `docs/` is numbered `01-15` by
   deliverable. `scripts/cmd-*.sh` implement `./build.sh` subcommands.
 - Naming: the product is **Nysiris** (`nysiris-*` packages, binaries,
   install paths). These historical identifiers are frozen for compat — do
@@ -80,7 +80,7 @@ checksums). `VERSION` is the source of truth; `./build.sh bump <version>`
 updates it, commits the bump, and creates the tag. Push the branch and tag
 together, and never tag before the bump commit exists.
 
-- Current counts: 113 Rust tests, 203 web tests, zero clippy warnings.
+- Current counts: 113 Rust tests, 243 web tests, zero clippy warnings.
 - Focused runs: `node --test web/test/<name>.test.mjs` (from repo root),
   `cargo test -p <crate>`, `./build.sh services social`.
 - CI (`check` job) runs `./build.sh check` on Node 24 **and then the full web
@@ -106,7 +106,11 @@ together, and never tag before the bump commit exists.
   failures there — keep local runs honest too (`npm ci` in `web/` first).
 - Pure logic lives in dependency-free `web/src/**/*.ts|.mjs` with a
   `web/test/*.test.mjs` in the same change. `withVerdict`/`withPetname`-style
-  helpers always copy — never rely on reference equality.
+  helpers always copy - never rely on reference equality.
+- Browser documents live in `application/browser.ts` and address parsing in
+  `application/navigation.ts`. Keep `App.tsx` as orchestration; every page load
+  goes through the tab model's navigation token (never ad-hoc
+  `fetchNym` + `setState`), or stale tab responses will leak across tabs.
 - Styling: `fly-btn` for buttons, `fly-input` for text inputs. Exceptions are
   contextual selectors, not omissions: `.fly-conv-list button`, `.fly-nav-btn`,
   `.fly-status`, `.fly-tab`. Never put `fly-btn` on conversation-list rows.

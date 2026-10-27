@@ -8,6 +8,11 @@ verifiable rather than vibes-based.
 > (hosting) now have working scaffolds — see `web/`, `services/`, and
 > `docs/03-browser-client.md` / `docs/04-hosting-services.md`. The acceptance
 > criteria below still require a machine with the Nym toolchain to demonstrate.
+>
+> **Browser-shell update (2026-10-27).** The document/tab model and unified
+> `nym://` + `http(s)` navigation are implemented; see
+> [`15-browser-navigation.md`](15-browser-navigation.md) for the model, phases,
+> and remaining content-loader/HTTP work.
 
 ---
 
