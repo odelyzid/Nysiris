@@ -7,13 +7,14 @@
  *
  * | Control | Security section | Export |
  * |---|---|---|
- * | SURB/reply single-use + TTL | §5.3.1, §5.3.3 | `ReplyTracker`, `messageKey` |
+ * | SURB/reply single-use + TTL | §5.3.1, §5.3.3 | `ReplyTracker`, `messageKey`, `replyKey` |
  * | Bounded reply rate | §5.3.4 | `ReplyBudget` |
  * | Cover-traffic guardrail | §5.8 | `requireCoverTraffic`, `DEFAULT_PRIVACY_PROFILE` |
  * | Exit rotation guidance | §5.2.2, §5.4.3 | `ExitPolicy`, `ExitRotation` |
  *
  * Kept free of browser globals so `node --test web/test` can verify it.
  */
+import { decodeResponse } from './hiddenService.mjs';
 
 /** ~25 hours: the SURB validity window (§5.3.3). */
 export const DEFAULT_SURB_MAX_AGE_MS = 25 * 60 * 60 * 1000;
@@ -47,6 +48,31 @@ export function stableHash(input) {
  */
 export function messageKey(senderTag, text) {
   return `${senderTag ?? 'no-tag'}:${stableHash(text)}`;
+}
+
+/**
+ * Dedupe key for a hidden-service reply.
+ *
+ * Correlated replies (see `fetchNym`) carry a unique request tag; keying on
+ * that tag keeps single-use tracking while allowing legitimate repeats such as
+ * an unchanged `/health` or an empty `/feed` page. Without this, content
+ * dedupe would drop every identical poll response for the 25 h SURB window and
+ * the timeline would stall after its first page.
+ *
+ * Untagged peer messages fall back to `messageKey` (sender tag + content).
+ *
+ * @param {string | undefined} senderTag
+ * @param {string} text
+ * @returns {string}
+ */
+export function replyKey(senderTag, text) {
+  try {
+    const tag = decodeResponse(text).tag;
+    if (typeof tag === 'string' && tag.length > 0) return `tag:${tag}`;
+  } catch {
+    // Not a hidden-service response envelope: treat it as a peer message.
+  }
+  return messageKey(senderTag, text);
 }
 
 /**

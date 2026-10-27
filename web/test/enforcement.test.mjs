@@ -10,6 +10,7 @@ import {
   ReplyBudget,
   ReplyTracker,
   messageKey,
+  replyKey,
   requireCoverTraffic,
   stableHash,
 } from '../src/mixnet/enforcement.mjs';
@@ -25,6 +26,18 @@ test('messageKey distinguishes senders and payloads', () => {
   assert.notEqual(messageKey('tag-a', 'hi'), messageKey('tag-b', 'hi'));
   assert.notEqual(messageKey('tag-a', 'hi'), messageKey('tag-a', 'ho'));
   assert.match(messageKey(undefined, 'x'), /^no-tag:/);
+});
+
+test('replyKey keeps identical correlated responses distinct by request tag', () => {
+  const envelope = (tag) =>
+    JSON.stringify({ status: 200, headers: {}, body_base64: '', error: null, ...(tag ? { tag } : {}) });
+  // An unchanged health/feed body polled twice must not be deduped away.
+  assert.notEqual(replyKey(undefined, envelope('p1')), replyKey(undefined, envelope('p2')));
+  assert.equal(replyKey(undefined, envelope('p1')), replyKey(undefined, envelope('p1')));
+  // Untagged peer replies still use sender tag + content.
+  assert.equal(replyKey(undefined, envelope(null)), replyKey(undefined, envelope(null)));
+  // Non-envelope text falls back to messageKey, not a throw.
+  assert.equal(replyKey('sender', 'hello'), messageKey('sender', 'hello'));
 });
 
 test('ReplyTracker enforces single use', () => {

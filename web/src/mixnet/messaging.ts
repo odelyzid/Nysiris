@@ -26,7 +26,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the SDK surface is wide
    and versioned; we keep a thin typed wrapper around the documented calls. */
-import { ReplyBudget, ReplyTracker, messageKey } from './enforcement.mjs';
+import { ReplyBudget, ReplyTracker, replyKey } from './enforcement.mjs';
 import { defaultStorage } from '../lib/storage.ts';
 import { messageClientId } from './messageIdentity.ts';
 
@@ -43,14 +43,29 @@ export interface IncomingMessage {
   raw?: unknown;
 }
 
+export interface NymAddressClientOptions {
+  /**
+   * Deduplicate inbound replies by content for the SURB window. Keep the
+   * default for user messaging. `fetchNym` disables it: request/response
+   * bodies legitimately repeat (unchanged health, empty feed pages) and are
+   * matched to their own request by correlation tag or the serial waiter.
+   */
+  dedupeInbound?: boolean;
+}
+
 export class NymAddressClient {
   private nym: any;
   private started = false;
   private address = '';
   /** §5.3.1/§5.3.3: dedupe + expire inbound replies. */
   private readonly inbound = new ReplyTracker();
+  private readonly dedupeInbound: boolean;
   /** §5.3.4: burst of 20, then 2 replies/second sustained. */
   private readonly replies = new ReplyBudget(20, 2);
+
+  constructor(options: NymAddressClientOptions = {}) {
+    this.dedupeInbound = options.dedupeInbound ?? true;
+  }
 
   /** Connect and return this client's own Nym address. Idempotent. */
   async start(
@@ -64,9 +79,11 @@ export class NymAddressClient {
     this.nym = await createNymMixnetClient();
 
     const deliver = (text: string, senderTag: string | undefined, raw: unknown) => {
-      // §5.3.1: never process the same reply twice.
-      const key = messageKey(senderTag, text);
-      if (!this.inbound.accept(key)) {
+      // §5.3.1: never process the same reply twice. Correlated request/response
+      // envelopes carry a unique tag, so repeated identical bodies (health,
+      // empty feed pages) are distinct replies rather than duplicates.
+      const key = replyKey(senderTag, text);
+      if (this.dedupeInbound && !this.inbound.accept(key)) {
         onRejected?.('duplicate reply ignored');
         return;
       }

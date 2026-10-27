@@ -160,6 +160,7 @@ export function useCommunityFeed({
       setFetchingIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
       try {
         const res = await fetchNym(service, { method: 'GET', path: `/post/${id}` });
+        if (activeServiceRef.current !== service) return;
         if (res.error) {
           setUnavailableIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
           return;
@@ -172,6 +173,7 @@ export function useCommunityFeed({
         gapAttemptsRef.current = clearGapAttempt(gapAttemptsRef.current, id);
         setPosts((prev) => mergeFeedPosts(prev, [item]));
       } catch (err) {
+        if (activeServiceRef.current !== service) return;
         // Transport failure (not a definitive 404): retry until the per-id
         // budget is spent, then mark unavailable so the poller stops.
         const step = noteGapAttempt(gapAttemptsRef.current, id);
@@ -298,6 +300,7 @@ export function useCommunityFeed({
     async (force = false) => {
       const svc = service;
       if (!svc) return;
+      const isCurrent = () => activeServiceRef.current === svc;
       if (refreshInFlightRef.current && !force) return;
       if (force) {
         feedFailuresRef.current = 0;
@@ -313,7 +316,7 @@ export function useCommunityFeed({
           // oldest-first, so since=0 would walk the entire archive 20 posts
           // per mixnet roundtrip before showing anything new.
           try {
-            const health = await fetchNym(service, { method: 'GET', path: '/health' });
+            const health = await fetchNym(svc, { method: 'GET', path: '/health' });
             if (!health.error) {
               const seq = (JSON.parse(new TextDecoder().decode(health.body)) as { seq?: unknown }).seq;
               if (typeof seq === 'number' && Number.isFinite(seq) && seq > 20) {
@@ -324,10 +327,14 @@ export function useCommunityFeed({
             // Fall through to since=0.
           }
         }
+        // A slow request started for a previous portal must never write into
+        // the new portal's timeline: its cursor could skip every new post.
+        if (!isCurrent()) return;
         const res = await fetchNym(svc, {
           method: 'GET',
           path: `/feed?since=${since}&limit=20`,
         });
+        if (!isCurrent()) return;
         if (res.error) {
           // A client error (e.g. `404 unknown route`) means the service is up
           // but wrong for this route — retrying cannot help, so pause. A 429 /
@@ -345,10 +352,13 @@ export function useCommunityFeed({
         const feed = JSON.parse(new TextDecoder().decode(res.body)) as FeedReply;
         if (feed.posts.length > 0) {
           const verified = feed.posts.filter(checkPost);
-          if (verified.length > 0) {
-            setPosts((prev) => mergeFeedPosts(prev, verified));
-            setCursor(feed.next);
-          }
+          if (verified.length > 0) setPosts((prev) => mergeFeedPosts(prev, verified));
+        }
+        // Advance past the page even when every item was filtered (forged
+        // signatures, malformed attachments). Otherwise the same bad page is
+        // requested forever and no newer post can ever appear.
+        if (typeof feed.next === 'number' && Number.isFinite(feed.next)) {
+          setCursor((prev) => (feed.next > prev ? feed.next : prev));
         }
         feedFailuresRef.current = 0;
         feedStoppedRef.current = false;
@@ -357,14 +367,15 @@ export function useCommunityFeed({
         setLastSyncedAt(Date.now());
         setNowTick(Date.now());
       } catch (err) {
+        if (!isCurrent()) return;
         // Transport failure (timeout / send error): back off, keep trying.
         feedFailuresRef.current += 1;
         const msg = String(err);
         setFeedError(msg);
         append(`feed failed: ${msg}`);
       } finally {
-        refreshInFlightRef.current = false;
         if (activeServiceRef.current === svc) {
+          refreshInFlightRef.current = false;
           setSyncing(false);
         }
       }
@@ -388,6 +399,7 @@ export function useCommunityFeed({
         method: 'GET',
         path: `/feed?since=${Math.max(0, oldestSeq - 60)}&limit=50`,
       });
+      if (activeServiceRef.current !== service) return;
       if (res.error) {
         append(`older posts error: ${res.error}`);
         return;
@@ -400,6 +412,7 @@ export function useCommunityFeed({
         append('no older posts on this community');
       }
     } catch (err) {
+      if (activeServiceRef.current !== service) return;
       append(`older posts failed: ${String(err)}`);
     } finally {
       setLoadingOlder(false);
@@ -475,6 +488,7 @@ export function useCommunityFeed({
       if (!service) return;
       try {
         const res = await fetchNym(service, { method: 'GET', path: `/profile/${author}` });
+        if (activeServiceRef.current !== service) return;
         if (res.error) {
           append(`no profile for ${author.slice(0, 12)}…`);
           return;
@@ -482,6 +496,7 @@ export function useCommunityFeed({
         const p = JSON.parse(new TextDecoder().decode(res.body)) as { name: string };
         setNames((prev) => ({ ...prev, [author]: p.name || author.slice(0, 12) }));
       } catch (err) {
+        if (activeServiceRef.current !== service) return;
         append(`lookup failed: ${String(err)}`);
       }
     },

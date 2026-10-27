@@ -89,7 +89,10 @@ function ensureClient(nymApiUrl: string): Promise<NymAddressClient> {
   if (!sharedClient || sharedApiUrl !== nymApiUrl) {
     sharedApiUrl = nymApiUrl;
     const boot = (async () => {
-      const client = new NymAddressClient();
+      // Correlated request/response traffic: identical bodies are legitimate
+      // repeats, and each reply is matched to its request by tag (or by the
+      // single serial waiter for older providers).
+      const client = new NymAddressClient({ dedupeInbound: false });
       await client.start(
         nymApiUrl,
         (msg) => {
@@ -130,29 +133,52 @@ async function runOnce(
   request: FetchNymRequest,
   options?: FetchNymOptions,
 ): Promise<FetchNymResponse> {
+  // Tag every request, not just parallel ones. Responses to repeated reads
+  // (e.g. an unchanged `/health` or an empty `/feed` page) are byte-identical,
+  // and `NymAddressClient` deduplicates inbound replies by content for 25 h.
+  // A unique tag gives each exchange its own identity, so a legitimate repeat
+  // is delivered instead of timing out. Providers that predate tag echoing
+  // still work through the untagged serial waiter.
+  const tag = nextTag();
   const envelope = encodeRequest({
     method: request.method ?? 'GET',
     path: request.path,
     headers: request.headers ?? {},
     bodyBase64: request.body ? toBase64(request.body) : '',
+    tag,
   });
 
   const timeoutMs = options?.timeoutMs ?? 90_000;
   const client = await ensureClient(options?.nymApiUrl ?? NYM_API_URL);
 
   const reply = await new Promise<string>((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      currentWaiter = null;
-      reject(new Error(`fetchNym timed out after ${timeoutMs} ms waiting for the SURB reply`));
-    }, timeoutMs);
-    currentWaiter = (text: string) => {
+    let settled = false;
+    let timer = 0;
+    const cleanup = () => {
       window.clearTimeout(timer);
       currentWaiter = null;
+      parallelWaiters.delete(tag);
+    };
+    const settle = (text: string) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       resolve(text);
     };
+    timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error(`fetchNym timed out after ${timeoutMs} ms waiting for the SURB reply`));
+    }, timeoutMs);
+    currentWaiter = settle;
+    // `dispatchReply` routes a tagged reply here; the serial waiter above
+    // handles legacy untagged providers. Whichever fires first wins.
+    parallelWaiters.set(tag, settle);
     client.send(recipient, envelope).catch((err: unknown) => {
-      window.clearTimeout(timer);
-      currentWaiter = null;
+      if (settled) return;
+      settled = true;
+      cleanup();
       reject(err);
     });
   });
