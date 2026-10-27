@@ -73,7 +73,7 @@ nysiris build entry point.
   ./build.sh windows           # Windows zip (MSYS2/MinGW or MSVC); see docs/12-windows.md
   ./build.sh check             # fmt + clippy + tests + web tests + docs
   ./build.sh all               # rust + check + web
-  ./build.sh bump patch        # bump the version (major|minor|patch|X.Y.Z)
+  ./build.sh bump patch        # bump + commit + tag (major|minor|patch|X.Y.Z)
   ./build.sh clean [--deep]    # remove build artifacts
 
 Flags:

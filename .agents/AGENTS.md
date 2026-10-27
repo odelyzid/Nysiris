@@ -76,8 +76,9 @@ reference Sphinx implementation (`crates/sphinx-core`). Live-network delivery
 ```
 
 Releases are cut from `v*` tags (CI builds `.deb` + Windows zip with
-checksums). `VERSION` is the source of truth; bump with
-`./build.sh bump <version>`.
+checksums). `VERSION` is the source of truth; `./build.sh bump <version>`
+updates it, commits the bump, and creates the tag. Push the branch and tag
+together, and never tag before the bump commit exists.
 
 - Current counts: 113 Rust tests, 203 web tests, zero clippy warnings.
 - Focused runs: `node --test web/test/<name>.test.mjs` (from repo root),

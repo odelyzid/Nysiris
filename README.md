@@ -345,9 +345,18 @@ One entry point for everything:
 ./build.sh --help
 ```
 
-Releases are cut from tags: `./build.sh bump <version>`, commit `VERSION`,
-`git push origin v<version>` — CI builds the `.deb` + Windows zip and
-publishes them with checksums (`.github/workflows/release.yml`).
+Releases are cut from tags. `./build.sh bump <version>` writes `VERSION` and the
+JS manifests, commits them as `release: <version>`, and creates the annotated
+`v<version>` tag on that commit. Then push both:
+
+```bash
+git push origin main
+git push origin v<version>
+```
+
+CI builds the `.deb` + Windows zip and publishes them with checksums
+(`.github/workflows/release.yml`). Tagging a commit whose `VERSION` does not
+match fails the release before anything is built.
 
 `./build.sh check` runs **113 Rust tests** and **203 web unit tests** with zero
 clippy warnings, validates the JSON manifests, and checks every relative link in
@@ -508,11 +517,20 @@ and `desktop/electron/package.json`.
 ./build.sh bump major        # 0.1.6 -> 1.0.0
 ./build.sh bump 1.2.3        # set an explicit version
 
+git push origin main && git push origin v<version>   # trigger the release
+
 ./build.sh desktop                       # -> dist/nysiris_<version>_amd64.deb
 ./build.sh desktop --electron            # -> Electron .deb + AppImage
 ./build.sh web && ./build.sh android     # PWA / Android
 ./build.sh check                         # verify
 ```
+
+`bump` commits the version files (`VERSION`, the JS manifests and lockfiles)
+as `release: <version>` and creates the annotated `v<version>` tag on that same
+commit. Do not tag an earlier commit: the release workflow rejects a tag whose
+version differs from the tagged tree's `VERSION`. Use `BUMP_NO_COMMIT=1`
+(write only) or `BUMP_NO_TAG=1` (commit but do not tag) if you need to split
+the steps; `BUMP_RETAG=1` moves an existing tag to the new bump commit.
 
 `--app-version X.Y.Z` overrides the version for one build without changing
 `./VERSION`.

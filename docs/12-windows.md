@@ -77,8 +77,10 @@ from the personal browser profile.
 Pushing a `v*` tag runs `.github/workflows/release.yml`: checks, the Linux
 `.deb`, and the Windows zip (built on `windows-latest` with MSYS2, same
 `./build.sh windows` path as local builds), published as a GitHub release
-with a `SHA256SUMS.txt`. Bump with `./build.sh bump <version>` first —
-`VERSION` is the single source of truth.
+with a `SHA256SUMS.txt`. Run `./build.sh bump <version>` first: it updates
+`VERSION`, commits it, and creates the `v<version>` tag on that commit. Push
+both `main` and the tag — a tag on an older commit fails the version check
+because `VERSION` would still hold the previous version.
 
 ## Limitations
 

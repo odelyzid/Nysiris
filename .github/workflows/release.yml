@@ -1,6 +1,8 @@
 name: Release
 
-# Cut a release by tagging: `./build.sh bump <version> && git push origin v<version>`
+# Cut a release with `./build.sh bump <version>`, which commits the version
+# files and creates the tag on that commit, then push main and the tag:
+#   git push origin main && git push origin v<version>
 # (VERSION file is the single source of truth; build.sh exports it as APP_VERSION.)
 on:
   push:
@@ -22,7 +24,7 @@ jobs:
           tag="${GITHUB_REF_NAME#v}"
           version="$(tr -d '[:space:]' < VERSION)"
           if [ "$tag" != "$version" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match VERSION ($version)"
+            echo "::error::tag $GITHUB_REF_NAME does not match VERSION ($version); run ./build.sh bump $tag and push the new bump commit/tag (BUMP_RETAG=1 moves the existing tag)"
             exit 1
           fi
           echo "tag $GITHUB_REF_NAME matches VERSION $version"
