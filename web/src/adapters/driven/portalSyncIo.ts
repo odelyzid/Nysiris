@@ -33,6 +33,7 @@ import {
   type PortalWant,
 } from '../../application/portalReplicaStore';
 import { verifyLogEntrySig, verifyObjectSig } from '../../domain/portalVerify';
+import { classifyPortalSyncError, type PortalSyncIssue } from '../../application/portalConflict';
 
 export interface PortalSyncSummary {
   /** Authors whose log advanced this run. */
@@ -45,6 +46,8 @@ export interface PortalSyncSummary {
   heads: Record<string, number>;
   /** Authors whose batch was rejected (equivalent beacon for reputation). */
   failed: string[];
+  /** Structured reasons for `failed`, for the conflict panel. */
+  issues: PortalSyncIssue[];
 }
 
 export interface PortalSyncOptions {
@@ -86,6 +89,7 @@ export async function syncPortalReplica(
     objects: 0,
     heads: peer,
     failed: [],
+    issues: [],
   };
 
   const wants = diffPortalWants(portalHeads(prev), peer);
@@ -108,12 +112,12 @@ export async function syncPortalReplica(
         const { entries } = parsePortalLogReply(bodyJson(logResps[i], `log ${want.author}`), want.fromSeq);
         resolved.set(want.author, want);
         parsedEntries.set(want.author, entries);
-      } catch {
-        failedAdd(summary, want.author);
+      } catch (err) {
+        failedAdd(summary, want.author, err);
       }
     }
-  } catch {
-    for (const want of wants) failedAdd(summary, want.author);
+  } catch (err) {
+    for (const want of wants) failedAdd(summary, want.author, err);
   }
 
   const objectsById = { ...prev.objectsById };
@@ -136,8 +140,8 @@ export async function syncPortalReplica(
           if (!verifyObjectSig(obj)) throw new Error(`obj ${id}: bad signature`);
           fetched.set(id, obj);
         }
-      } catch {
-        failedAdd(summary, author);
+      } catch (err) {
+        failedAdd(summary, author, err);
         continue;
       }
     }
@@ -148,8 +152,8 @@ export async function syncPortalReplica(
       summary.authors += 1;
       summary.entries += applied;
       summary.objects += fetched.size;
-    } catch {
-      failedAdd(summary, author);
+    } catch (err) {
+      failedAdd(summary, author, err);
     }
   }
 
@@ -158,6 +162,10 @@ export async function syncPortalReplica(
   return { replica, summary };
 }
 
-function failedAdd(summary: PortalSyncSummary, author: string): void {
+function failedAdd(summary: PortalSyncSummary, author: string, error?: unknown): void {
   if (!summary.failed.includes(author)) summary.failed.push(author);
+  const issue = classifyPortalSyncError(author, error ?? new Error('sync rejected this author'));
+  const existing = summary.issues.findIndex((item) => item.author === issue.author);
+  if (existing === -1) summary.issues.push(issue);
+  else summary.issues[existing] = issue;
 }

@@ -1,8 +1,9 @@
 # 15. Browser Document, Tabs, and Unified Navigation
 
-**Status:** Phase 1, Phase 3, and Phase 4 are implemented. Phase 2 is
-implemented except the embedded PDF/object and media range-streaming items
-noted below; Phase 5 remains.
+**Status:** Phases 1–5 are implemented. Phase 5’s portal surface now includes
+per-portal replicas/identity/trust, post/profile/wiki authoring, background
+replication while the app is open, offline media/attachment caching, workspace
+navigation, conflict recovery, and legacy-replica migration.
 
 This document is the implementation plan for turning the Portal view into a
 real browser document model. It complements the browser-capability audit and
@@ -196,7 +197,10 @@ load, close a tab, and reload the app — the tab list and histories survive.
 - [x] Download shelf: save page, save again, remove/clear, metadata persistence.
 - [x] `Content-Disposition` filename parsing and a resume-capable downloader
       (`HEAD` metadata + `Range`/`If-Range`, partial bytes retained in memory).
-- [ ] Embedded PDF/object documents and media range streaming.
+- [x] Embedded PDF/object documents and media range streaming.
+      `<object>`/`<embed>` become app-level document cards; top-level and
+      fallback media use a service-worker range bridge; small embedded media
+      stays inlined under the existing budget.
 
 **Implemented in** `web/src/application/contentLoader.ts`. Fetched documents
 are sanitised: scripts, frames, plugins, meta refresh, event handlers, and
@@ -207,9 +211,9 @@ app shell intercepts and opens in the owning tab. The prepared document also
 carries its own restrictive CSP as defence in depth.
 
 **Acceptance (met):** a portal page with local CSS and images renders without
-clearnet requests; clicking an in-page link stays in the tab. Scripts, forms,
-and embedded PDFs remain deliberately disabled; clearnet cookies are handled by
-the Phase 3 jar.
+clearnet requests; clicking an in-page link stays in the tab. Scripts and forms
+remain deliberately disabled; embedded PDF/object documents are extracted into
+openable cards, and clearnet cookies are handled by the Phase 3 jar.
 
 ### Phase 3 — HTTP semantics (implemented)
 
@@ -289,12 +293,33 @@ a second `nym://` launch opens in the running desktop instance. If the installed
 mix-tunnel WASM refuses to be reinitialised, the UI explains the failure and
 offers the documented hard-reload fallback.
 
-### Phase 5 — portal/Osiris surface
+### Phase 5 - portal/Osiris surface (implemented)
 
-- Portal object/log/wiki renderer and authoring.
-- Local-first replica browser, offline reader, background replication.
-- Fork/conflict explanation; per-portal identity/trust isolation.
-- Multi-portal workspace semantics on top of tabs.
+- [x] Versioned object schema for `site/index`, `profile`, `post`, `wiki/page`,
+      `wiki/index`, and generic objects.
+- [x] Fresh per-portal ed25519 author keys, isolated from the social and
+      portal-service identities.
+- [x] Escaped Markdown subset renderer (no raw HTML).
+- [x] Per-portal replica storage: IndexedDB content + localStorage metadata.
+- [x] Per-portal trust/block decisions; no cross-portal leakage.
+- [x] Structured sync conflicts and explicit manual author-log reset.
+- [x] Post, profile, and wiki/page authoring with optional PoW publishing.
+- [x] Portal workspace store/switcher; opening a workspace reuses its tab or
+      creates one, and cross-portal links open the owning workspace.
+- [x] Automatic/background replication while the app is open, with backoff,
+      online/visibility wakeups, and pause controls.
+- [x] Offline reader: replicas and generic attachments persist; media/PDF can be
+      saved for offline playback through the range cache.
+- [x] One-time migration notice/import for the pre-workspace global replica
+      (`fly.portal.sync.v1`).
+
+**Implemented in** `web/src/domain/portalContent.ts`,
+`portalLww.ts`, `portalWrite.ts`, `web/src/application/portalStore.ts`,
+`portalIdentity.ts`, `portalTrust.ts`, `portalWorkspaces.ts`,
+`portalConflict.ts`, `portalView.ts`, `portalMarkdown.ts`,
+`portalScheduler.ts`, `portalMigration.ts`, `portalMediaCache.ts`,
+`web/src/adapters/driven/portalWriteIo.ts`, and
+`web/src/adapters/driving/portal/PortalWorkspace.tsx`.
 
 ---
 
@@ -312,6 +337,23 @@ offers the documented hard-reload fallback.
 | `web/src/application/auth.ts` | `WWW-Authenticate` parsing + session credentials |
 | `web/src/application/clearnet.ts` | Redirect chain, per-hop cookies, auth header, final URL |
 | `web/src/application/httpHeaders.ts` | Validators, `Content-Disposition`, redirect/range headers |
+| `web/src/application/embeddedDocuments.ts` | Object/embed classification and document descriptors |
+| `web/src/application/mediaSession.ts` | Media tokens, streamability hints, session registry |
+| `web/src/shared/mediaRange.ts` | Byte-range parsing for the media bridge |
+| `web/src/adapters/driven/mediaBridge.ts` | App side of the SW range bridge |
+| `web/src/domain/portalContent.ts` | Versioned portal payload schema |
+| `web/src/domain/portalLww.ts` | Browser LWW merge |
+| `web/src/application/portalIdentity.ts` | Per-portal author keys |
+| `web/src/application/portalTrust.ts` | Per-portal trust decisions |
+| `web/src/application/portalWorkspaces.ts` | Workspace metadata/store |
+| `web/src/application/portalConflict.ts` | Conflict classification + manual reset |
+| `web/src/application/portalStore.ts` | IndexedDB replica store + localStorage metadata |
+| `web/src/application/portalView.ts` | Feed/wiki/profile view model |
+| `web/src/application/portalMarkdown.ts` | Escaped Markdown subset |
+| `web/src/application/portalScheduler.ts` | Background replication timing/backoff |
+| `web/src/application/portalMigration.ts` | Legacy global replica notice/import |
+| `web/src/application/portalMediaCache.ts` | Offline media/PDF cache |
+| `web/src/domain/portalWrite.ts` | Signed object/log-entry builders |
 | `web/src/application/encoding.ts` | `Content-Encoding` decoding |
 | `web/src/application/downloadTransfer.ts` | Resumable `Range`/`If-Range` download assembly |
 | `web/src/application/ranges.ts` | `Content-Range` parsing/chunk assembly |
@@ -327,6 +369,11 @@ offers the documented hard-reload fallback.
 | `web/src/adapters/driving/shell/BrowserTools.tsx` | Find/zoom/print/permission/offline controls |
 | `web/src/adapters/driving/shell/PermissionsPanel.tsx` | Per-site permission UI |
 | `web/src/adapters/driving/shell/findInDocument.ts` | DOM highlight/search for the iframe |
+| `web/src/adapters/driving/shell/MediaView.tsx` | Range-backed media player with data-URL fallback |
+| `web/src/adapters/driving/shell/EmbeddedDocuments.tsx` | Extracted object/embed document cards |
+| `web/src/adapters/driving/portal/PortalWorkspace.tsx` | Portal feed/wiki/profile, authoring, trust, conflicts |
+| `web/src/adapters/driving/portal/PortalMarkdown.tsx` | Escaped Markdown React renderer |
+| `web/src/adapters/driven/portalWriteIo.ts` | Signed portal publish transport (PoW + POST routes) |
 | `web/src/lib/abort.ts` | AbortError + signal racing |
 | `web/src/mixnet/fetchNym.ts` | Nym envelope client, abortable waiters, chunk reassembly |
 | `crates/nysiris-sdk/src/files.rs` | Static files: `Range`, `ETag`/`304`, `If-Range` |
@@ -347,6 +394,20 @@ offers the documented hard-reload fallback.
 | `web/test/httpHeaders.test.mjs` | Validators, filenames, redirects |
 | `web/test/encoding.test.mjs` | gzip/deflate/stacked decoding |
 | `web/test/downloadTransfer.test.mjs` | Resume, restart-on-200, abort, bounds |
+| `web/test/embeddedDocuments.test.mjs` | Object/embed classification |
+| `web/test/mediaSession.test.mjs` | Range parsing and media sessions |
+| `web/test/portalContent.test.mjs` | Portal payload schema |
+| `web/test/portalLww.test.mjs` | LWW merge/convergence |
+| `web/test/portalIdentity.test.mjs` | Per-portal key isolation |
+| `web/test/portalWorkspaces.test.mjs` | Workspace persistence |
+| `web/test/portalTrust.test.mjs` | Per-portal trust isolation |
+| `web/test/portalStoreConflict.test.mjs` | Replica store + manual reset |
+| `web/test/portalWrite.test.mjs` | Signed authoring/wire JSON |
+| `web/test/portalView.test.mjs` | Feed/wiki/profile view model |
+| `web/test/portalMarkdown.test.mjs` | Escaped Markdown subset |
+| `web/test/portalScheduler.test.mjs` | Background sync backoff/pause rules |
+| `web/test/portalMigration.test.mjs` | Legacy replica detection/import |
+| `web/test/portalMediaCache.test.mjs` | Offline media cache/range download |
 | `web/test/ranges.test.mjs` | `Content-Range` parsing and chunk assembly |
 | `web/test/zoom.test.mjs` | Zoom clamp/steps/persistence |
 | `web/test/find.test.mjs` | Match rules, segments, wraparound |

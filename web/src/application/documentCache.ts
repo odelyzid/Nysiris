@@ -7,6 +7,7 @@
  *
  * Pure and injectable so `node --test web/test` covers eviction and limits.
  */
+import type { EmbeddedDocument } from './embeddedDocuments.ts';
 
 export interface CachedPage {
   status: number;
@@ -14,6 +15,12 @@ export interface CachedPage {
   body: string;
   favicon: string | null;
   savedAt: number;
+  /** Extracted object/embed documents, preserved with the prepared body. */
+  embedded?: EmbeddedDocument[];
+  /** Media/PDF stream descriptor when the page was rendered without a body. */
+  mediaUrl?: string;
+  mediaTotal?: number | null;
+  mediaEtag?: string | null;
   /** Validators from the response that produced this body. */
   etag?: string | null;
   lastModified?: string | null;

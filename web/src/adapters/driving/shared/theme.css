@@ -288,7 +288,7 @@
 /* -------------------------------------------------- community polish */
 
 /* Identity bar: one calm row (short ID + primary invite action); everything
-   else lives behind the "â€¦" disclosure below it. */
+   else lives behind the "Ã¢â‚¬Â¦" disclosure below it. */
 .fly-identity-bar {
   display: flex;
   gap: 8px;
@@ -717,7 +717,7 @@
 
 /* ==========================================================================
    90s-desktop polish: shared bevel panels + button hierarchy + density.
-   Palette unchanged â€” only the existing tokens plus translucent bevel shading
+   Palette unchanged Ã¢â‚¬â€ only the existing tokens plus translucent bevel shading
    (rgba black/white), so the dark + orange theme stays exactly as-is.
    ========================================================================== */
 
@@ -769,7 +769,7 @@
   padding: 0 4px;
 }
 
-/* Small uppercase section heading with a thin divider â€” never a hero. */
+/* Small uppercase section heading with a thin divider Ã¢â‚¬â€ never a hero. */
 .section-title,
 .fly-card h2 {
   margin: 0 0 8px;
@@ -1973,5 +1973,216 @@ samp,
   }
   .fly-tool-status {
     margin-left: 0;
+  }
+}
+
+/* ------------------------------------------------ embedded object documents */
+.fly-embedded-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--fly-line);
+  padding: 8px 0;
+}
+
+.fly-embedded-row strong,
+.fly-embedded-row .fly-muted {
+  display: block;
+}
+
+.fly-embedded-reason {
+  display: block;
+  color: var(--fly-warn);
+  font-size: 12px;
+}
+
+.fly-embedded-actions {
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+.fly-embedded-preview .fly-pdf-frame {
+  margin-top: 8px;
+}
+
+@media (max-width: 600px) {
+  .fly-embedded-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* ---------------------------------------------------------- portal workspace */
+.fly-portal-workspace {
+  margin-top: var(--fly-space-3);
+}
+
+.fly-workspace-actions,
+.fly-workspace-switcher {
+  flex-wrap: wrap;
+}
+
+.fly-workspace-switcher {
+  margin-top: 8px;
+}
+
+.fly-workspace-description {
+  max-width: 720px;
+}
+
+.fly-workspace-compose {
+  margin: 12px 0;
+  border-top: 1px solid var(--fly-line);
+  padding-top: 10px;
+}
+
+.fly-workspace-form {
+  margin: 10px 0;
+  border: 1px solid var(--fly-line);
+  padding: 8px 10px;
+}
+
+.fly-workspace-form summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.fly-legacy-migration p {
+  margin: 0 0 6px;
+}
+
+.fly-workspace-editor {
+  width: 100%;
+  min-height: 70px;
+  resize: vertical;
+  font: inherit;
+}
+
+.fly-portal-markdown {
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.fly-portal-markdown h4,
+.fly-portal-markdown h5 {
+  margin: 10px 0 4px;
+}
+
+.fly-portal-markdown p {
+  margin: 0 0 8px;
+}
+
+.fly-portal-markdown blockquote {
+  border-left: 3px solid var(--fly-line);
+  margin: 8px 0;
+  padding-left: 10px;
+  color: var(--fly-muted);
+}
+
+.fly-portal-markdown ul,
+.fly-portal-markdown ol {
+  margin: 6px 0 8px 20px;
+}
+
+.fly-portal-link {
+  display: inline;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--fly-accent);
+  text-decoration: underline;
+  font: inherit;
+  cursor: pointer;
+}
+
+.fly-portal-inline-code,
+.fly-portal-code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.92em;
+  background: var(--fly-bg);
+  border: 1px solid var(--fly-line);
+  padding: 0 3px;
+}
+
+.fly-portal-code {
+  display: block;
+  overflow-x: auto;
+  padding: 8px;
+  margin: 8px 0;
+}
+
+.fly-portal-post {
+  border-top: 1px solid var(--fly-line);
+  padding: 8px 0;
+}
+
+.fly-portal-wiki {
+  border: 1px solid var(--fly-line);
+  padding: 10px;
+  margin-top: 8px;
+  background: var(--fly-bg);
+}
+
+.fly-portal-profile {
+  border-left: 3px solid var(--fly-accent);
+  padding-left: 10px;
+  margin: 8px 0;
+}
+
+.fly-portal-objects {
+  margin: 10px 0;
+}
+
+.fly-portal-attachments {
+  flex-wrap: wrap;
+  margin: 4px 0;
+}
+
+.fly-portal-object-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--fly-line);
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.fly-conflict-list {
+  border-left: 4px solid var(--fly-warn);
+  background: var(--fly-surface);
+  padding: 8px 10px;
+  margin: 10px 0;
+}
+
+.fly-conflict-row {
+  border-top: 1px solid var(--fly-line);
+  padding: 8px 0;
+}
+
+.fly-conflict-row p {
+  margin: 0 0 6px;
+}
+
+.fly-portal-author-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--fly-line);
+  padding: 6px 0;
+  font-size: 12px;
+}
+
+.fly-portal-author-actions {
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 600px) {
+  .fly-portal-author-row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

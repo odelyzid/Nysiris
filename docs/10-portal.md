@@ -108,7 +108,7 @@ browser TypeScript port mirrors exactly: `web/src/domain/portalSync.ts`
 parses the same `GET /heads` / `GET /log/<author>?since=` JSON, reproduces
 `entry_bytes` and object signing bytes byte-for-byte, computes wants as the
 local log head per author, and applies batches atomically after verifying
-signatures (`web/src/domain/portalVerify.ts`). The browser port is a
+signatures (`web/src/domain/portalVerify.ts`). The initial browser port was a
 read-side replica only — it never merges forks, enforces continuity, and
 persists under the frozen `fly.portal.sync.v1` key. Traffic rides
 `fetchNym` (serialized) / `fetchNymParallel` (tag-correlated) NYM requests
@@ -116,6 +116,14 @@ via `web/src/adapters/driven/portalSyncIo.ts`, surfaced in the Portal panel
 (`web/src/adapters/driving/portal/PortalSync.tsx`). Discovery starts
 where we already are — invite links
 (`nym://` URIs + petnames) and URI-bar binding — before any ambient mechanism.
+
+Phase 5 adds the browser write side and portal workspace: signed object/log
+creation (`domain/portalWrite.ts`), PoW-aware publishing
+(`adapters/driven/portalWriteIo.ts`), per-portal IndexedDB replicas
+(`application/portalStore.ts`), per-portal author keys/trust/workspaces,
+background polling while the app is open, and the feed/wiki/profile UI in
+`adapters/driving/portal/PortalWorkspace.tsx`. Forks still never merge; the
+manual "reset this author log" action is explicit.
 
 ## 10.5 Reputation and spam (implemented)
 

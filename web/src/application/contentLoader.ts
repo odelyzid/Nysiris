@@ -22,8 +22,13 @@
  * oversized resources become a transparent pixel rather than a live URL.
  */
 import { b64encode } from '../lib/bytes.ts';
+import {
+  classifyEmbedded,
+  embeddedFilename,
+  type EmbeddedDocument,
+} from './embeddedDocuments.ts';
 
-export type ResourceKind = 'stylesheet' | 'image' | 'media' | 'other';
+export type ResourceKind = 'stylesheet' | 'image' | 'media' | 'document' | 'other';
 
 export interface ResourceResponse {
   status: number;
@@ -64,6 +69,8 @@ export interface PreparedDocument {
   favicon: string | null;
   baseUrl: string;
   stats: LoadStats;
+  /** PDF/object/text documents that were removed from the live DOM. */
+  embedded: EmbeddedDocument[];
 }
 
 export const DEFAULT_MAX_RESOURCES = 24;
@@ -77,8 +84,6 @@ const ACTIVE_TAGS = [
   'iframe',
   'frame',
   'frameset',
-  'object',
-  'embed',
   'applet',
   'base',
   'track',
@@ -163,6 +168,7 @@ export async function prepareDocument(
       favicon: null,
       baseUrl,
       stats: loader.stats,
+      embedded: [],
     };
   }
   const { doc } = parsed;
@@ -251,6 +257,71 @@ export async function prepareDocument(
     element.setAttribute('style', await rewriteCss(css, baseUrl, loader, maxCssDepth, maxCssDepth));
   }
 
+  // `<object>`/`<embed>` are extracted instead of left live: the sandboxed
+  // document cannot load a plugin, frame, or remote resource safely. Images are
+  // inlined; PDFs/text/media become app-level document cards.
+  const embedded: EmbeddedDocument[] = [];
+  for (const element of [...doc.querySelectorAll('object, embed')]) {
+    const rawUrl = element.getAttribute('data') ?? element.getAttribute('src') ?? '';
+    const declared = element.getAttribute('type') ?? '';
+    const title = (element.getAttribute('title') ?? element.getAttribute('name') ?? '').trim();
+    const resolved = resolveResourceUrl(rawUrl, baseUrl);
+    const classification = classifyEmbedded(declared, resolved ?? rawUrl);
+    const canFetch = resolved !== null && /^(nym:\/\/|https?:\/\/|data:)/i.test(resolved);
+
+    if (!resolved || !canFetch) {
+      const blocked: EmbeddedDocument = {
+        id: `embed-${embedded.length + 1}`,
+        kind: 'blocked',
+        url: resolved ?? rawUrl,
+        contentType: classification.contentType,
+        title,
+        filename: embeddedFilename(rawUrl, title, classification.contentType),
+        reason: resolved ? 'Unsupported embedded document URL.' : 'Embedded document has no usable source.',
+      };
+      embedded.push(blocked);
+      element.replaceWith(makeEmbeddedPlaceholder(doc, blocked));
+      continue;
+    }
+
+    if (classification.kind === 'blocked') {
+      const blocked: EmbeddedDocument = {
+        id: `embed-${embedded.length + 1}`,
+        kind: 'blocked',
+        url: resolved,
+        contentType: classification.contentType,
+        title,
+        filename: embeddedFilename(resolved, title, classification.contentType),
+        reason: classification.reason,
+      };
+      embedded.push(blocked);
+      element.replaceWith(makeEmbeddedPlaceholder(doc, blocked));
+      continue;
+    }
+
+    if (classification.kind === 'image' && !resolved.startsWith('data:')) {
+      const data = await inlineImage(resolved, loader);
+      if (data) {
+        const image = doc.createElement('img');
+        image.setAttribute('src', data);
+        image.setAttribute('alt', title || 'Embedded image');
+        element.replaceWith(image);
+        continue;
+      }
+    }
+
+    const descriptor: EmbeddedDocument = {
+      id: `embed-${embedded.length + 1}`,
+      kind: classification.kind,
+      url: resolved,
+      contentType: classification.contentType,
+      title,
+      filename: embeddedFilename(resolved, title, classification.contentType),
+    };
+    embedded.push(descriptor);
+    element.replaceWith(makeEmbeddedPlaceholder(doc, descriptor));
+  }
+
   // Images. `srcset` is removed above; only the primary source is inlined.
   for (const image of [...doc.querySelectorAll('img[src], input[type="image"][src]')]) {
     const src = image.getAttribute('src') ?? '';
@@ -284,7 +355,13 @@ export async function prepareDocument(
     const absolute = resolveResourceUrl(raw, baseUrl);
     const data = absolute ? await inlineMedia(absolute, loader) : null;
     if (data) media.setAttribute('src', data);
-    else media.removeAttribute('src');
+    else if (absolute) {
+      const descriptor = mediaDescriptor(embedded.length, absolute, media.getAttribute('title') ?? '');
+      embedded.push(descriptor);
+      media.replaceWith(makeEmbeddedPlaceholder(doc, descriptor));
+    } else {
+      media.removeAttribute('src');
+    }
   }
   for (const source of [...doc.querySelectorAll('source')]) {
     const parent = source.parentElement?.tagName.toLowerCase();
@@ -297,7 +374,17 @@ export async function prepareDocument(
     const absolute = resolveResourceUrl(raw, baseUrl);
     const data = absolute ? await inlineMedia(absolute, loader) : null;
     if (data) source.setAttribute('src', data);
-    else source.remove();
+    else if (absolute) {
+      const container = source.closest('video, audio');
+      if (container && !container.hasAttribute('data-nysiris-embed')) {
+        container.setAttribute('data-nysiris-embed', '1');
+        const descriptor = mediaDescriptor(embedded.length, absolute, container.getAttribute('title') ?? '');
+        embedded.push(descriptor);
+        container.replaceWith(makeEmbeddedPlaceholder(doc, descriptor));
+      }
+    } else {
+      source.remove();
+    }
   }
   for (const element of [...doc.querySelectorAll('[src]:not(img):not(input):not(video):not(audio):not(source)')]) {
     element.removeAttribute('src');
@@ -357,7 +444,36 @@ export async function prepareDocument(
     favicon,
     baseUrl,
     stats: loader.stats,
+    embedded,
   };
+}
+
+function mediaDescriptor(index: number, url: string, title: string): EmbeddedDocument {
+  const contentType = mediaMimeFromUrl(url) || 'application/octet-stream';
+  return {
+    id: `embed-${index + 1}`,
+    kind: 'media',
+    url,
+    contentType,
+    title,
+    filename: embeddedFilename(url, title, contentType),
+  };
+}
+
+function makeEmbeddedPlaceholder(doc: Document, item: EmbeddedDocument): HTMLElement {
+  const placeholder = doc.createElement('div');
+  placeholder.className = 'fly-embed-placeholder';
+  placeholder.setAttribute('data-nysiris-embed-id', item.id);
+  placeholder.setAttribute('role', 'note');
+  placeholder.setAttribute(
+    'style',
+    'border:1px dashed #8a8a8a;padding:8px 10px;margin:8px 0;font:13px/1.4 system-ui,sans-serif;color:#555',
+  );
+  placeholder.textContent =
+    item.kind === 'blocked'
+      ? `Embedded content blocked: ${item.reason ?? 'unsupported type'}`
+      : `Embedded ${item.kind}: ${item.filename} (open from the document list)`;
+  return placeholder;
 }
 
 /**

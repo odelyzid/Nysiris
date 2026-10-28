@@ -11,6 +11,7 @@
  */
 import type { StorageLike } from '../lib/storage.ts';
 import type { NavigationTarget } from './navigation.ts';
+import type { EmbeddedDocument } from './embeddedDocuments.ts';
 
 export type PageKind = 'html' | 'text' | 'json' | 'image' | 'media' | 'pdf' | 'binary';
 
@@ -18,6 +19,12 @@ export interface PageContent {
   kind: PageKind;
   contentType: string;
   body: string;
+  /** Documents extracted from the page's `<object>`/`<embed>` elements. */
+  embedded?: EmbeddedDocument[];
+  /** Original URL for media/PDF streamed through the range bridge. */
+  mediaUrl?: string;
+  mediaTotal?: number | null;
+  mediaEtag?: string | null;
 }
 
 export interface BrowserTab {
@@ -50,6 +57,10 @@ export interface PageResult {
   contentType: string;
   body: string;
   favicon?: string | null;
+  embedded?: EmbeddedDocument[];
+  mediaUrl?: string;
+  mediaTotal?: number | null;
+  mediaEtag?: string | null;
 }
 
 export interface NavigateOptions {
@@ -149,7 +160,15 @@ export function applyPage(tab: BrowserTab, token: number, result: PageResult): B
   const kind = contentKind(result.contentType, result.body);
   return {
     ...tab,
-    content: { kind, contentType: result.contentType, body: result.body },
+    content: {
+      kind,
+      contentType: result.contentType,
+      body: result.body,
+      embedded: result.embedded ?? [],
+      mediaUrl: result.mediaUrl,
+      mediaTotal: result.mediaTotal,
+      mediaEtag: result.mediaEtag,
+    },
     status: result.status,
     title: titleFromContent(kind, result.body) || tab.title,
     favicon: result.favicon ?? null,

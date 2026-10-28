@@ -26,7 +26,7 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 > documented controls enforced in code and tests.
 > * Reference Rust workspace: **113 tests pass** (the soak test is ignored by
 >   default).
-> * Browser PWA + social logic: **268 `node --test` tests pass** (0 skipped
+> * Browser PWA + social logic: **377 `node --test` tests pass** (0 skipped
 >   when `node_modules` are present — and the CI gate runs them with
 >   dependencies installed, so the @noble crypto constructions gate too).
 > * Service hosting: runnable providers + `nysiris` CLI + hybrid compose +
@@ -603,6 +603,16 @@ extension/               MV3 desktop scaffold
 | ![Home tab](docs/images/tab-home.png) | ![Messages tab](docs/images/tab-messages.png) |
 
 ![Portal tab with the community timeline](docs/images/tab-portal.png)
+
+### Portal workspace and browser tools
+
+![Portal workspace with signed feed, wiki, profile editing, and per-portal trust](docs/images/tab-portal-workspace.png)
+
+| Browser tools | Per-site permissions |
+|---|---|
+| ![Find, zoom, print, permissions, and offline status](docs/images/tab-browser-tools.png) | ![Per-site camera, microphone, location, notification, and clipboard decisions](docs/images/tab-permissions.png) |
+
+![Settings: private network, private link, contacts, and advanced tools](docs/images/tab-settings.png)
 
 These contain no real addresses, contacts, or messages. Serve `web/dist` (or a
 release package) to click through it yourself — more honest screenshots welcome.

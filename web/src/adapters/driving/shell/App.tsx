@@ -32,6 +32,7 @@ import { resolveNavigationInput, type NavigationTarget, type ParsedInvite } from
 import { b64decode, b64encode } from '../../../lib/bytes';
 import { isAbortError } from '../../../lib/abort';
 import { prepareDocument, type ResourceKind, type ResourceResponse } from '../../../application/contentLoader';
+import type { EmbeddedDocument } from '../../../application/embeddedDocuments';
 import { DocumentCache } from '../../../application/documentCache';
 import { CookieJar, loadCookieJar, saveCookieJar } from '../../../application/cookies';
 import { CredentialStore, authScopeFor, isSupportedChallenge, parseAuthChallenge, type AuthChallenge } from '../../../application/auth';
@@ -68,6 +69,18 @@ import { isOnline, serviceWorkerSupported, watchConnectivity } from '../../../pw
 import { subscribeDeepLinks, takeInitialDeepLink } from '../../../adapters/driven/deepLink';
 import { BrowserTools } from './BrowserTools';
 import { PermissionsPanel } from './PermissionsPanel';
+import { EmbeddedDocuments } from './EmbeddedDocuments';
+import { MediaView } from './MediaView';
+import { startMediaBridge } from '../../../adapters/driven/mediaBridge';
+import {
+  defaultMediaCache,
+  downloadMediaToCache,
+} from '../../../application/portalMediaCache';
+import {
+  isStreamableContentType,
+  looksLikeStreamableUrl,
+  mediaStreamingAvailable,
+} from '../../../application/mediaSession';
 import { clearFindHighlights, focusFindMatch, highlightFindMatches } from './findInDocument';
 import {
   addDownload,
@@ -89,6 +102,7 @@ import { Panel } from '../shared/Panel';
 import { Toolbar } from './Toolbar';
 import { ContactsPanel, type PendingInvite } from './ContactsPanel';
 import { PortalSync } from '../portal/PortalSync';
+import { PortalWorkspace } from '../portal/PortalWorkspace';
 import { DownloadManager } from '../portal/DownloadManager';
 import { PdfView } from './PdfView';
 import {
@@ -184,6 +198,17 @@ function downloadDataUrl(dataUrl: string, name: string): number | null {
   const bytes = b64decode(match[2]);
   saveBlob(bytes, match[1] || 'application/octet-stream', name);
   return bytes.length;
+}
+
+/** Decode a text-ish `data:` URL for an embedded document preview. */
+function textFromDataUrl(dataUrl: string): string {
+  const match = /^data:([^;,]*)(;base64)?,(.*)$/s.exec(dataUrl);
+  if (!match) return '';
+  try {
+    return match[2] ? new TextDecoder().decode(b64decode(match[3])) : decodeURIComponent(match[3]);
+  } catch {
+    return '';
+  }
 }
 
 const DOWNLOAD_EXTENSIONS: Record<string, string> = {
@@ -387,6 +412,13 @@ export function App() {
   const [online, setOnline] = useState(() => isOnline());
   const [swControlled, setSwControlled] = useState(false);
   const [initialDeepLink] = useState(() => takeInitialDeepLink());
+  const [embeddedPreview, setEmbeddedPreview] = useState<{
+    document: EmbeddedDocument;
+    loading: boolean;
+    dataUrl?: string;
+    text?: string;
+    error?: string;
+  } | null>(null);
 
   const append = useCallback((line: string) => {
     setLog((prev) => [...prev.slice(-99), `${new Date().toLocaleTimeString()}  ${line}`]);
@@ -693,7 +725,9 @@ export function App() {
             ? 'text/css,*/*;q=0.1'
             : kind === 'media'
               ? 'audio/*,video/*,*/*;q=0.1'
-              : '*/*';
+              : kind === 'document'
+                ? 'application/pdf,text/*,application/json;q=0.9,*/*;q=0.5'
+                : '*/*';
       try {
         if (target.kind === 'nym') {
           const headers: Record<string, string> = { accept };
@@ -704,7 +738,7 @@ export function App() {
             { method: 'GET', path: target.path, headers },
             {
               timeoutMs: 30_000,
-              maxBytes: kind === 'other' ? 32 * 1024 * 1024 : 4 * 1024 * 1024,
+              maxBytes: kind === 'other' || kind === 'document' ? 32 * 1024 * 1024 : 4 * 1024 * 1024,
               signal,
             },
           );
@@ -741,6 +775,45 @@ export function App() {
       );
     },
     [append],
+  );
+
+  /**
+   * HEAD probe for obvious media/PDF URLs. When the range bridge is active this
+   * avoids downloading the whole file just to discover it is playable.
+   */
+  const probeStreamTarget = useCallback(
+    async (target: NavigationTarget, signal?: AbortSignal): Promise<DownloadMeta | null> => {
+      if (!mediaStreamingAvailable() || !looksLikeStreamableUrl(target.url)) return null;
+      try {
+        if (target.kind === 'nym') {
+          const headers: Record<string, string> = { accept: '*/*' };
+          const authorization = credentialsRef.current?.authorizationFor(target.address) ?? '';
+          if (authorization) headers.authorization = authorization;
+          const res = await fetchNym(
+            target.address,
+            { method: 'HEAD', path: target.path, headers },
+            { timeoutMs: 30_000, signal },
+          );
+          if (res.error || res.status >= 400) return null;
+          const meta = metaFromHeaders(res.headers ?? {}, target.url);
+          return isStreamableContentType(meta.contentType) ? meta : null;
+        }
+        const result = await requestClearnet(target.url, {
+          method: 'HEAD',
+          headers: { accept: '*/*', 'accept-encoding': 'identity' },
+          signal,
+        });
+        if (result.response.status >= 400) return null;
+        const meta = metaFromHeaders(
+          headersToRecord(result.response.headers),
+          result.url || target.url,
+        );
+        return isStreamableContentType(meta.contentType) ? meta : null;
+      } catch {
+        return null;
+      }
+    },
+    [requestClearnet],
   );
 
   /**
@@ -787,6 +860,10 @@ export function App() {
                   contentType: cached.contentType,
                   body: cached.body,
                   favicon: cached.favicon,
+                  embedded: cached.embedded,
+                  mediaUrl: cached.mediaUrl,
+                  mediaTotal: cached.mediaTotal,
+                  mediaEtag: cached.mediaEtag,
                 })
               : tab,
           ),
@@ -796,6 +873,45 @@ export function App() {
       // Reload/back-forward revalidation: ask the origin whether the cached
       // body is still current. A 304 reuses the prepared document.
       const conditional = cached ? conditionalRequestHeaders(cached) : {};
+
+      // Media/PDF candidates are probed with HEAD so the range bridge can play
+      // them without buffering the entire representation first.
+      const streamMeta = await probeStreamTarget(target, options.signal);
+      if (options.signal?.aborted) return;
+      if (streamMeta) {
+        setTabs((prev) =>
+          prev.map((tab) =>
+            tab.id === tabId
+              ? applyPage(tab, options.token, {
+                  status: 200,
+                  contentType: streamMeta.contentType,
+                  body: '',
+                  favicon: null,
+                  embedded: [],
+                  mediaUrl: streamMeta.url || target.url,
+                  mediaTotal: streamMeta.total,
+                  mediaEtag: streamMeta.etag,
+                })
+              : tab,
+          ),
+        );
+        documentCacheRef.current.set(target.url, {
+          status: 200,
+          contentType: streamMeta.contentType,
+          body: '',
+          favicon: null,
+          embedded: [],
+          mediaUrl: streamMeta.url || target.url,
+          mediaTotal: streamMeta.total,
+          mediaEtag: streamMeta.etag,
+          etag: streamMeta.etag,
+          lastModified: null,
+          finalUrl: streamMeta.url || target.url,
+        });
+        pageMetaRef.current.set(target.url, streamMeta);
+        append(`streaming ${streamMeta.contentType} through the range bridge`);
+        return;
+      }
 
       activeLoadsRef.current += 1;
       setBusy(true);
@@ -810,6 +926,10 @@ export function App() {
                   contentType: cached.contentType,
                   body: cached.body,
                   favicon: cached.favicon,
+                  embedded: cached.embedded,
+                  mediaUrl: cached.mediaUrl,
+                  mediaTotal: cached.mediaTotal,
+                  mediaEtag: cached.mediaEtag,
                 })
               : tab,
           ),
@@ -910,6 +1030,7 @@ export function App() {
           let body = text;
           let effectiveType = contentType;
           let favicon: string | null = null;
+          let embedded: EmbeddedDocument[] = [];
           if (kind === 'image' || kind === 'media' || kind === 'pdf' || kind === 'binary') {
             body = dataUrlFor(decoded, contentType);
           } else if (kind === 'html') {
@@ -919,6 +1040,7 @@ export function App() {
               body = prepared.html;
               effectiveType = 'text/html; charset=utf-8';
               favicon = prepared.favicon;
+              embedded = prepared.embedded;
               if (prepared.stats.resources > 0) {
                 append(
                   `page assets: ${prepared.stats.resources} fetched, ${prepared.stats.failed} unavailable` +
@@ -941,7 +1063,13 @@ export function App() {
           setTabs((prev) =>
             prev.map((tab) =>
               tab.id === tabId
-                ? applyPage(tab, options.token, { status: res.status, contentType: effectiveType, body, favicon })
+                ? applyPage(tab, options.token, {
+                    status: res.status,
+                    contentType: effectiveType,
+                    body,
+                    favicon,
+                    embedded,
+                  })
                 : tab,
             ),
           );
@@ -950,6 +1078,7 @@ export function App() {
             contentType: effectiveType,
             body,
             favicon,
+            embedded,
             ...validators,
             finalUrl: target.url,
           });
@@ -1027,6 +1156,7 @@ export function App() {
         let body = text;
         let effectiveType = contentType;
         let favicon: string | null = null;
+        let embedded: EmbeddedDocument[] = [];
         if (kind === 'image' || kind === 'media' || kind === 'pdf' || kind === 'binary') {
           body = dataUrlFor(bytes, contentType);
         } else if (kind === 'html') {
@@ -1039,6 +1169,7 @@ export function App() {
             body = prepared.html;
             effectiveType = 'text/html; charset=utf-8';
             favicon = prepared.favicon;
+            embedded = prepared.embedded;
             if (prepared.stats.resources > 0) {
               append(
                 `page assets: ${prepared.stats.resources} fetched, ${prepared.stats.failed} unavailable` +
@@ -1068,7 +1199,13 @@ export function App() {
         setTabs((prev) =>
           prev.map((tab) =>
             tab.id === tabId
-              ? applyPage(tab, options.token, { status: res.status, contentType: effectiveType, body, favicon })
+              ? applyPage(tab, options.token, {
+                  status: res.status,
+                  contentType: effectiveType,
+                  body,
+                  favicon,
+                  embedded,
+                })
               : tab,
           ),
         );
@@ -1077,6 +1214,7 @@ export function App() {
           contentType: effectiveType,
           body,
           favicon,
+          embedded,
           ...validators,
           finalUrl: result.url || target.url,
         });
@@ -1094,7 +1232,7 @@ export function App() {
         setBusy(activeLoadsRef.current > 0);
       }
     },
-    [append, fetchSubresource, navigationPetnames, requestAuth, requestClearnet],
+    [append, fetchSubresource, navigationPetnames, probeStreamTarget, requestAuth, requestClearnet],
   );
 
   /**
@@ -1209,6 +1347,51 @@ export function App() {
     setFindCount(textFindMatches.length);
     setFindIndex(index);
   }, [findOpen, findQuery, activeTab?.id, activeTab?.content?.body, activeTab?.content?.kind, textFindMatches.length, runFindOnDoc]);
+
+  const onPreviewEmbedded = useCallback(
+    async (document: EmbeddedDocument) => {
+      setEmbeddedPreview({ document, loading: true });
+      try {
+        if (document.url.startsWith('data:')) {
+          const decodedText = document.kind === 'text' ? textFromDataUrl(document.url) : '';
+          setEmbeddedPreview(
+            decodedText
+              ? { document, loading: false, text: decodedText }
+              : { document, loading: false, dataUrl: document.url },
+          );
+          return;
+        }
+        if (document.kind === 'media' && mediaStreamingAvailable()) {
+          setEmbeddedPreview({ document, loading: false });
+          return;
+        }
+        const res = await fetchSubresource(document.url, 'document');
+        if (!res) throw new Error('Could not fetch this embedded document through the mixnet.');
+        const contentType = res.contentType || document.contentType;
+        if (document.kind === 'text' || contentType.startsWith('text/')) {
+          const text = new TextDecoder().decode(res.bytes);
+          setEmbeddedPreview({ document, loading: false, text: text.slice(0, 200_000) });
+        } else {
+          setEmbeddedPreview({ document, loading: false, dataUrl: dataUrlFor(res.bytes, contentType) });
+        }
+      } catch (err) {
+        setEmbeddedPreview({
+          document,
+          loading: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [fetchSubresource],
+  );
+
+  const onOpenEmbedded = useCallback(
+    (document: EmbeddedDocument) => {
+      setEmbeddedPreview(null);
+      void goTo(document.url);
+    },
+    [goTo],
+  );
 
   const onPrint = useCallback(() => {
     const content = activeTab?.content;
@@ -1327,6 +1510,10 @@ export function App() {
   }, [goTo, runFindOnDoc]);
 
   useEffect(() => {
+    setEmbeddedPreview(null);
+  }, [activeTabId, activeTab?.url]);
+
+  useEffect(() => {
     const frame = frameRef.current;
     const url = activeTab?.url;
     if (!frame || !url || activeTab?.content?.kind !== 'html') return;
@@ -1422,6 +1609,69 @@ export function App() {
     setTabs((prev) => prev.map((tab) => (tab.id === activeTab.id ? stopPage(tab) : tab)));
     append('load stopped');
   }, [activeTab, append]);
+
+  /**
+   * Open a portal workspace in its own tab. Existing tabs for the same service
+   * are selected (and their history preserved); otherwise a blank tab or a new
+   * tab is used. Cross-portal links therefore do not destroy the current portal.
+   */
+  const openPortalWorkspace = useCallback(
+    async (raw: string) => {
+      if (!raw.trim()) return;
+      let target: NavigationTarget;
+      try {
+        target = resolveNavigationInput(raw);
+      } catch (err) {
+        setNavigationError(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      const address = target.address;
+      const existing = tabs.find(
+        (tab) =>
+          (target.kind === 'nym' && (tab.address === address || tab.service === address)) ||
+          (target.kind === 'clearnet' && tab.address === address),
+      );
+      onSelectView('portal');
+
+      if (existing) {
+        setActiveTabId(existing.id);
+        if (target.path !== '/' && existing.url !== target.url) {
+          setUri(target.url);
+          const { token, signal } = beginNavigation(existing.id);
+          await loadInto(target, existing.id, { push: true, token, signal });
+        } else {
+          setUri(existing.url || target.url);
+          if (existing.url && !existing.content && !existing.loading && !existing.error) {
+            void reloadTab(existing);
+          }
+        }
+        return;
+      }
+
+      const blank = tabs.find((tab) => !tab.url && !tab.loading);
+      if (blank) {
+        setActiveTabId(blank.id);
+        setUri(target.url);
+        const { token, signal } = beginNavigation(blank.id);
+        await loadInto(target, blank.id, { push: true, token, signal });
+        return;
+      }
+
+      const result = addBlankTab(tabs, newTabId);
+      if (result.tabs.length === tabs.length) {
+        // Tab limit reached: reuse the active tab rather than silently dropping
+        // the navigation.
+        void goTo(raw);
+        return;
+      }
+      setTabs(result.tabs);
+      setActiveTabId(result.tab.id);
+      setUri(target.url);
+      const { token, signal } = beginNavigation(result.tab.id);
+      await loadInto(target, result.tab.id, { push: true, token, signal });
+    },
+    [activeTab, beginNavigation, goTo, loadInto, onSelectView, reloadTab, tabs],
+  );
 
   const onSelectTab = useCallback(
     (id: string) => {
@@ -1547,6 +1797,36 @@ export function App() {
       };
     },
     [requestClearnet],
+  );
+
+  const fetchRangeForUrl = useCallback(
+    async (
+      url: string,
+      request: { start: number; end: number | null; etag: string | null },
+      signal?: AbortSignal,
+    ) => {
+      const target = resolveNavigationInput(url);
+      return rangeFetcherFor(target)(request, signal);
+    },
+    [rangeFetcherFor],
+  );
+
+  // Serve `/__nysiris-media/<token>` Range requests from the service worker.
+  useEffect(() => startMediaBridge({ fetchRange: fetchRangeForUrl }), [fetchRangeForUrl]);
+
+  const cacheMediaForUrl = useCallback(
+    async (url: string, contentType: string, total: number | null) => {
+      const target = resolveNavigationInput(url);
+      await downloadMediaToCache(
+        rangeFetcherFor(target),
+        defaultMediaCache(),
+        url,
+        contentType,
+        total,
+      );
+      append(`saved media for offline: ${url}`);
+    },
+    [append, rangeFetcherFor],
   );
 
   const saveDownloadAgain = useCallback(
@@ -1752,10 +2032,10 @@ export function App() {
   const onVisitContact = useCallback(
     (address: string) => {
       setUri(address);
-      void goTo(address);
+      void openPortalWorkspace(address);
       onSelectView('portal');
     },
-    [goTo, onSelectView],
+    [onSelectView, openPortalWorkspace],
   );
 
   const onRemoveContact = useCallback(
@@ -2539,27 +2819,43 @@ export function App() {
                 />
               )}
 
-              {activeTab?.content?.kind === 'media' &&
-                (activeTab.content.contentType.startsWith('video/') ? (
-                  <video
-                    className="fly-portal-media"
-                    src={activeTab.content.body}
-                    controls
-                    playsInline
-                    aria-label={tabTitle(activeTab)}
-                    style={{ zoom } as CSSProperties}
-                  />
-                ) : (
-                  <audio
-                    className="fly-portal-media"
-                    src={activeTab.content.body}
-                    controls
-                    aria-label={tabTitle(activeTab)}
-                  />
-                ))}
+              {activeTab?.content?.kind === 'media' && (
+                <MediaView
+                  url={activeTab.content.mediaUrl ?? activeTab.url}
+                  contentType={activeTab.content.contentType}
+                  dataUrl={activeTab.content.body || null}
+                  total={activeTab.content.mediaTotal ?? null}
+                  etag={activeTab.content.mediaEtag ?? null}
+                  title={tabTitle(activeTab)}
+                  zoom={zoom}
+                  onSaveOffline={() =>
+                    cacheMediaForUrl(
+                      activeTab.content?.mediaUrl ?? activeTab.url,
+                      activeTab.content?.contentType ?? 'application/octet-stream',
+                      activeTab.content?.mediaTotal ?? null,
+                    )
+                  }
+                />
+              )}
 
               {activeTab?.content?.kind === 'pdf' && (
-                <PdfView dataUrl={activeTab.content.body} title={tabTitle(activeTab)} />
+                <PdfView
+                  dataUrl={activeTab.content.body}
+                  title={tabTitle(activeTab)}
+                  url={activeTab.content.mediaUrl ?? null}
+                  total={activeTab.content.mediaTotal ?? null}
+                  etag={activeTab.content.mediaEtag ?? null}
+                  onSaveOffline={
+                    activeTab.content.mediaUrl
+                      ? () =>
+                          cacheMediaForUrl(
+                            activeTab.content?.mediaUrl ?? activeTab.url,
+                            'application/pdf',
+                            activeTab.content?.mediaTotal ?? null,
+                          )
+                      : undefined
+                  }
+                />
               )}
 
               {activeTab?.content?.kind === 'binary' && (
@@ -2570,13 +2866,80 @@ export function App() {
                 </section>
               )}
 
-              {activeTab?.content && ['image', 'media', 'pdf', 'binary'].includes(activeTab.content.kind) && (
-                <div className="fly-row fly-mt-2">
-                  <button className="fly-btn fly-btn-primary" onClick={saveCurrentPage}>
-                    Save to downloads
-                  </button>
-                </div>
+              {activeTab?.content?.kind === 'html' && (
+                <EmbeddedDocuments
+                  documents={activeTab.content.embedded ?? []}
+                  onPreview={(document) => void onPreviewEmbedded(document)}
+                  onOpen={onOpenEmbedded}
+                />
               )}
+
+              {embeddedPreview && (
+                <section className="fly-card fly-embedded-preview" aria-label="Embedded document preview">
+                  <div className="fly-row fly-row-between">
+                    <h2 className="fly-h2-flush fly-break-word">{embeddedPreview.document.filename}</h2>
+                    <button
+                      type="button"
+                      className="fly-btn fly-btn-sm"
+                      onClick={() => setEmbeddedPreview(null)}
+                      aria-label="Close embedded document"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  {embeddedPreview.loading && <p className="fly-muted">Fetching through the mixnet…</p>}
+                  {embeddedPreview.error && (
+                    <p className="fly-callout-warn" role="alert">
+                      {embeddedPreview.error}
+                    </p>
+                  )}
+                  {embeddedPreview.text !== undefined && (
+                    <pre className="fly-pre fly-mt-2">{embeddedPreview.text}</pre>
+                  )}
+                  {embeddedPreview.dataUrl &&
+                    (embeddedPreview.document.kind === 'pdf' ? (
+                      <PdfView dataUrl={embeddedPreview.dataUrl} title={embeddedPreview.document.filename} />
+                    ) : embeddedPreview.document.kind === 'image' ? (
+                      <img
+                        className="fly-portal-image"
+                        src={embeddedPreview.dataUrl}
+                        alt={embeddedPreview.document.filename}
+                      />
+                    ) : (
+                      <p className="fly-muted">This document type can be opened in a tab or downloaded.</p>
+                    ))}
+                  {!embeddedPreview.dataUrl &&
+                    !embeddedPreview.text &&
+                    !embeddedPreview.error &&
+                    embeddedPreview.document.kind === 'media' && (
+                      <MediaView
+                        url={embeddedPreview.document.url}
+                        contentType={embeddedPreview.document.contentType}
+                        dataUrl={null}
+                        total={null}
+                        etag={null}
+                        title={embeddedPreview.document.filename}
+                        onSaveOffline={() =>
+                          cacheMediaForUrl(
+                            embeddedPreview.document.url,
+                            embeddedPreview.document.contentType,
+                            null,
+                          )
+                        }
+                      />
+                    )}
+                </section>
+              )}
+
+              {activeTab?.content &&
+                ['image', 'media', 'pdf', 'binary'].includes(activeTab.content.kind) &&
+                Boolean(activeTab.content.body) && (
+                  <div className="fly-row fly-mt-2">
+                    <button className="fly-btn fly-btn-primary" onClick={saveCurrentPage}>
+                      Save to downloads
+                    </button>
+                  </div>
+                )}
 
               {activeTab?.loading && (
                 <p className="fly-muted" role="status">
@@ -2596,6 +2959,27 @@ export function App() {
                     </button>
                   </section>
                 )}
+
+              {socialService && (
+                <PortalWorkspace
+                  key={socialService}
+                  scope={socialService}
+                  onOpenLink={(href) => {
+                    try {
+                      const next = resolveNavigationInput(href);
+                      if (next.kind === 'nym' && next.address !== socialService) {
+                        void openPortalWorkspace(href);
+                        return;
+                      }
+                    } catch {
+                      // Fall through to the normal resolver's error surface.
+                    }
+                    void goTo(href);
+                  }}
+                  onOpenWorkspace={(next) => void openPortalWorkspace(next)}
+                  onStatus={append}
+                />
+              )}
 
               {socialService && (
                 <Social key={socialService} service={socialService} trustMap={trustMap} onVerdict={onVerdict} />
