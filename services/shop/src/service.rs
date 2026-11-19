@@ -15,6 +15,7 @@
 //! GET  /orders?for=<hex64>&day=&sig=<hex128> -> {orders:[...]} (proof of possession)
 //! POST /order/<hex32>/status            -> {ok, status}
 //! POST /order/<hex32>/message           -> {ok}
+//! GET  /order/<hex32>/messages?for=&day=&sig=&offset=&limit= -> paged thread
 //! POST /review                          -> {ok}
 //! GET  /reviews/<hex64>?offset=&limit=  -> {reviews:[...], summary}
 //! ```
@@ -24,6 +25,7 @@
 //! Reviews are public but raw and signed; the aggregate is computed by
 //! clients, never stored.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nym_hidden_service::{HiddenService, Request, Response};
@@ -31,7 +33,7 @@ use provider_runtime::route::{json_body, parse_query};
 use provider_runtime::Router;
 use shop_format::{limits, pow, review, sig, status::OrderStatus};
 
-use crate::store::{Order, OrderMessage, Review, StatusEvent, Store};
+use crate::store::{MessagePage, Order, OrderMessage, Review, StatusEvent, Store};
 
 pub struct ShopService {
     store: Mutex<Store>,
@@ -89,6 +91,7 @@ fn descriptor_json(pow_bits: u32) -> serde_json::Value {
             "GET /orders?for=<hex64>&day=<n>&sig=<hex128>",
             "POST /order/<hex32>/status",
             "POST /order/<hex32>/message",
+            "GET /order/<hex32>/messages?for=<hex64>&day=<n>&sig=<hex128>&offset=<n>&limit=<n>",
             "POST /review",
             "GET /reviews/<hex64>?offset=<n>&limit=<n>",
         ],
@@ -118,7 +121,8 @@ padding:.1em .35em;border-radius:.3em}li{margin:.25em 0}</style></head><body>\
 <li><code>POST /order</code> — buyer-signed reservation; availability is derived atomically from open orders</li>\
 <li><code>GET /orders?for=&lt;key&gt;&amp;day=&lt;n&gt;&amp;sig=…</code> — private list for buyer or seller only</li>\
 <li><code>POST /order/&lt;id&gt;/status</code> — seller accept/decline/fulfil, buyer cancel; the signed transition is stored for client replay</li>\
-<li><code>POST /order/&lt;id&gt;/message</code> — participant-only thread for this order</li>\
+<li><code>POST /order/&lt;id&gt;/message</code> — participant-only thread for this order (500-message cap)</li>\
+<li><code>GET /order/&lt;id&gt;/messages?for=&lt;key&gt;&amp;day=&lt;n&gt;&amp;sig=…&amp;offset=&lt;n&gt;&amp;limit=&lt;n&gt;</code> — older thread pages</li>\
 </ul>\
 <h2>Reputation</h2>\
 <ul>\
@@ -163,7 +167,7 @@ fn status_event_json(e: &StatusEvent) -> serde_json::Value {
 
 fn order_json(
     o: &Order,
-    messages: &[OrderMessage],
+    messages: &MessagePage,
     review: Option<&Review>,
     events: &[StatusEvent],
 ) -> serde_json::Value {
@@ -173,9 +177,12 @@ fn order_json(
     serde_json::json!({
         "id": o.id_hex, "listing": o.listing_hex, "buyer": o.buyer_hex,
         "seller": o.seller_hex, "qty": o.qty, "note": o.note,
+        "price": o.price, "version": o.version,
         "status": status, "status_code": o.status, "day": o.day, "sig": o.sig_hex,
         "status_events": events.iter().map(status_event_json).collect::<Vec<_>>(),
-        "messages": messages.iter().map(message_json).collect::<Vec<_>>(),
+        "messages": messages.messages.iter().map(message_json).collect::<Vec<_>>(),
+        "messages_total": messages.total,
+        "messages_next_offset": messages.next_offset,
         "review": review.map(review_json),
     })
 }
@@ -238,6 +245,42 @@ fn fresh_day(day: u64) -> Result<(), Response> {
         ));
     }
     Ok(())
+}
+
+/// Proof of possession shared by the private order and thread reads. The
+/// signature itself only names the key and day; the route still checks that
+/// the key is a participant before returning any rows.
+fn signed_read(query: &HashMap<String, String>) -> Result<[u8; 32], Response> {
+    let who = match query.get("for").map(|s| sig::parse_pubkey(s)) {
+        Some(Ok(k)) => k,
+        _ => return Err(Response::error(400, "missing ?for=<pubkey>")),
+    };
+    let signature = match query.get("sig").map(|s| sig::parse_sig(s)) {
+        Some(Ok(s)) => s,
+        _ => {
+            return Err(Response::error(
+                401,
+                "private read requires a signature (proof of possession)",
+            ))
+        }
+    };
+    let day = match query.get("day").and_then(|d| d.trim().parse::<u64>().ok()) {
+        Some(d) => d,
+        None => return Err(Response::error(400, "missing ?day=<n>")),
+    };
+    if day.abs_diff(sig::current_day()) > 2 {
+        return Err(Response::error(
+            401,
+            "stale read (day outside the freshness window)",
+        ));
+    }
+    if sig::verify(&who, &sig::orders_read_message(&who, day), &signature).is_err() {
+        return Err(Response::error(
+            401,
+            "read signature does not match the key",
+        ));
+    }
+    Ok(who)
 }
 
 /// UTF-8 text that is safe to concatenate into a signed layout: no interior
@@ -559,13 +602,20 @@ impl HiddenService for ShopService {
                 if qty == 0 || qty > limits::MAX_ORDER_QTY {
                     return Response::error(400, "qty must be 1..=1000");
                 }
+                // Terms are signed and frozen; the store refuses a mismatch
+                // with the current listing row.
+                let price = field_u64(&v, "price");
+                let version = field_u64(&v, "version");
+                if price == 0 || version == 0 {
+                    return Response::error(400, "price and version are required");
+                }
                 let note = field_str(&v, "note");
                 if let Err(e) = check_text(note, "note", None, Some(limits::MAX_NOTE_BYTES)) {
                     return e;
                 }
                 if sig::verify(
                     &buyer,
-                    &sig::order_message(&buyer, day, &listing, &id, qty, note),
+                    &sig::order_message(&buyer, day, &listing, &id, qty, price, version, note),
                     &sig,
                 )
                 .is_err()
@@ -574,7 +624,7 @@ impl HiddenService for ShopService {
                 }
                 if let Err(e) = self.gate(
                     &buyer,
-                    &pow::order_pow_preimage(&listing, &id, qty, note),
+                    &pow::order_pow_preimage(&listing, &id, qty, price, version, note),
                     &v,
                 ) {
                     return e;
@@ -583,8 +633,17 @@ impl HiddenService for ShopService {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let result =
-                    store.insert_order(&id, &listing, &buyer, day, qty, note, &sig.to_bytes());
+                let result = store.insert_order(
+                    &id,
+                    &listing,
+                    &buyer,
+                    day,
+                    qty,
+                    price,
+                    version,
+                    note,
+                    &sig.to_bytes(),
+                );
                 if result.is_err() {
                     self.router.rate.refund(&hex::encode(buyer));
                 }
@@ -600,32 +659,10 @@ impl HiddenService for ShopService {
                 }
             }
             ("GET", "/orders") => {
-                let who = match query.get("for").map(|s| sig::parse_pubkey(s)) {
-                    Some(Ok(k)) => k,
-                    _ => return Response::error(400, "missing ?for=<pubkey>"),
+                let who = match signed_read(&query) {
+                    Ok(k) => k,
+                    Err(e) => return e,
                 };
-                let signature = match query.get("sig").map(|s| sig::parse_sig(s)) {
-                    Some(Ok(s)) => s,
-                    _ => {
-                        return Response::error(
-                            401,
-                            "order list requires a signature (proof of possession)",
-                        )
-                    }
-                };
-                let day = match query.get("day").and_then(|d| d.trim().parse::<u64>().ok()) {
-                    Some(d) => d,
-                    None => return Response::error(400, "missing ?day=<n>"),
-                };
-                if day.abs_diff(sig::current_day()) > 2 {
-                    return Response::error(
-                        401,
-                        "stale order read (day outside the freshness window)",
-                    );
-                }
-                if sig::verify(&who, &sig::orders_read_message(&who, day), &signature).is_err() {
-                    return Response::error(401, "order read signature does not match the key");
-                }
                 let store = match self.lock() {
                     Ok(s) => s,
                     Err(e) => return e,
@@ -642,7 +679,7 @@ impl HiddenService for ShopService {
                     };
                     let mut id = [0u8; 16];
                     id.copy_from_slice(&id_bytes);
-                    let messages = match store.messages_for(&id) {
+                    let messages = match store.messages_for(&id, 0, limits::DEFAULT_MESSAGES_PAGE) {
                         Ok(m) => m,
                         Err(e) => return Response::error(500, e),
                     };
@@ -661,6 +698,50 @@ impl HiddenService for ShopService {
                     "application/json",
                     &json_body(&serde_json::json!({"orders": items})),
                 )
+            }
+            ("GET", p) if p.starts_with("/order/") && p.ends_with("/messages") => {
+                let id = match id_from_hex(
+                    &p["/order/".len()..p.len() - "/messages".len()],
+                    "order id",
+                ) {
+                    Ok(id) => id,
+                    Err(e) => return e,
+                };
+                let who = match signed_read(&query) {
+                    Ok(k) => k,
+                    Err(e) => return e,
+                };
+                let offset = query
+                    .get("offset")
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(0);
+                let limit = query
+                    .get("limit")
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(limits::DEFAULT_MESSAGES_PAGE);
+                let store = match self.lock() {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                match store.order_parties(&id) {
+                    Ok(Some((buyer, seller))) if who == buyer || who == seller => {}
+                    Ok(Some(_)) => return Response::error(403, "only the parties may read this thread"),
+                    Ok(None) => return not_found("order"),
+                    Err(e) => return Response::error(500, e),
+                }
+                match store.messages_for(&id, offset, limit) {
+                    Ok(page) => Response::ok(
+                        200,
+                        "application/json",
+                        &json_body(&serde_json::json!({
+                            "order": hex::encode(id),
+                            "messages": page.messages.iter().map(message_json).collect::<Vec<_>>(),
+                            "total": page.total,
+                            "next_offset": page.next_offset,
+                        })),
+                    ),
+                    Err(e) => Response::error(500, e),
+                }
             }
             ("POST", p) if p.starts_with("/order/") && p.ends_with("/status") => {
                 let id =
@@ -987,14 +1068,17 @@ mod tests {
         id: [u8; 16],
         listing: [u8; 16],
         qty: u32,
+        price: u64,
         note: &str,
     ) -> serde_json::Value {
         let buyer = sk.verifying_key().to_bytes();
         let day = sig::current_day();
-        let msg = sig::order_message(&buyer, day, &listing, &id, qty, note);
+        let version = 1u64;
+        let msg = sig::order_message(&buyer, day, &listing, &id, qty, price, version, note);
         serde_json::json!({
             "buyer": hex::encode(buyer), "day": day, "id": hex::encode(id),
-            "listing": hex::encode(listing), "qty": qty, "note": note,
+            "listing": hex::encode(listing), "qty": qty,
+            "price": price, "version": version, "note": note,
             "sig": hex::encode(sk.sign(&msg).to_bytes()),
         })
     }
@@ -1051,6 +1135,17 @@ mod tests {
             hex::encode(who),
             day,
             hex::encode(signature.to_bytes())
+        )
+    }
+
+    fn messages_path(sk: &SigningKey, order: [u8; 16], offset: usize, limit: usize) -> String {
+        let orders = orders_path(sk);
+        format!(
+            "/order/{}/messages?{}&offset={}&limit={}",
+            hex::encode(order),
+            orders.split_once('?').unwrap().1,
+            offset,
+            limit
         )
     }
 
@@ -1183,7 +1278,7 @@ mod tests {
             post(
                 &svc,
                 "/order",
-                &order(&seller, [5u8; 16], listing_id, 1, "")
+                &order(&seller, [5u8; 16], listing_id, 1, 5_00, "")
             )
             .status,
             400
@@ -1192,7 +1287,7 @@ mod tests {
         let rep = post(
             &svc,
             "/order",
-            &order(&buyer, order_id, listing_id, 3, "hello"),
+            &order(&buyer, order_id, listing_id, 3, 5_00, "hello"),
         );
         assert_eq!(rep.status, 200);
         let held = body(&get(&svc, &format!("/listing/{}", hex::encode(listing_id))));
@@ -1217,7 +1312,7 @@ mod tests {
         // Oversell refused, availability unchanged. The order is properly
         // signed; only the remaining quantity (2) makes it invalid.
         assert_eq!(
-            post(&svc, "/order", &order(&buyer, [3u8; 16], listing_id, 3, "")).status,
+            post(&svc, "/order", &order(&buyer, [3u8; 16], listing_id, 3, 5_00, "")).status,
             400
         );
 
@@ -1269,7 +1364,7 @@ mod tests {
         // Fresh order fulfilled keeps the units consumed.
         let order2 = [4u8; 16];
         assert_eq!(
-            post(&svc, "/order", &order(&buyer, order2, listing_id, 2, "")).status,
+            post(&svc, "/order", &order(&buyer, order2, listing_id, 2, 5_00, "")).status,
             200
         );
         assert_eq!(
@@ -1320,7 +1415,7 @@ mod tests {
             "/listing",
             &listing(&seller, listing_id, 1, 1_00, 5, "Lamp", "Warm"),
         );
-        post(&svc, "/order", &order(&buyer, order_id, listing_id, 1, ""));
+        post(&svc, "/order", &order(&buyer, order_id, listing_id, 1, 1_00, ""));
 
         // No signature: refused.
         assert_eq!(
@@ -1373,7 +1468,7 @@ mod tests {
             "/listing",
             &listing(&seller, listing_id, 1, 1_00, 5, "Lamp", "Warm"),
         );
-        post(&svc, "/order", &order(&buyer, order_id, listing_id, 1, ""));
+        post(&svc, "/order", &order(&buyer, order_id, listing_id, 1, 1_00, ""));
 
         let path = format!("/order/{}/message", hex::encode(order_id));
         assert_eq!(
@@ -1394,6 +1489,29 @@ mod tests {
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0]["body"], "when do you ship?");
         assert_eq!(messages[1]["body"], "tomorrow");
+        assert_eq!(b["orders"][0]["messages_total"], 2);
+        assert!(b["orders"][0]["messages_next_offset"].is_null());
+
+        // Explicit pages walk backwards from the newest message. A page of
+        // one returns the latest row first, then older rows via its cursor.
+        let latest = body(&get(
+            &svc,
+            &messages_path(&buyer, order_id, 0, 1),
+        ));
+        assert_eq!(latest["total"], 2);
+        assert_eq!(latest["next_offset"], 1);
+        assert_eq!(latest["messages"][0]["body"], "tomorrow");
+        let older = body(&get(
+            &svc,
+            &messages_path(&seller, order_id, 1, 1),
+        ));
+        assert_eq!(older["total"], 2);
+        assert!(older["next_offset"].is_null());
+        assert_eq!(older["messages"][0]["body"], "when do you ship?");
+        assert_eq!(
+            get(&svc, &messages_path(&stranger, order_id, 0, 10)).status,
+            403
+        );
     }
 
     #[test]
@@ -1408,7 +1526,7 @@ mod tests {
             "/listing",
             &listing(&seller, listing_id, 1, 1_00, 5, "Lamp", "Warm"),
         );
-        post(&svc, "/order", &order(&buyer, order_id, listing_id, 1, ""));
+        post(&svc, "/order", &order(&buyer, order_id, listing_id, 1, 1_00, ""));
 
         // Not fulfilled yet.
         assert_eq!(

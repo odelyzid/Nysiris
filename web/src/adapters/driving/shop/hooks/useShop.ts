@@ -10,6 +10,7 @@ import { splitNymUri } from '../../../../mixnet/hiddenService.mjs';
 import { saveShopService, loadShopService } from '../../../../application/shopStore';
 import {
   DEFAULT_LISTINGS_PAGE,
+  DEFAULT_MESSAGES_PAGE,
   MAX_DESCRIPTION_CHARS,
   MAX_MESSAGE_BYTES,
   MAX_NOTE_BYTES,
@@ -51,9 +52,11 @@ import type {
   Listing,
   ListingsResponse,
   Order,
+  OrderMessage,
   OrdersResponse,
   Review,
   ReviewsResponse,
+  ThreadPage,
 } from '../model';
 import { getJson, postJson } from '../shopApi';
 import { useShopIdentity } from './useShopIdentity';
@@ -174,8 +177,36 @@ export function useShop() {
     );
   }, []);
 
+  const orderMessagesAreValid = useCallback(
+    (order: Order, messages: OrderMessage[]): boolean =>
+      messages.every(
+        (m) =>
+          (m.author === order.buyer || m.author === order.seller) &&
+          verifyOrderMessageSignature(m.author, m.day, order.id, m.body, m.sig),
+      ),
+    [],
+  );
+
   const orderIsValid = useCallback((order: Order): boolean => {
-    if (!verifyOrderSignature(order.buyer, order.day, order.listing, order.id, order.qty, order.note, order.sig)) {
+    if (
+      !Number.isInteger(order.messages_total) ||
+      (order.messages_next_offset !== null && !Number.isInteger(order.messages_next_offset))
+    ) {
+      return false;
+    }
+    if (
+      !verifyOrderSignature(
+        order.buyer,
+        order.day,
+        order.listing,
+        order.id,
+        order.qty,
+        order.price,
+        order.version,
+        order.note,
+        order.sig,
+      )
+    ) {
       return false;
     }
     if (
@@ -190,12 +221,8 @@ export function useShop() {
     ) {
       return false;
     }
-    return order.messages.every(
-      (m) =>
-        (m.author === order.buyer || m.author === order.seller) &&
-        verifyOrderMessageSignature(m.author, m.day, order.id, m.body, m.sig),
-    );
-  }, []);
+    return orderMessagesAreValid(order, order.messages);
+  }, [orderMessagesAreValid]);
 
   const connect = useCallback(
     (input: string) => {
@@ -350,6 +377,54 @@ export function useShop() {
     await loadOrdersFor(identity);
   }, [identity, append, loadOrdersFor]);
 
+  /** Fetch the next older window of one thread; verify every row locally. */
+  const loadOlderMessages = useCallback(
+    async (order: Order): Promise<boolean> => {
+      if (!service) return false;
+      if (order.messages_next_offset === null) return false;
+      const requested = service;
+      setBusy(true);
+      try {
+        return await authed(async (id) => {
+          if (id.pubHex !== order.buyer && id.pubHex !== order.seller) {
+            append('not a party to this order');
+            return false;
+          }
+          const day = currentDay();
+          const sig = signOrdersRead(id.privHex, id.pubHex, day);
+          const path =
+            `/order/${order.id}/messages?for=${id.pubHex}&day=${day}&sig=${sig}` +
+            `&offset=${order.messages_next_offset}&limit=${DEFAULT_MESSAGES_PAGE}`;
+          const page = await getJson<ThreadPage>(requested, path);
+          if (serviceRef.current !== requested) return false;
+          if (page.order !== order.id || !orderMessagesAreValid(order, page.messages)) {
+            append(`thread page for ${short(order.id)} failed verification`);
+            return false;
+          }
+          setOrders((prev) =>
+            prev.map((current) =>
+              current.id === order.id
+                ? {
+                    ...current,
+                    messages: [...page.messages, ...current.messages],
+                    messages_total: page.total,
+                    messages_next_offset: page.next_offset,
+                  }
+                : current,
+            ),
+          );
+          return true;
+        });
+      } catch (err) {
+        if (serviceRef.current === requested) append(`thread page failed: ${errText(err)}`);
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [service, authed, append, orderMessagesAreValid],
+  );
+
   const loadReviews = useCallback(
     async (sellerHex: string) => {
       if (!service) return;
@@ -414,14 +489,30 @@ export function useShop() {
         return await authed(async (id) => {
           const day = currentDay();
           const orderId = newIdHex();
-          const sig = signOrder(id.privHex, id.pubHex, day, listing.id, orderId, qty, note);
-          const pow = await powFor(service, id.pubHex, orderPowPreimage(listing.id, orderId, qty, note));
+          const sig = signOrder(
+            id.privHex,
+            id.pubHex,
+            day,
+            listing.id,
+            orderId,
+            qty,
+            listing.price,
+            listing.version,
+            note,
+          );
+          const pow = await powFor(
+            service,
+            id.pubHex,
+            orderPowPreimage(listing.id, orderId, qty, listing.price, listing.version, note),
+          );
           await postJson(service, '/order', {
             buyer: id.pubHex,
             day,
             id: orderId,
             listing: listing.id,
             qty,
+            price: listing.price,
+            version: listing.version,
             note,
             sig,
             ...withPow(pow),
@@ -737,6 +828,7 @@ export function useShop() {
     loadMore,
     refreshMyListings: () => (identity ? loadMyListingsFor(identity.pubHex) : Promise.resolve()),
     loadOrders,
+    loadOlderMessages,
     loadReviews,
     placeOrder,
     saveListing,

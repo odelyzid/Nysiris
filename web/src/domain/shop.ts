@@ -25,6 +25,9 @@ export const MAX_TITLE_CHARS = 80;
 export const MAX_DESCRIPTION_CHARS = 1200;
 export const MAX_NOTE_BYTES = 500;
 export const MAX_MESSAGE_BYTES = 1000;
+export const MAX_ORDER_MESSAGES = 500;
+export const MAX_MESSAGES_PAGE = 50;
+export const DEFAULT_MESSAGES_PAGE = 20;
 export const MAX_REVIEW_BYTES = 600;
 export const MAX_ORDER_QTY = 1_000;
 export const MAX_STOCK = 1_000_000;
@@ -200,6 +203,8 @@ function orderBytes(
   listingHex: string,
   idHex: string,
   qty: number,
+  price: number,
+  version: number,
   note: string,
 ): Uint8Array {
   return concat(
@@ -209,11 +214,13 @@ function orderBytes(
     idBytes(listingHex, 'listing'),
     idBytes(idHex),
     u32be(assertU32(qty, 'qty')),
+    u64be(assertU64(price, 'price')),
+    u64be(assertU64(version, 'version')),
     enc.encode(note),
   );
 }
 
-/** Sign `POST /order`: buyer || day || listing || id || qty || note. */
+/** Sign `POST /order`: buyer || day || listing || id || qty || price || version || note. */
 export function signOrder(
   privHex: string,
   buyerHex: string,
@@ -221,10 +228,15 @@ export function signOrder(
   listingHex: string,
   idHex: string,
   qty: number,
+  price: number,
+  version: number,
   note: string,
 ): string {
   return bytesToHex(
-    ed25519.sign(orderBytes(buyerHex, day, listingHex, idHex, qty, note), keyBytes(privHex, 'private key')),
+    ed25519.sign(
+      orderBytes(buyerHex, day, listingHex, idHex, qty, price, version, note),
+      keyBytes(privHex, 'private key'),
+    ),
   );
 }
 
@@ -234,13 +246,15 @@ export function verifyOrderSignature(
   listingHex: string,
   idHex: string,
   qty: number,
+  price: number,
+  version: number,
   note: string,
   sigHex: string,
 ): boolean {
   try {
     return ed25519.verify(
       sigBytes(sigHex),
-      orderBytes(buyerHex, day, listingHex, idHex, qty, note),
+      orderBytes(buyerHex, day, listingHex, idHex, qty, price, version, note),
       keyBytes(buyerHex, 'buyer'),
     );
   } catch {
@@ -438,11 +452,20 @@ export function listingDeletePowPreimage(idHex: string): Uint8Array {
   return idBytes(idHex);
 }
 
-export function orderPowPreimage(listingHex: string, idHex: string, qty: number, note: string): Uint8Array {
+export function orderPowPreimage(
+  listingHex: string,
+  idHex: string,
+  qty: number,
+  price: number,
+  version: number,
+  note: string,
+): Uint8Array {
   return concat(
     idBytes(listingHex, 'listing'),
     idBytes(idHex),
     u32be(assertU32(qty, 'qty')),
+    u64be(assertU64(price, 'price')),
+    u64be(assertU64(version, 'version')),
     enc.encode(note),
   );
 }

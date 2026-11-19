@@ -63,17 +63,19 @@ test('listing signature matches the Rust cross-implementation vector', { skip: !
 });
 
 test('order signature matches the Rust vector and binds every field', { skip: !shop }, () => {
-  const sig = shop.signOrder(PRIV, SELLER, DAY, ORDER_LISTING, ORDER_ID, 3, 'please pack well');
+  const sig = shop.signOrder(PRIV, SELLER, DAY, ORDER_LISTING, ORDER_ID, 3, 1234, 7, 'please pack well');
   assert.equal(
     sig,
-    '73e192feee0799df56a674c836217ca0c0582b6915b3cf3ae2fe5eb2d1b6254ad19ba1cf4cee22cbc9720842454bbb18ca6dfac1f4b07ebaeb0313e7126f9c01',
+    '7ea324635ab55cc9cae76000ba65b697779250b0d75b481ff91dacde007a1fb7dd856447d5d8e395119b1e39603091935aa611cca525aa4828e3a1dde2142e07',
   );
-  assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, ORDER_ID, 3, 'please pack well', sig), true);
-  // Quantity, note, listing, and id are all signed.
-  assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, ORDER_ID, 4, 'please pack well', sig), false);
-  assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, ORDER_ID, 3, 'please pack wel', sig), false);
-  assert.equal(shop.verifyOrderSignature(SELLER, DAY, 'ce'.repeat(16), ORDER_ID, 3, 'please pack well', sig), false);
-  assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, 'ee'.repeat(16), 3, 'please pack well', sig), false);
+  assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, ORDER_ID, 3, 1234, 7, 'please pack well', sig), true);
+  // Quantity, price, version, note, listing, and id are all signed.
+  assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, ORDER_ID, 4, 1234, 7, 'please pack well', sig), false);
+  assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, ORDER_ID, 3, 1235, 7, 'please pack well', sig), false);
+  assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, ORDER_ID, 3, 1234, 8, 'please pack well', sig), false);
+  assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, ORDER_ID, 3, 1234, 7, 'please pack wel', sig), false);
+  assert.equal(shop.verifyOrderSignature(SELLER, DAY, 'ce'.repeat(16), ORDER_ID, 3, 1234, 7, 'please pack well', sig), false);
+  assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, 'ee'.repeat(16), 3, 1234, 7, 'please pack well', sig), false);
 });
 
 test('review signature matches the Rust vector and binds rating/seller/body', { skip: !shop }, () => {
@@ -168,8 +170,8 @@ test('PoW preimages are exact byte layouts', { skip: !shop }, () => {
   );
   assert.deepEqual(shop.listingDeletePowPreimage(LISTING_ID), id(LISTING_ID));
   assert.deepEqual(
-    shop.orderPowPreimage(ORDER_LISTING, ORDER_ID, 3, 'hi'),
-    cat(id(ORDER_LISTING), id(ORDER_ID), u32(3), enc.encode('hi')),
+    shop.orderPowPreimage(ORDER_LISTING, ORDER_ID, 3, 1234, 7, 'hi'),
+    cat(id(ORDER_LISTING), id(ORDER_ID), u32(3), u64(1234), u64(7), enc.encode('hi')),
   );
   assert.deepEqual(
     shop.orderStatusPowPreimage(ORDER_ID, 1, 'ok'),

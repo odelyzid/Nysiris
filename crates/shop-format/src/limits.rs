@@ -12,6 +12,12 @@ pub const MAX_DESCRIPTION_CHARS: usize = 1200;
 pub const MAX_NOTE_BYTES: usize = 500;
 /// Max per-order message bytes.
 pub const MAX_MESSAGE_BYTES: usize = 1000;
+/// Max stored messages in one order thread.
+pub const MAX_ORDER_MESSAGES: usize = 500;
+/// Max messages returned by one thread page.
+pub const MAX_MESSAGES_PAGE: usize = 50;
+/// Default messages returned in an order read / thread page.
+pub const DEFAULT_MESSAGES_PAGE: usize = 20;
 /// Max review body bytes.
 pub const MAX_REVIEW_BYTES: usize = 600;
 /// Max units of one listing a single order may reserve.
@@ -37,6 +43,9 @@ mod tests {
         assert_eq!(MAX_DESCRIPTION_CHARS, 1200);
         assert_eq!(MAX_NOTE_BYTES, 500);
         assert_eq!(MAX_MESSAGE_BYTES, 1000);
+        assert_eq!(MAX_ORDER_MESSAGES, 500);
+        assert_eq!(MAX_MESSAGES_PAGE, 50);
+        assert_eq!(DEFAULT_MESSAGES_PAGE, 20);
         assert_eq!(MAX_REVIEW_BYTES, 600);
         assert_eq!(MAX_ORDER_QTY, 1_000);
         assert_eq!(MAX_STOCK, 1_000_000);

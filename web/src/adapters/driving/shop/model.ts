@@ -31,6 +31,16 @@ export interface OrderMessage {
   sig: string;
 }
 
+/** One signed, bounded window of a private order thread. */
+export interface ThreadPage {
+  order: string;
+  messages: OrderMessage[];
+  /** Messages stored on this order, not just in this page. */
+  total: number;
+  /** Count older messages from the newest; `null` at the oldest page. */
+  next_offset: number | null;
+}
+
 export interface Review {
   order: string;
   seller: string;
@@ -56,6 +66,9 @@ export interface Order {
   buyer: string;
   seller: string;
   qty: number;
+  /** Signed listing terms at reservation time; never the current price. */
+  price: number;
+  version: number;
   note: string;
   status: string;
   status_code: number;
@@ -63,7 +76,10 @@ export interface Order {
   sig: string;
   /** Signed transition chain; replay it to verify the reported status. */
   status_events: StatusEvent[];
+  /** Latest page only; older messages come from the paginated thread route. */
   messages: OrderMessage[];
+  messages_total: number;
+  messages_next_offset: number | null;
   review: Review | null;
 }
 

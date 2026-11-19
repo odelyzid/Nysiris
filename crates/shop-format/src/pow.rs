@@ -48,11 +48,21 @@ pub fn listing_delete_pow_preimage(id: &[u8; 16]) -> Vec<u8> {
     id.to_vec()
 }
 
-pub fn order_pow_preimage(listing: &[u8; 16], id: &[u8; 16], qty: u32, note: &str) -> Vec<u8> {
-    let mut out = Vec::with_capacity(16 + 16 + 4 + note.len());
+/// Commit to the exact terms the order signature covers.
+pub fn order_pow_preimage(
+    listing: &[u8; 16],
+    id: &[u8; 16],
+    qty: u32,
+    price: u64,
+    version: u64,
+    note: &str,
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(16 + 16 + 4 + 8 + 8 + note.len());
     out.extend_from_slice(listing);
     out.extend_from_slice(id);
     out.extend_from_slice(&qty.to_be_bytes());
+    out.extend_from_slice(&price.to_be_bytes());
+    out.extend_from_slice(&version.to_be_bytes());
     push_str(&mut out, note);
     out
 }
@@ -102,8 +112,13 @@ mod tests {
         let mut want = vec![1u8; 16];
         want.extend_from_slice(&[2u8; 16]);
         want.extend_from_slice(&3u32.to_be_bytes());
+        want.extend_from_slice(&1234u64.to_be_bytes());
+        want.extend_from_slice(&7u64.to_be_bytes());
         want.extend_from_slice(b"hi");
-        assert_eq!(order_pow_preimage(&[1u8; 16], &[2u8; 16], 3, "hi"), want);
+        assert_eq!(
+            order_pow_preimage(&[1u8; 16], &[2u8; 16], 3, 1234, 7, "hi"),
+            want
+        );
 
         let mut status = vec![9u8; 16];
         status.push(1);

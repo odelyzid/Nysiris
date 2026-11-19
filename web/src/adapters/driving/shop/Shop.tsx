@@ -15,9 +15,11 @@ import {
 } from './hooks/useShop';
 import { dayLabel, type Listing, type Order } from './model';
 import {
+  DEFAULT_MESSAGES_PAGE,
   MAX_DESCRIPTION_CHARS,
   MAX_MESSAGE_BYTES,
   MAX_NOTE_BYTES,
+  MAX_ORDER_MESSAGES,
   MAX_ORDER_QTY,
   MAX_REVIEW_BYTES,
   MAX_STOCK,
@@ -66,6 +68,7 @@ export function Shop() {
     loadMore,
     refreshMyListings,
     loadOrders,
+    loadOlderMessages,
     loadReviews,
     placeOrder,
     saveListing,
@@ -260,12 +263,12 @@ export function Shop() {
           <strong>{listing ? listing.title : `Listing ${short(order.listing)}`}</strong>
           <span className="fly-meta">
             {statusLabel(order.status_code)} · {order.qty} ×{' '}
-            {listing ? formatMinor(listing.price, listing.currency) : short(order.listing, 8)}
+            {formatMinor(order.price, listing?.currency ?? 'USD')}
           </span>
         </div>
         <p className="fly-meta">
-          Order {short(order.id)} · {dayLabel(order.day)} · you are {role ?? 'a reader'} · buyer {short(order.buyer, 8)} ·
-          seller {short(order.seller, 8)}
+          Order {short(order.id)} · {dayLabel(order.day)} · terms v{order.version} · you are {role ?? 'a reader'} ·
+          buyer {short(order.buyer, 8)} · seller {short(order.seller, 8)}
         </p>
         {order.note && <p className="fly-break-word">{order.note}</p>}
         <div className="fly-row">
@@ -337,16 +340,30 @@ export function Shop() {
         )}
 
         <details className="fly-mt-2">
-          <summary>Private thread ({order.messages.length})</summary>
+          <summary>
+            Private thread ({order.messages.length} shown of {order.messages_total})
+          </summary>
           <ul className="fly-list">
             {order.messages.map((message, index) => (
-              <li key={`${message.author}-${index}`}>
+              <li key={`${message.author}-${message.day}-${index}`}>
                 <span className="fly-muted">{short(message.author, 8)}:</span>{' '}
                 <span className="fly-break-word">{message.body}</span>
               </li>
             ))}
             {order.messages.length === 0 && <li className="fly-muted">No messages yet.</li>}
           </ul>
+          {order.messages_next_offset !== null && (
+            <button
+              className="fly-btn fly-mt-2"
+              disabled={busy}
+              onClick={() => void loadOlderMessages(order)}
+            >
+              Load older messages ({DEFAULT_MESSAGES_PAGE} older)
+            </button>
+          )}
+          <p className="fly-meta">
+            Threads are capped at {MAX_ORDER_MESSAGES} signed messages; newer reads show the latest page.
+          </p>
           {(role === 'buyer' || role === 'seller') && (
             <form
               className="fly-row fly-mt-2"

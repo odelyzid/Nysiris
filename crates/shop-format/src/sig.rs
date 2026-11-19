@@ -102,21 +102,29 @@ pub fn listing_delete_message(seller: &[u8; 32], id: &[u8; 16], day: u64) -> Vec
     m
 }
 
+/// Buyer-signed order. `price` and `version` are the listing terms the buyer
+/// saw when reserving; storing them freezes the advertised price so later
+/// listing updates cannot rewrite history.
+#[allow(clippy::too_many_arguments)]
 pub fn order_message(
     buyer: &[u8; 32],
     day: u64,
     listing: &[u8; 16],
     id: &[u8; 16],
     qty: u32,
+    price: u64,
+    version: u64,
     note: &str,
 ) -> Vec<u8> {
-    let mut m = Vec::with_capacity(ORDER_DOMAIN.len() + 32 + 8 + 16 + 16 + 4 + note.len());
+    let mut m = Vec::with_capacity(ORDER_DOMAIN.len() + 32 + 8 + 16 + 16 + 4 + 8 + 8 + note.len());
     m.extend_from_slice(ORDER_DOMAIN);
     m.extend_from_slice(buyer);
     m.extend_from_slice(&day.to_be_bytes());
     m.extend_from_slice(listing);
     m.extend_from_slice(id);
     m.extend_from_slice(&qty.to_be_bytes());
+    m.extend_from_slice(&price.to_be_bytes());
+    m.extend_from_slice(&version.to_be_bytes());
     m.extend_from_slice(note.as_bytes());
     m
 }
@@ -401,11 +409,13 @@ mod tests {
             &[0xcd; 16],
             &[0xef; 16],
             3,
+            1_234,
+            7,
             "please pack well",
         );
         assert_eq!(
             hex::encode(sk.sign(&order).to_bytes()),
-            "73e192feee0799df56a674c836217ca0c0582b6915b3cf3ae2fe5eb2d1b6254ad19ba1cf4cee22cbc9720842454bbb18ca6dfac1f4b07ebaeb0313e7126f9c01"
+            "7ea324635ab55cc9cae76000ba65b697779250b0d75b481ff91dacde007a1fb7dd856447d5d8e395119b1e39603091935aa611cca525aa4828e3a1dde2142e07"
         );
         let status = order_status_message(&seller, 20_400, &[0xef; 16], 1, "accepted");
         assert_eq!(

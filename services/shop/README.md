@@ -24,10 +24,11 @@ GET  /listings?offset=&limit=&q=&seller=
 GET  /listing/<hex32>
 POST /listing                              {seller,day,id,version,price,stock,currency,title,description,sig}
 POST /listing/<hex32>/delete               {seller,day,sig}
-POST /order                                {buyer,day,id,listing,qty,note,sig}
+POST /order                                {buyer,day,id,listing,qty,price,version,note,sig}
 GET  /orders?for=<hex64>&day=&sig=<hex128>  (private to buyer/seller)
 POST /order/<hex32>/status                 {actor,day,status,note,sig}
 POST /order/<hex32>/message                {author,day,body,sig}
+GET  /order/<hex32>/messages?for=&day=&sig=&offset=&limit=  (paged thread)
 POST /review                               {author,day,order,seller,rating,body,sig}
 GET  /reviews/<hex64>?offset=&limit=
 ```
@@ -36,7 +37,11 @@ Every write is ed25519-signed over a domain-separated message and verified
 before storage; unsigned or stale-day (±2d) writes get 400s. State transitions
 are stored with their signed proof and replayed by clients, so the provider
 cannot report a status nobody signed. Prices are integer minor units (cents),
-never floats. The provider processes no payments; settlement is between the
+never floats. An order signs the listing's `price`/`version` at reservation; a
+stale snapshot is refused, and the snapshot is returned with the order.
+Order threads are capped at 500 signed messages; `/orders` embeds the latest
+20 and `GET /order/<id>/messages` walks older pages with the same signed proof
+of possession. The provider processes no payments; settlement is between the
 parties.
 
 ## Order states

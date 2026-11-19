@@ -38,7 +38,7 @@ at startup. Back up `sp-storage/` (identity = the Nym address) and
 |---|---|
 | Listing id (random 16 bytes), seller key, version, price, stock, currency, title, description, signature | Content, self-authenticating ownership, replay-safe updates |
 | Coarse **day** | Freshness window and display; precise times never touch disk |
-| Order id (random 16 bytes), listing id, buyer key, seller key, quantity, short note, state, signature | Fulfilment, stock accounting, participant-scoped reads |
+| Order id (random 16 bytes), listing id, buyer key, seller key, quantity, signed price/version snapshot, short note, state, signature | Fulfilment, stock accounting, frozen sale terms, participant-scoped reads |
 | Signed transition events (from/to state, actor, coarse day, note, signature) | Client-replayable state proof; the provider cannot invent a status |
 | Order creation time | Ordering only |
 | Order messages: author, coarse day, body, signature | Private buyer/seller coordination |
@@ -64,7 +64,7 @@ listing:       b"fly-shop-v1/listing"        || seller(32) || day_be64 || id(16)
                || title || 0x00 || description
 listing-del:   b"fly-shop-v1/listing-delete" || seller(32) || id(16) || day_be64
 order:         b"fly-shop-v1/order"          || buyer(32)  || day_be64 || listing(16)
-               || id(16) || qty_be32 || note
+               || id(16) || qty_be32 || price_be64 || version_be64 || note
 order-status:  b"fly-shop-v1/order-status"   || actor(32)  || day_be64 || order(16)
                || status(1) || note
 orders-read:   b"fly-shop-v1/orders-read"    || for(32)    || day_be64
@@ -79,6 +79,10 @@ review:        b"fly-shop-v1/review"         || author(32) || day_be64 || order(
   unambiguous.
 * `price` is an integer count of **minor units** (cents) and `stock`/`qty` are
   u32. No float ever crosses the wire.
+* An order signs the listing's `price` and `version` at reservation time. The
+  store refuses an order whose snapshot no longer matches the current listing,
+  and the signed snapshot is returned with the order, so a later listing update
+  cannot retroactively change what a buyer agreed to.
 * The signed `stock` is the seller's **maximum** inventory and is never
   rewritten by orders. The provider derives `available = stock − units held by
   reserved/accepted/fulfilled orders` on read, so a listing signature stays
@@ -104,7 +108,7 @@ binding `(key, SHA256(preimage))`:
 listing:  id(16) || version_be64 || price_be64 || stock_be32 || currency(3)
           || title || 0x00 || description
 delete:   id(16)
-order:    listing(16) || id(16) || qty_be32 || note
+order:    listing(16) || id(16) || qty_be32 || price_be64 || version_be64 || note
 status:   order(16) || status(1) || note
 message:  order(16) || body
 review:   order(16) || seller(32) || rating(1) || body
@@ -131,6 +135,10 @@ proof proves work, never honesty.
   so an oversell is refused. The signed listing row is never mutated.
   A seller cannot order their own listing; the store rejects `buyer == seller`
   so self-purchases cannot bootstrap a self-review.
+* The signed price/version snapshot is checked against the listing inside the
+  same transaction. A buyer using a stale cached catalog gets a rejection
+  instead of silently agreeing to a newer price; refreshing the listing and
+  re-signing is required.
 * Transitions are role-scoped. A buyer cannot accept or fulfil; a seller cannot
   cancel; terminal states never revive. Declining or cancelling releases the
   reservation exactly once because only open/fulfilled states consume stock.
@@ -180,7 +188,8 @@ POST /listing/<hex32>/delete                 signed soft-delete
 POST /order                                  buyer-signed reservation
 GET  /orders?for=<hex64>&day=&sig=<hex128>   private to buyer/seller
 POST /order/<hex32>/status                   signed state transition
-POST /order/<hex32>/message                  participant-only thread
+POST /order/<hex32>/message                  participant-only thread (500-message cap)
+GET  /order/<hex32>/messages?for=&day=&sig=&offset=&limit=  older thread pages
 POST /review                                 one buyer review per fulfilled order
 GET  /reviews/<hex64>?offset=&limit=         raw signed reviews
 ```
@@ -192,7 +201,10 @@ clients must verify signatures over `stock` and order against `available`.
 Soft-deleted listings stay resolvable for past orders but disappear from
 browse and refuse new orders. Order objects carry `status_events`, the signed
 transition chain; clients replay it (`verifyStatusChain`) and reject any state
-the parties did not sign.
+the parties did not sign. They also carry the signed price/version snapshot
+plus the latest 20 thread messages and a cursor for older pages; a thread is
+capped at 500 signed messages. The paginated thread read uses the same signed
+proof of possession as `/orders` and refuses non-participants.
 
 ## 16.7 Privacy rules for buyers and sellers
 
@@ -200,8 +212,9 @@ the parties did not sign.
   Those fields are stored server-side and visible to at least the provider.
   Trade addresses through the social service's sealed DM dead-drop, or another
   end-to-end channel.
-* Order notes and messages are short coordination text. The thread is readable
-  only through the signed, participant-scoped order read.
+* Order notes and messages are short coordination text. Threads are readable
+  only through signed, participant-scoped order reads; reads are bounded in
+  pages so a long thread cannot be pulled back in one response.
 * Reviews are public and permanent. They can contain text, so write nothing
   personal.
 * Mixnet metadata is still metadata: repeated transactions between two public
