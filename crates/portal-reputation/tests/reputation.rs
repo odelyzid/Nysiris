@@ -84,6 +84,11 @@ fn rate_limiter_caps_bursts_per_author_per_day() {
     assert!(limiter.try_spend("alice", 7));
     assert!(!limiter.try_spend("alice", 7), "fourth write refused");
     assert_eq!(limiter.remaining("alice", 7), 0);
+    // A rejected write returns its slot; replays cannot drain the budget.
+    limiter.refund("alice", 7);
+    assert_eq!(limiter.remaining("alice", 7), 1);
+    assert!(limiter.try_spend("alice", 7));
+    assert_eq!(limiter.remaining("alice", 7), 0);
     // Other authors and other days are independent budgets.
     assert!(limiter.try_spend("bob", 7));
     assert!(limiter.try_spend("alice", 8));

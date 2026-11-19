@@ -6,22 +6,24 @@
  * via `defaultViewStorage()`.
  *
  * This sits *above* the legacy windowed panels (`panels.ts`): views are the
- * everyday IA (Home / Messages / Portal / Settings); the old technical
- * panels live inside Settings → Advanced and keep their own persistence.
+ * everyday IA (Home / Messages / Portal / Shop / Service / Settings); the old
+ * technical panels live inside Settings → Advanced and keep their own
+ * persistence.
  */
 import { defaultStorage } from '../lib/storage.ts';
 
-export type ViewId = 'home' | 'messages' | 'portal' | 'service' | 'settings';
+export type ViewId = 'home' | 'messages' | 'portal' | 'shop' | 'service' | 'settings';
 
 export const VIEW_META: Record<ViewId, { title: string; blurb: string }> = {
   home: { title: 'Home', blurb: 'Status and getting started' },
   messages: { title: 'Messages', blurb: 'Private conversations' },
   portal: { title: 'Portal', blurb: 'Private sites and community' },
+  shop: { title: 'Shop', blurb: 'Signed marketplace with private orders' },
   service: { title: 'Service', blurb: 'Run your own portal over the mixnet' },
   settings: { title: 'Settings', blurb: 'Your app and advanced tools' },
 };
 
-export const VIEW_ORDER: ViewId[] = ['home', 'messages', 'portal', 'service', 'settings'];
+export const VIEW_ORDER: ViewId[] = ['home', 'messages', 'portal', 'shop', 'service', 'settings'];
 
 export interface ViewStorage {
   getItem(key: string): string | null;

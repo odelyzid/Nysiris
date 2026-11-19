@@ -2,7 +2,7 @@
 #
 # Run a Nym hidden-service provider with sane defaults.
 #
-#   scripts/run-provider.sh [portal|social|echo] [--build] [--no-build]
+#   scripts/run-provider.sh [portal|social|shop|echo] [--build] [--no-build]
 #
 # Defaults to the portal provider. Already-exported environment variables win
 # over the defaults below, so every knob stays overridable:
@@ -11,6 +11,7 @@
 #   SP_GATEWAY=<gateway-identity-key>   optional pin for a stable address
 #   portal:  PORTAL_DB=./portal.sqlite  PORTAL_POW_BITS=0  PORTAL_RATE_PER_DAY=500
 #   social:  SOCIAL_DB=./social.sqlite  SOCIAL_POW_BITS=0  SOCIAL_RATE_PER_DAY=500
+#   shop:    SHOP_DB=./shop.sqlite      SHOP_POW_BITS=0  SHOP_RATE_PER_DAY=500
 #   echo:    (no database, no rate limits)
 #
 # The provider prints its Nym address on startup and writes it to
@@ -38,7 +39,7 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    portal | social | echo) SERVICE="$1"; shift ;;
+    portal | social | shop | echo) SERVICE="$1"; shift ;;
     --build) BUILD_MODE="force"; shift ;;
     --no-build) BUILD_MODE="skip"; shift ;;
     -h | --help) usage; exit 0 ;;
@@ -49,6 +50,7 @@ done
 case "$SERVICE" in
   portal) DIR="portal-provider"; BIN="portal-provider"; DB_VAR="PORTAL_DB"; DB_DEFAULT="./portal.sqlite" ;;
   social) DIR="social"; BIN="nysiris-social"; DB_VAR="SOCIAL_DB"; DB_DEFAULT="./social.sqlite" ;;
+  shop) DIR="shop"; BIN="nysiris-shop"; DB_VAR="SHOP_DB"; DB_DEFAULT="./shop.sqlite" ;;
   echo) DIR="echo-provider"; BIN="echo-provider"; DB_VAR=""; DB_DEFAULT="" ;;
 esac
 
@@ -66,6 +68,10 @@ fi
   echo "fail $BINARY not found; run with --build first" >&2
   exit 1
 }
+
+# New files (identity keys, sqlite db) are created owner-only. Set this before
+# any directory is created so the key directory itself is not world-readable.
+umask 077
 
 # Persistent identity storage. Lose this directory and the Nym address is gone.
 export SP_DATA_DIR="${SP_DATA_DIR:-./sp-storage}"
@@ -85,9 +91,6 @@ if [[ -z "${SP_GATEWAY:-}" ]]; then
 else
   echo "==> pinning provider to gateway $SP_GATEWAY"
 fi
-
-# New files (identity keys, sqlite db) are created owner-only.
-umask 077
 
 echo "==> starting $SERVICE provider from $SVC_DIR"
 echo "==> address will be printed below and written to $SVC_DIR/nym-address.txt"

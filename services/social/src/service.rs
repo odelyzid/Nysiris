@@ -28,8 +28,8 @@ use nym_hidden_service::{HiddenService, Request, Response};
 use provider_runtime::route::{json_body, parse_query};
 use provider_runtime::Router;
 
-use social_format::sig;
 use crate::store::Store;
+use social_format::sig;
 
 pub struct SocialService {
     store: Mutex<Store>,
@@ -152,7 +152,11 @@ impl HiddenService for SocialService {
                 if wants_html {
                     Response::ok(200, "text/html", DESCRIPTOR_HTML.as_bytes())
                 } else {
-                    Response::ok(200, "application/json", &json_body(&descriptor_json(self.router.pow.bits())))
+                    Response::ok(
+                        200,
+                        "application/json",
+                        &json_body(&descriptor_json(self.router.pow.bits())),
+                    )
                 }
             }
             ("GET", "/health") => {
@@ -211,7 +215,11 @@ impl HiddenService for SocialService {
                     Ok(v) => v,
                     Err(_) => return Response::error(400, "post body must be JSON"),
                 };
-                let author = match v.get("author").and_then(|a| a.as_str()).map(sig::parse_pubkey) {
+                let author = match v
+                    .get("author")
+                    .and_then(|a| a.as_str())
+                    .map(sig::parse_pubkey)
+                {
                     Some(Ok(a)) => a,
                     _ => return Response::error(400, "bad author"),
                 };
@@ -238,7 +246,9 @@ impl HiddenService for SocialService {
                     Some(s) => {
                         let s = match s.as_str() {
                             Some(s) => s,
-                            None => return Response::error(400, "in_reply_to must be a hex string"),
+                            None => {
+                                return Response::error(400, "in_reply_to must be a hex string")
+                            }
                         };
                         let bytes = match hex::decode(s.trim()) {
                             Ok(b) => b,
@@ -369,7 +379,11 @@ impl HiddenService for SocialService {
                     Ok(v) => v,
                     Err(_) => return Response::error(400, "profile body must be JSON"),
                 };
-                let author = match v.get("author").and_then(|a| a.as_str()).map(sig::parse_pubkey) {
+                let author = match v
+                    .get("author")
+                    .and_then(|a| a.as_str())
+                    .map(sig::parse_pubkey)
+                {
                     Some(Ok(a)) => a,
                     _ => return Response::error(400, "bad author"),
                 };
@@ -386,10 +400,9 @@ impl HiddenService for SocialService {
                 if sig::verify(&author, &sig::profile_message(&author, name, bio), &sig).is_err() {
                     return Response::error(400, "signature verification failed");
                 }
-                let pow_hash = portal_reputation::pow::payload_hash(&social_format::pow::profile_pow_preimage(
-                    name,
-                    bio,
-                ));
+                let pow_hash = portal_reputation::pow::payload_hash(
+                    &social_format::pow::profile_pow_preimage(name, bio),
+                );
                 if let Err(e) = self.gate_pow(&author, &pow_hash, &v) {
                     return e;
                 }
@@ -415,11 +428,19 @@ impl HiddenService for SocialService {
                     Some(Ok(t)) => t,
                     _ => return Response::error(400, "bad recipient"),
                 };
-                let nonce = match v.get("nonce").and_then(|n| n.as_str()).and_then(|n| hex::decode(n).ok()) {
+                let nonce = match v
+                    .get("nonce")
+                    .and_then(|n| n.as_str())
+                    .and_then(|n| hex::decode(n).ok())
+                {
                     Some(n) if n.len() == 24 => n,
                     _ => return Response::error(400, "nonce must be 24 bytes hex"),
                 };
-                let epub = match v.get("epub").and_then(|e| e.as_str()).and_then(|e| hex::decode(e).ok()) {
+                let epub = match v
+                    .get("epub")
+                    .and_then(|e| e.as_str())
+                    .and_then(|e| hex::decode(e).ok())
+                {
                     Some(e) if e.len() == 32 => e,
                     _ => return Response::error(400, "epub must be 32 bytes hex"),
                 };
@@ -475,13 +496,24 @@ impl HiddenService for SocialService {
                 };
                 let signature = match query.get("sig").map(|s| sig::parse_sig(s)) {
                     Some(Ok(s)) => s,
-                    _ => return Response::error(401, "dm read requires a signature (proof of possession)"),
+                    _ => {
+                        return Response::error(
+                            401,
+                            "dm read requires a signature (proof of possession)",
+                        )
+                    }
                 };
                 if day.abs_diff(sig::current_day()) > 2 {
-                    return Response::error(401, "stale dm read (day outside the freshness window)");
+                    return Response::error(
+                        401,
+                        "stale dm read (day outside the freshness window)",
+                    );
                 }
                 if sig::verify(&who, &sig::dm_read_message(&who, day), &signature).is_err() {
-                    return Response::error(401, "dm read signature does not match the recipient key");
+                    return Response::error(
+                        401,
+                        "dm read signature does not match the recipient key",
+                    );
                 }
                 let store = match self.lock() {
                     Ok(s) => s,
@@ -539,11 +571,9 @@ impl HiddenService for SocialService {
                 if chunk.len() > social_format::attach::MAX_BLOB_PART_BYTES {
                     return Response::error(400, "chunk too large");
                 }
-                let pow_hash = portal_reputation::pow::payload_hash(&social_format::pow::blob_part_pow_preimage(
-                    &id,
-                    part,
-                    &chunk,
-                ));
+                let pow_hash = portal_reputation::pow::payload_hash(
+                    &social_format::pow::blob_part_pow_preimage(&id, part, &chunk),
+                );
                 if let Err(e) = self.gate_pow(&id, &pow_hash, &v) {
                     return e;
                 }
@@ -671,8 +701,8 @@ mod tests {
             body.as_bytes(),
             &[],
         ));
-        let proof =
-            portal_reputation::pow::prove(author, &hash, bits, 0, 10_000_000).expect("low-bit proof");
+        let proof = portal_reputation::pow::prove(author, &hash, bits, 0, 10_000_000)
+            .expect("low-bit proof");
         serde_json::json!({"nonce": proof.nonce, "bits": proof.bits})
     }
 
@@ -692,19 +722,28 @@ mod tests {
         // Missing proof refused when required.
         let bare = signed_post(&sk, day, "no pow");
         let raw = envelope("POST", "/post", bare.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 400);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            400
+        );
 
         // Valid proof accepted, spending the single daily budget...
         let mut good = signed_post(&sk, day, "with pow");
         good["pow"] = pow_for_post(&author, "with pow", 4);
         let raw = envelope("POST", "/post", good.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            200
+        );
 
         // ...and the next write hits 429.
         let mut second = signed_post(&sk, day, "second");
         second["pow"] = pow_for_post(&author, "second", 4);
         let raw = envelope("POST", "/post", second.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 429);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            429
+        );
     }
 
     #[test]
@@ -774,8 +813,15 @@ mod tests {
         let bob = SigningKey::from_bytes(&[22u8; 32]);
 
         // Root post lands; feed names its id.
-        let raw = envelope("POST", "/post", signed_post(&alice, day, "root").to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
+        let raw = envelope(
+            "POST",
+            "/post",
+            signed_post(&alice, day, "root").to_string().as_bytes(),
+        );
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            200
+        );
         let raw = envelope("GET", "/feed?since=0&limit=20", &[]);
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
         let feed: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
@@ -787,9 +833,14 @@ mod tests {
         let raw = envelope(
             "POST",
             "/post",
-            signed_reply(&bob, day, "reply", Some(parent)).to_string().as_bytes(),
+            signed_reply(&bob, day, "reply", Some(parent))
+                .to_string()
+                .as_bytes(),
         );
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            200
+        );
 
         // Feed serves the link verbatim; single-post lookup resolves it.
         let raw = envelope("GET", "/feed?since=0&limit=20", &[]);
@@ -805,7 +856,10 @@ mod tests {
 
         // Unknown post id: 404, not a crash.
         let raw = envelope("GET", &format!("/post/{}", "ff".repeat(16)), &[]);
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 404);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            404
+        );
     }
 
     #[test]
@@ -821,14 +875,19 @@ mod tests {
         // (shape is checked after JSON parse but the sig won't match either;
         // both paths must 400, never store).
         let raw = envelope("POST", "/post", bad_hex.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 400);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            400
+        );
 
         // Well-formed signature, but the parent doesn't exist.
         let ghost = [9u8; 16];
         let raw = envelope(
             "POST",
             "/post",
-            signed_reply(&sk, day, "orphan", Some(ghost)).to_string().as_bytes(),
+            signed_reply(&sk, day, "orphan", Some(ghost))
+                .to_string()
+                .as_bytes(),
         );
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
         assert_eq!(rep.status, 400);
@@ -852,7 +911,10 @@ mod tests {
             "day": sig::current_day(), "sig": hex::encode(sig.to_bytes()),
         });
         let raw = envelope("POST", "/profile", body.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            200
+        );
 
         let raw = envelope("GET", &format!("/profile/{}", hex::encode(author)), &[]);
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
@@ -867,13 +929,24 @@ mod tests {
             "ciphertext": ct,
         });
         let raw = envelope("POST", "/dm", dm.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
-        let raw = envelope("GET", &signed_dm_read(&sk, &author, sig::current_day()), &[]);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            200
+        );
+        let raw = envelope(
+            "GET",
+            &signed_dm_read(&sk, &author, sig::current_day()),
+            &[],
+        );
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
         let body: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
         assert_eq!(body["dms"].as_array().unwrap().len(), 1);
         assert_eq!(body["dms"][0]["ciphertext"], ct);
-        let raw = envelope("GET", &signed_dm_read(&sk, &author, sig::current_day()), &[]);
+        let raw = envelope(
+            "GET",
+            &signed_dm_read(&sk, &author, sig::current_day()),
+            &[],
+        );
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
         let body: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
         assert!(body["dms"].as_array().unwrap().is_empty());
@@ -903,7 +976,10 @@ mod tests {
             "ciphertext": ct,
         });
         let raw = envelope("POST", "/dm", dm.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            200
+        );
 
         // No signature: refused outright — the drain attack is closed.
         let raw = envelope(
@@ -911,15 +987,28 @@ mod tests {
             &format!("/dm?for={}&day={}", hex::encode(who), sig::current_day()),
             &[],
         );
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 401);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            401
+        );
         // Another key's signature: refused (cannot read someone else's mailbox).
         let attacker = SigningKey::from_bytes(&[9u8; 32]);
-        let raw = envelope("GET", &signed_dm_read(&attacker, &who, sig::current_day()), &[]);
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 401);
+        let raw = envelope(
+            "GET",
+            &signed_dm_read(&attacker, &who, sig::current_day()),
+            &[],
+        );
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            401
+        );
         // A signature outside the ±2-day freshness window: refused.
         let stale = sig::current_day().saturating_sub(5);
         let raw = envelope("GET", &signed_dm_read(&sk, &who, stale), &[]);
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 401);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            401
+        );
         // The mailbox is untouched by all of the above — then the owner reads it.
         let raw = envelope("GET", &signed_dm_read(&sk, &who, sig::current_day()), &[]);
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
@@ -964,7 +1053,10 @@ mod tests {
 
         let good = signed_post_with_attachments(&sk, day, "with files", &atts);
         let raw = envelope("POST", "/post", good.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            200
+        );
 
         // Feed serves the metadata verbatim.
         let raw = envelope("GET", "/feed?since=0&limit=20", &[]);
@@ -977,14 +1069,20 @@ mod tests {
         let mut stripped = signed_post_with_attachments(&sk, day, "with files", &atts);
         stripped["attachments"] = serde_json::json!([]);
         let raw = envelope("POST", "/post", stripped.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 400);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            400
+        );
 
         // Disallowed MIME is refused before storage.
         let mut bad_mime = vec![sample_attachment(0xcd)];
         bad_mime[0].mime = "application/octet-stream".into();
         let evil = signed_post_with_attachments(&sk, day, "evil", &bad_mime);
         let raw = envelope("POST", "/post", evil.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 400);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            400
+        );
     }
 
     fn post_blob_part(
@@ -1036,12 +1134,10 @@ mod tests {
 
         // Two parts: first incomplete, second completes the upload.
         let mid = bytes.len() / 2;
-        let r: serde_json::Value =
-            post_blob_part(&svc, &id_hex, 0, 2, &bytes[..mid]);
+        let r: serde_json::Value = post_blob_part(&svc, &id_hex, 0, 2, &bytes[..mid]);
         assert_eq!(r["complete"], false);
         assert_eq!(r["have"], 1);
-        let r: serde_json::Value =
-            post_blob_part(&svc, &id_hex, 1, 2, &bytes[mid..]);
+        let r: serde_json::Value = post_blob_part(&svc, &id_hex, 1, 2, &bytes[mid..]);
         assert_eq!(r["complete"], true);
 
         // Fetched byte-identically.
@@ -1057,7 +1153,10 @@ mod tests {
 
         // Unknown blob: 404.
         let raw = envelope("GET", &format!("/blob/{}", "00".repeat(32)), &[]);
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 404);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            404
+        );
     }
 
     #[test]
@@ -1073,19 +1172,37 @@ mod tests {
 
         // Parts that don't hash to the claimed id: refused at assembly.
         let id_hex = "ff".repeat(32);
-        assert_eq!(post(&format!("/blob/part?id={id_hex}&part=0&of=1"), b"lies"), 400);
+        assert_eq!(
+            post(&format!("/blob/part?id={id_hex}&part=0&of=1"), b"lies"),
+            400
+        );
 
         // Bad coordinates: part >= of, of = 0, of over the cap.
         let real = hex::encode(portal_reputation::pow::payload_hash(b"x"));
-        assert_eq!(post(&format!("/blob/part?id={real}&part=1&of=1"), b"x"), 400);
-        assert_eq!(post(&format!("/blob/part?id={real}&part=0&of=0"), b"x"), 400);
-        assert_eq!(post(&format!("/blob/part?id={real}&part=0&of=99"), b"x"), 400);
+        assert_eq!(
+            post(&format!("/blob/part?id={real}&part=1&of=1"), b"x"),
+            400
+        );
+        assert_eq!(
+            post(&format!("/blob/part?id={real}&part=0&of=0"), b"x"),
+            400
+        );
+        assert_eq!(
+            post(&format!("/blob/part?id={real}&part=0&of=99"), b"x"),
+            400
+        );
 
         // `of` mismatch mid-upload: refused.
         let bytes = b"consistent-total";
         let id2 = hex::encode(portal_reputation::pow::payload_hash(bytes));
-        assert_eq!(post(&format!("/blob/part?id={id2}&part=0&of=2"), b"consistent-"), 200);
-        assert_eq!(post(&format!("/blob/part?id={id2}&part=1&of=3"), b"total"), 400);
+        assert_eq!(
+            post(&format!("/blob/part?id={id2}&part=0&of=2"), b"consistent-"),
+            200
+        );
+        assert_eq!(
+            post(&format!("/blob/part?id={id2}&part=1&of=3"), b"total"),
+            400
+        );
 
         // Oversize total (6 full chunks > 256 KiB): refused at assembly.
         let big_part = vec![7u8; social_format::attach::MAX_BLOB_PART_BYTES];
@@ -1095,8 +1212,14 @@ mod tests {
         }
         let big_id = hex::encode(portal_reputation::pow::payload_hash(&big));
         for i in 0..5 {
-            assert_eq!(post(&format!("/blob/part?id={big_id}&part={i}&of=6"), &big_part), 200);
+            assert_eq!(
+                post(&format!("/blob/part?id={big_id}&part={i}&of=6"), &big_part),
+                200
+            );
         }
-        assert_eq!(post(&format!("/blob/part?id={big_id}&part=5&of=6"), &big_part), 400);
+        assert_eq!(
+            post(&format!("/blob/part?id={big_id}&part=5&of=6"), &big_part),
+            400
+        );
     }
 }

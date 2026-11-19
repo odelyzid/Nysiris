@@ -51,7 +51,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let address = *client.nym_address();
     println!("\nService provider Nym address:\n{address}\n");
     // Persist for out-of-band distribution (QR code, config, signed release).
-    let _ = std::fs::write("nym-address.txt", address.to_string());
+    if let Err(e) = std::fs::write("nym-address.txt", address.to_string()) {
+        eprintln!("warning: could not write nym-address.txt: {e}");
+    }
 
     loop {
         tokio::select! {

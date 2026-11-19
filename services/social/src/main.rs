@@ -70,16 +70,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let address = *client.nym_address();
     println!("\nnysiris-social Nym address:\n{address}\n");
-    let _ = std::fs::write("nym-address.txt", address.to_string());
+    if let Err(e) = std::fs::write("nym-address.txt", address.to_string()) {
+        eprintln!("warning: could not write nym-address.txt: {e}");
+    }
 
     let mut runtime = MixnetClientRuntime {
         client: Some(client),
     };
     // provider_runtime::run_loop answers tagged hidden-service messages until
     // the transport closes; ctrl_c tears down gracefully either way.
-    let mut serve = Box::pin(run_loop(&mut runtime, |msg| {
-        hidden_step(&service, msg)
-    }));
+    let mut serve = Box::pin(run_loop(&mut runtime, |msg| hidden_step(&service, msg)));
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             println!("shutdown signal received");
@@ -121,7 +121,10 @@ impl MixnetRuntime for MixnetClientRuntime {
             .as_ref()
             .ok_or_else(|| SendError("client already disconnected".into()))?;
         client
-            .send_reply(nym_sdk::mixnet::AnonymousSenderTag::from_bytes(sender_tag), reply)
+            .send_reply(
+                nym_sdk::mixnet::AnonymousSenderTag::from_bytes(sender_tag),
+                reply,
+            )
             .await
             .map_err(|err| SendError(err.to_string()))
     }

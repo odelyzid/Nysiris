@@ -1,14 +1,18 @@
 # NOTE: build context is the REPO ROOT (set in docker-compose* files), because
-# hybrid-bridge depends on ../../crates/bridge-guard via a Cargo path
-# dependency. Building with the service directory as context cannot see it.
+# hybrid-bridge depends on local crates via Cargo path dependencies. Building
+# with the service directory as context cannot see them.
 FROM rust:1.94-bookworm AS builder
 WORKDIR /build
 COPY services/hybrid-bridge/Cargo.toml ./services/hybrid-bridge/Cargo.toml
+COPY services/hybrid-bridge/Cargo.lock ./services/hybrid-bridge/Cargo.lock
 COPY crates/bridge-guard ./crates/bridge-guard
+COPY crates/nym-hidden-service ./crates/nym-hidden-service
+COPY crates/portal-reputation ./crates/portal-reputation
+COPY crates/provider-runtime ./crates/provider-runtime
 WORKDIR /build/services/hybrid-bridge
-RUN mkdir -p src && echo 'fn main() {}' > src/main.rs && cargo build --release && rm -rf src
+RUN mkdir -p src && echo 'fn main() {}' > src/main.rs && cargo build --locked --release && rm -rf src
 COPY services/hybrid-bridge/src ./src
-RUN touch src/main.rs && cargo build --release
+RUN touch src/main.rs && cargo build --locked --release
 
 FROM debian:bookworm-slim
 RUN apt-get update \

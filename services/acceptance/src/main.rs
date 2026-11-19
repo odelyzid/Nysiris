@@ -98,7 +98,9 @@ async fn run() -> AResult<()> {
     let reply_text =
         String::from_utf8(reply.message).map_err(|e| format!("reply non-UTF8: {e}"))?;
     if reply_text != pong {
-        return Err(format!("reply mismatch: sent {pong:?}, received {reply_text:?}"));
+        return Err(format!(
+            "reply mismatch: sent {pong:?}, received {reply_text:?}"
+        ));
     }
     println!("SURB reply received in {reply_rtt:?}: {reply_text:?}");
 
@@ -136,7 +138,10 @@ async fn connect(ephemeral: bool) -> AResult<MixnetClient> {
 
 /// Wait for the next non-empty message, defensively skipping the empty messages
 /// the SDK uses for internal SURB replenishment.
-async fn wait_for_nonempty(client: &mut MixnetClient, label: &str) -> AResult<ReconstructedMessage> {
+async fn wait_for_nonempty(
+    client: &mut MixnetClient,
+    label: &str,
+) -> AResult<ReconstructedMessage> {
     let wait = async {
         loop {
             if let Some(messages) = client.wait_for_messages().await {

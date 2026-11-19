@@ -649,6 +649,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "shop-format"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+]
+
+[[package]]
 name = "signature"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

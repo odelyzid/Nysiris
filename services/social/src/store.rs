@@ -21,7 +21,9 @@
 
 use base64::Engine as _;
 use rusqlite::{params, Connection, OptionalExtension};
-use social_format::limits::{DM_TTL_SECS, MAX_BIO_CHARS, MAX_DM_BYTES, MAX_NAME_CHARS, MAX_POST_BYTES};
+use social_format::limits::{
+    DM_TTL_SECS, MAX_BIO_CHARS, MAX_DM_BYTES, MAX_NAME_CHARS, MAX_POST_BYTES,
+};
 
 pub struct Post {
     pub seq: i64,
@@ -512,10 +514,16 @@ mod tests {
         s.upsert_profile(&author, "ada", "mixnet enjoyer", 20400, &[9u8; 64])
             .unwrap();
         let p = s.get_profile(&author).unwrap().unwrap();
-        assert_eq!((p.name, p.bio, p.day), ("ada".into(), "mixnet enjoyer".into(), 20400));
-        s.upsert_profile(&author, "ada2", "", 20401, &[9u8; 64]).unwrap();
+        assert_eq!(
+            (p.name, p.bio, p.day),
+            ("ada".into(), "mixnet enjoyer".into(), 20400)
+        );
+        s.upsert_profile(&author, "ada2", "", 20401, &[9u8; 64])
+            .unwrap();
         assert_eq!(s.get_profile(&author).unwrap().unwrap().name, "ada2");
-        assert!(s.upsert_profile(&author, &"x".repeat(41), "", 0, &[0u8; 64]).is_err());
+        assert!(s
+            .upsert_profile(&author, &"x".repeat(41), "", 0, &[0u8; 64])
+            .is_err());
     }
 
     #[test]
@@ -528,8 +536,16 @@ mod tests {
         let mut parent16 = [0u8; 16];
         parent16.copy_from_slice(&root_id);
         // Reply stores its parent; top-level rows read back None.
-        s.insert_post(&[2u8; 32], 20400, "reply", Some(&parent16), None, &[3u8; 64], [8u8; 16])
-            .unwrap();
+        s.insert_post(
+            &[2u8; 32],
+            20400,
+            "reply",
+            Some(&parent16),
+            None,
+            &[3u8; 64],
+            [8u8; 16],
+        )
+        .unwrap();
         let (posts, _) = s.feed(0, 10).unwrap();
         assert_eq!(posts.len(), 2);
         assert_eq!(posts[0].in_reply_to_hex, None);
@@ -545,8 +561,16 @@ mod tests {
     fn feed_paginates_by_cursor() {
         let s = Store::open_in_memory().unwrap();
         for i in 0..5 {
-            s.insert_post(&[1u8; 32], 20400, &format!("post {i}"), None, None, &[2u8; 64], [i as u8; 16])
-                .unwrap();
+            s.insert_post(
+                &[1u8; 32],
+                20400,
+                &format!("post {i}"),
+                None,
+                None,
+                &[2u8; 64],
+                [i as u8; 16],
+            )
+            .unwrap();
         }
         let (page1, next) = s.feed(0, 2).unwrap();
         assert_eq!(page1.len(), 2);
@@ -575,7 +599,8 @@ mod tests {
         // Second fetch: gone.
         assert!(s.fetch_dms(&recip).unwrap().is_empty());
         // Other recipients unaffected.
-        s.store_dm(&[9u8; 32], &[6u8; 32], &[2u8; 24], b"x").unwrap();
+        s.store_dm(&[9u8; 32], &[6u8; 32], &[2u8; 24], b"x")
+            .unwrap();
         assert!(s.fetch_dms(&recip).unwrap().is_empty());
         assert_eq!(s.fetch_dms(&[9u8; 32]).unwrap().len(), 1);
     }
@@ -599,10 +624,20 @@ mod tests {
     fn attachments_persist_and_serve_verbatim() {
         let s = Store::open_in_memory().unwrap();
         let atts = r#"[{"id":"ab","name":"a.png","mime":"image/png","size":1,"key":"cd"}]"#;
-        s.insert_post(&[1u8; 32], 20400, "with files", None, Some(atts), &[2u8; 64], [7u8; 16])
-            .unwrap();
-        s.insert_post(&[1u8; 32], 20400, "plain", None, None, &[2u8; 64], [8u8; 16])
-            .unwrap();
+        s.insert_post(
+            &[1u8; 32],
+            20400,
+            "with files",
+            None,
+            Some(atts),
+            &[2u8; 64],
+            [7u8; 16],
+        )
+        .unwrap();
+        s.insert_post(
+            &[1u8; 32], 20400, "plain", None, None, &[2u8; 64], [8u8; 16],
+        )
+        .unwrap();
         let (posts, _) = s.feed(0, 10).unwrap();
         assert_eq!(posts[0].attachments_json.as_deref(), Some(atts));
         assert_eq!(posts[1].attachments_json, None);

@@ -30,6 +30,13 @@ jobs:
       - name: Build and test services
         run: ./build.sh services
 
+      # Native builds do not catch broken Docker build contexts or ignored
+      # lockfiles, which is how the bridge used to deploy an unpinned image.
+      - name: Build Docker images
+        run: |
+          docker build -f services/hybrid-bridge/Dockerfile -t nysiris-hybrid-bridge:ci .
+          docker build -f services/echo-provider/Dockerfile -t nysiris-echo-provider:ci services/echo-provider
+
   # Same drift check on Windows: the services/* crates are platform-neutral
   # (no systemd/nix deps), but nym-sdk 1.21 is only exercised on Windows here.
   # Uses the MSYS2 MINGW64 pattern from release.yml::windows-zip; the inherited

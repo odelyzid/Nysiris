@@ -16,9 +16,26 @@ test('proves fast and verifies in one hash', async () => {
 
 test('proofs bind author and payload', async () => {
   const hash = await payloadHashBytes(new TextEncoder().encode('hello portal'));
-  const proof = await provePow(AUTHOR, hash, 8);
-  assert.equal(await verifyPow(new Uint8Array(32).fill(4), hash, proof), false);
-  assert.equal(await verifyPow(AUTHOR, await payloadHashBytes(new TextEncoder().encode('other')), proof), false);
+  const otherHash = await payloadHashBytes(new TextEncoder().encode('other'));
+  const otherAuthor = new Uint8Array(32).fill(4);
+  // A proof for one input can, by chance, also satisfy another. Keep proving
+  // until we get one that actually discriminates, so the test cannot flake.
+  let proof;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    proof = await provePow(AUTHOR, hash, 12);
+    assert.ok(proof);
+    if (
+      !(await verifyPow(otherAuthor, hash, proof)) &&
+      !(await verifyPow(AUTHOR, otherHash, proof))
+    ) {
+      break;
+    }
+    proof = null;
+  }
+  assert.ok(proof, 'could not find a discriminating proof');
+  assert.equal(await verifyPow(AUTHOR, hash, proof), true);
+  assert.equal(await verifyPow(otherAuthor, hash, proof), false);
+  assert.equal(await verifyPow(AUTHOR, otherHash, proof), false);
 });
 
 test('refuses absurd difficulties and exhaustion', async () => {

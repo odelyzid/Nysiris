@@ -56,7 +56,12 @@ impl PortalService {
 
     /// PoW check. The proof binds (author, object id) — it cannot be replayed
     /// for another object or author. Skipped entirely when `pow_bits` is 0.
-    fn gate_pow(&self, author: &[u8; 32], obj_id: &[u8; 32], v: &serde_json::Value) -> Result<(), Response> {
+    fn gate_pow(
+        &self,
+        author: &[u8; 32],
+        obj_id: &[u8; 32],
+        v: &serde_json::Value,
+    ) -> Result<(), Response> {
         self.router
             .pow
             .verify_json(author, obj_id, v)
@@ -151,7 +156,9 @@ impl HiddenService for PortalService {
                     Err(e) => return e,
                 };
                 match store.get_object(&id) {
-                    Ok(Some(obj)) => Response::ok(200, "application/json", &json_body(&obj.to_json())),
+                    Ok(Some(obj)) => {
+                        Response::ok(200, "application/json", &json_body(&obj.to_json()))
+                    }
                     Ok(None) => Response::error(404, "no such object"),
                     Err(e) => Response::error(500, e),
                 }
@@ -179,10 +186,9 @@ impl HiddenService for PortalService {
                     Err(e) => return Response::error(400, e),
                 };
                 // PoW binds the full entry bytes (author + seq + object).
-                let entry_hash =
-                    portal_reputation::pow::payload_hash(&portal_data::log::entry_bytes(
-                        &author, seq, &obj_id,
-                    ));
+                let entry_hash = portal_reputation::pow::payload_hash(
+                    &portal_data::log::entry_bytes(&author, seq, &obj_id),
+                );
                 if let Err(e) = self.gate_pow(&author, &entry_hash, &v) {
                     return e;
                 }
@@ -287,13 +293,15 @@ mod tests {
         let raw = envelope("GET", &format!("/obj/{id_hex}"), &[]);
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
         assert_eq!(rep.status, 200);
-        let fetched: serde_json::Value =
-            serde_json::from_slice(&rep.body().unwrap()).unwrap();
+        let fetched: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
         assert_eq!(fetched["id"], id_hex);
 
         // Unknown id: 404.
         let raw = envelope("GET", &format!("/obj/{}", "00".repeat(32)), &[]);
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 404);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            404
+        );
 
         // Append to the log, then read it back.
         let id: [u8; 32] = hex::decode(&id_hex).unwrap().try_into().unwrap();
@@ -310,16 +318,14 @@ mod tests {
 
         let raw = envelope("GET", &format!("/log/{author_hex}?since=0"), &[]);
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
-        let log_body: serde_json::Value =
-            serde_json::from_slice(&rep.body().unwrap()).unwrap();
+        let log_body: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
         assert_eq!(log_body["entries"].as_array().unwrap().len(), 1);
         assert_eq!(log_body["head"], 1);
 
         // Heads advertise the author.
         let raw = envelope("GET", "/heads", &[]);
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
-        let heads: serde_json::Value =
-            serde_json::from_slice(&rep.body().unwrap()).unwrap();
+        let heads: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
         assert_eq!(heads["heads"].as_array().unwrap().len(), 1);
     }
 
@@ -328,21 +334,26 @@ mod tests {
         let svc = test_service();
         // Not an object at all.
         let raw = envelope("POST", "/obj", b"{\"kind\":\"post\"}");
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 400);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            400
+        );
         // Tampered payload with a real signature shape.
         let (id_hex, _) = publish(&svc, 9, "post", b"real");
         let raw = envelope("GET", &format!("/obj/{id_hex}"), &[]);
         let rep = Response::from_json(&dispatch(&svc, &raw)).unwrap();
-        let mut tampered: serde_json::Value =
-            serde_json::from_slice(&rep.body().unwrap()).unwrap();
+        let mut tampered: serde_json::Value = serde_json::from_slice(&rep.body().unwrap()).unwrap();
         tampered["payload"] = serde_json::json!("aGk="); // "hi", wrong sig
         let raw = envelope("POST", "/obj", tampered.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 400);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            400
+        );
     }
 
     fn pow_for(author: &[u8; 32], obj_id: &[u8; 32], bits: u32) -> serde_json::Value {
-        let proof =
-            portal_reputation::pow::prove(author, obj_id, bits, 0, 10_000_000).expect("low-bit proof");
+        let proof = portal_reputation::pow::prove(author, obj_id, bits, 0, 10_000_000)
+            .expect("low-bit proof");
         serde_json::json!({"nonce": proof.nonce, "bits": proof.bits})
     }
 
@@ -360,26 +371,38 @@ mod tests {
         // Missing proof refused when required.
         let obj = Object::sign_new(&sk, "post", b"no pow".to_vec()).unwrap();
         let raw = envelope("POST", "/obj", obj.to_json().to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 400);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            400
+        );
 
         // Valid proof accepted.
         let mut with_pow = obj.to_json();
         with_pow["pow"] = pow_for(&obj.author, &obj.id, 4);
         let raw = envelope("POST", "/obj", with_pow.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            200
+        );
 
         // Second write spends the last budget...
         let obj2 = Object::sign_new(&sk, "post", b"second".to_vec()).unwrap();
         let mut with_pow2 = obj2.to_json();
         with_pow2["pow"] = pow_for(&obj2.author, &obj2.id, 4);
         let raw = envelope("POST", "/obj", with_pow2.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 200);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            200
+        );
 
         // ...and the third hits 429.
         let obj3 = Object::sign_new(&sk, "post", b"third".to_vec()).unwrap();
         let mut with_pow3 = obj3.to_json();
         with_pow3["pow"] = pow_for(&obj3.author, &obj3.id, 4);
         let raw = envelope("POST", "/obj", with_pow3.to_string().as_bytes());
-        assert_eq!(Response::from_json(&dispatch(&svc, &raw)).unwrap().status, 429);
+        assert_eq!(
+            Response::from_json(&dispatch(&svc, &raw)).unwrap().status,
+            429
+        );
     }
 }

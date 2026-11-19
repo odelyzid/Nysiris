@@ -1,0 +1,44 @@
+/**
+ * Thin typed JSON client over `fetchNym` for the shop provider. Every call is
+ * one request/one SURB reply; `fetchNym` already serializes them.
+ */
+import { fetchNym } from '../../../mixnet/fetchNym';
+
+const JSON_HEADERS = { 'content-type': 'application/json' } as const;
+
+function errorText(body: Uint8Array): string {
+  const text = new TextDecoder().decode(body).trim();
+  if (!text) return '';
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown };
+    if (typeof parsed.error === 'string') return parsed.error;
+  } catch {
+    // Plain-text error body.
+  }
+  return text.slice(0, 300);
+}
+
+function decode<T>(status: number, body: Uint8Array, transportError: string | null, route: string): T {
+  if (transportError) throw new Error(transportError);
+  if (status < 200 || status >= 300) {
+    throw new Error(`${route}: ${errorText(body) || `HTTP ${status}`}`);
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(body)) as T;
+  } catch {
+    throw new Error(`${route}: response was not JSON`);
+  }
+}
+
+export async function getJson<T>(service: string, path: string): Promise<T> {
+  if (!service) throw new Error('no shop service selected');
+  const res = await fetchNym(service, { method: 'GET', path });
+  return decode<T>(res.status, res.body, res.error, path);
+}
+
+export async function postJson<T>(service: string, path: string, payload: unknown): Promise<T> {
+  if (!service) throw new Error('no shop service selected');
+  const body = new TextEncoder().encode(JSON.stringify(payload));
+  const res = await fetchNym(service, { method: 'POST', path, headers: JSON_HEADERS, body });
+  return decode<T>(res.status, res.body, res.error, path);
+}

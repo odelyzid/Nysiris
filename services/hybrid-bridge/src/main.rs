@@ -152,7 +152,10 @@ impl MixnetRuntime for MixnetClientRuntime {
             .as_ref()
             .ok_or_else(|| SendError("client already disconnected".into()))?;
         client
-            .send_reply(nym_sdk::mixnet::AnonymousSenderTag::from_bytes(sender_tag), reply)
+            .send_reply(
+                nym_sdk::mixnet::AnonymousSenderTag::from_bytes(sender_tag),
+                reply,
+            )
             .await
             .map_err(|err| SendError(err.to_string()))
     }
@@ -167,12 +170,18 @@ impl MixnetRuntime for MixnetClientRuntime {
 async fn handle(http: &reqwest::Client, backend: &str, raw: &[u8]) -> ResponseEnvelope {
     let envelope: RequestEnvelope = match serde_json::from_slice(raw) {
         Ok(envelope) => envelope,
-        Err(err) => return error_response(format!("bad request envelope: {err}")),
+        Err(err) => {
+            eprintln!("bridge: bad request envelope: {err}");
+            return error_response("bad request envelope");
+        }
     };
 
     let body = match B64.decode(&envelope.body_base64) {
         Ok(body) => body,
-        Err(err) => return error_response(format!("body_base64 invalid: {err}")),
+        Err(err) => {
+            eprintln!("bridge: invalid body_base64: {err}");
+            return error_response("invalid body encoding");
+        }
     };
 
     // Every open-proxy guard is enforced here (bridge-guard, unit-tested).
@@ -184,13 +193,19 @@ async fn handle(http: &reqwest::Client, backend: &str, raw: &[u8]) -> ResponseEn
     let spec = RequestSpec::new(&envelope.method, &envelope.path, body.len(), &headers);
     let validated = match validate(spec, DEFAULT_MAX_BODY_BYTES) {
         Ok(validated) => validated,
-        Err(err) => return error_response(format!("request rejected: {err}")),
+        Err(err) => {
+            eprintln!("bridge: request rejected: {err}");
+            return error_response("request rejected");
+        }
     };
 
     let url = format!("{}{}", backend.trim_end_matches('/'), validated.path);
     let method = match reqwest::Method::from_bytes(validated.method.as_bytes()) {
         Ok(m) => m,
-        Err(err) => return error_response(format!("invalid method: {err}")),
+        Err(err) => {
+            eprintln!("bridge: invalid method: {err}");
+            return error_response("invalid method");
+        }
     };
 
     let mut request = http.request(method, &url);
@@ -203,7 +218,7 @@ async fn handle(http: &reqwest::Client, backend: &str, raw: &[u8]) -> ResponseEn
     }
 
     match request.send().await {
-        Ok(response) => {
+        Ok(mut response) => {
             let status = response.status().as_u16();
             let mut headers = HashMap::new();
             if let Some(ct) = response.headers().get("content-type") {
@@ -211,7 +226,30 @@ async fn handle(http: &reqwest::Client, backend: &str, raw: &[u8]) -> ResponseEn
                     headers.insert("content-type".into(), ct.to_string());
                 }
             }
-            let bytes = response.bytes().await.unwrap_or_default();
+            if response
+                .content_length()
+                .is_some_and(|n| n > MAX_RESPONSE_BYTES)
+            {
+                return error_response_status(413, "backend response too large");
+            }
+            // Stream with a hard cap: a chunked response has no content-length
+            // and must not be able to exhaust bridge memory.
+            let mut bytes = Vec::new();
+            loop {
+                match response.chunk().await {
+                    Ok(Some(chunk)) => {
+                        if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES as usize {
+                            return error_response_status(413, "backend response too large");
+                        }
+                        bytes.extend_from_slice(&chunk);
+                    }
+                    Ok(None) => break,
+                    Err(err) => {
+                        eprintln!("bridge: backend response read failed: {err}");
+                        return error_response("backend response read failed");
+                    }
+                }
+            }
             ResponseEnvelope {
                 status,
                 headers,
@@ -219,15 +257,24 @@ async fn handle(http: &reqwest::Client, backend: &str, raw: &[u8]) -> ResponseEn
                 error: None,
             }
         }
-        Err(err) => error_response(format!("backend request failed: {err}")),
+        Err(err) => {
+            eprintln!("bridge: backend request failed: {err}");
+            error_response("backend request failed")
+        }
     }
 }
 
-fn error_response(message: String) -> ResponseEnvelope {
+const MAX_RESPONSE_BYTES: u64 = DEFAULT_MAX_BODY_BYTES as u64;
+
+fn error_response(message: &str) -> ResponseEnvelope {
+    error_response_status(502, message)
+}
+
+fn error_response_status(status: u16, message: &str) -> ResponseEnvelope {
     ResponseEnvelope {
-        status: 502,
+        status,
         headers: HashMap::new(),
         body_base64: String::new(),
-        error: Some(message),
+        error: Some(message.to_string()),
     }
 }

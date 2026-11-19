@@ -22,7 +22,7 @@ No separate binary needed; `cargo` fetches `nym-sdk` from crates.io:
 
 ```sh
 cd services/acceptance
-cargo build --release      # first build downloads & compiles the Nym stack
+cargo build --locked --release  # first build downloads & compiles the Nym stack
 ```
 
 ### Option B — prebuilt Nym binaries (for the CLI smoke test)
@@ -75,7 +75,7 @@ or directly:
 
 ```sh
 cd services/acceptance
-ACCEPTANCE_STORAGE=./acceptance-storage cargo run --release
+ACCEPTANCE_STORAGE=./acceptance-storage cargo run --locked --release
 ```
 
 ### Environment

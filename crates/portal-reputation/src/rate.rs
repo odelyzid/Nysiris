@@ -59,6 +59,14 @@ impl RateLimiter {
         self.policy.max_per_day.saturating_sub(used)
     }
 
+    /// Return a spend when the write failed after `try_spend` succeeded:
+    /// rejected writes must not drain a signer's daily budget.
+    pub fn refund(&mut self, author_hex: &str, today: u64) {
+        if let Some(used) = self.used.get_mut(&(author_hex.to_string(), today)) {
+            *used = used.saturating_sub(1);
+        }
+    }
+
     /// Drop bookkeeping for days before `today` (call occasionally).
     pub fn prune(&mut self, today: u64) {
         self.used

@@ -13,6 +13,8 @@ Top-level navigation (always visible, mobile-friendly):
 | Home | Home | Onboarding card, protection status, "Open a private link" bar (the existing `nym://` URI bar, unchanged behaviour), recent people/places shortcuts |
 | Messages | Messages | Chat list + conversation view over the existing `NymAddressClient` inbox. No raw addresses in the list — petnames / short labels only |
 | Portal | Portal | Private-site viewer (`iframe`, URI-bar binding preserved) + community with Timeline / Private messages / About tabs. Identity keys stay in `localStorage` as before |
+| Shop | Shop | Signed marketplace over a `services/shop` provider: browse listings, publish your own, reserve stock with signed orders, per-order message threads, and verified buyer reviews. No payments are processed |
+| Service | Service | Host/connect a portal provider and run your own private service over the mixnet |
 | Settings | Settings | Everyday settings (private network on/off, my private link + copy/QR, people, notifications). Technical tools collapsed under **Advanced** (hidden by default) |
 
 **Advanced (hidden by default)** keeps the exact previous panels, untouched

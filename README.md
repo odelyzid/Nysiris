@@ -214,6 +214,7 @@ tools and wallet, outside the Nysiris application.
 | Browser tabs + unified `nym://`/`http(s)` navigation | Works; clearnet pages use the exit gateway. HTML/CSS/images/media are fetched through the same transport and inlined; top-level PDF/media and a download shelf work; scripts and forms remain disabled |
 | Cookies, redirects, larger static files | Clearnet cookie jar and final-URL redirect handling work; `nysiris-sdk` serves >1,400-byte files as `206` chunks that `fetchNymFull` reassembles |
 | Community timeline, threads, E2E DMs (signature-authenticated dead-drop reads), trust dots, petnames, invites, encrypted attachments | Works against a `nysiris-social` provider you run |
+| Signed marketplace: listings, stock-reserving orders, private order threads, local review aggregation | Works against a `nysiris-shop` provider you run; no payments processed |
 | Providers, hybrid bridge, portal store, `nysiris` CLI | Works; you operate them (see `services/`) |
 | Nysiris-Core as a dependency (crates.io `0.1.3`) | Works: 1:1 DMs + rooms, encrypted history, `nym-sdk` transport — pre-1.0 API; docs.rs coverage 100% |
 | Linux `.deb`, Windows zip | Works; built by CI on every release tag |
@@ -318,14 +319,16 @@ Prefer a rendered site? These docs are mirrored to the
    the `nysiris` CLI: `host`, `address`, `fetch`, `petname`, `doctor`.
 8. [`docs/09-social.md`](docs/09-social.md) — nysiris-social: metadata-minimal
    microblog + E2E DMs, SQLite security, signature/E2E specs, operations.
-9. [`docs/07-desktop-linux.md`](docs/07-desktop-linux.md) — Linux Mint / Debian
-   desktop packaging (`.deb`, Electron, Tauri, Flatpak) and engine compatibility.
-10. [`docs/14-nysiris-core.md`](docs/14-nysiris-core.md) — the extracted
+9. [`docs/16-shop.md`](docs/16-shop.md) — nysiris-shop: signed listings,
+   stock-reserving orders, private order threads, and local review aggregation.
+10. [`docs/07-desktop-linux.md`](docs/07-desktop-linux.md) — Linux Mint / Debian
+    desktop packaging (`.deb`, Electron, Tauri, Flatpak) and engine compatibility.
+11. [`docs/14-nysiris-core.md`](docs/14-nysiris-core.md) — the extracted
     protocol/transport workspace (`core/` submodule), its boundaries and
     migration status.
-11. [`docs/15-browser-navigation.md`](docs/15-browser-navigation.md) — document/tab
+12. [`docs/15-browser-navigation.md`](docs/15-browser-navigation.md) — document/tab
     model, unified `nym://` + `http(s)` navigation, and the browser-shell phases.
-12. [`docs/06-roadmap.md`](docs/06-roadmap.md) — phased plan with acceptance
+13. [`docs/06-roadmap.md`](docs/06-roadmap.md) — phased plan with acceptance
     criteria.
 
 ## Build & verify
@@ -387,6 +390,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `crates/portal-reputation/` | PoW (anti-spam), local reputation scores, provider rate limits | 5 tests |
 | `crates/provider-runtime/` | Shared hidden-service runtime: transport seam, request loop, PoW + rate guards, route plumbing | 15 tests |
 | `crates/social-format/` | Byte-exact social wire format: signed envelope framing, attachment binding, size limits, PoW preimages | 15 tests |
+| `crates/shop-format/` | Byte-exact shop wire format: signed listings/orders/status/threads/reviews, order state machine, PoW preimages, cross-implementation vectors | 15 tests |
 | `crates/sphinx-core/tests/fuzz_parser.rs` | Deterministic mutation fuzzing of all parsers | 6 tests |
 | `crates/sphinx-core/tests/soak.rs` | Randomised route/message soak (release) | `./build.sh soak` |
 | `crates/sphinx-core/fuzz/` | Coverage-guided fuzzing targets (nightly) | `cargo +nightly fuzz run parse_packet` |
@@ -395,9 +399,10 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `services/hybrid-bridge/` | Nym↔HTTP bridge + Caddy + Docker Compose, using `bridge-guard` | `docker compose config` + guard tests |
 | `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); encrypted attachments (content-addressed blobs, chunked + parallel upload); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`); signed dead-drop reads | 17 tests + `web/src/adapters/driving/social/` timeline UI |
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
+| `services/shop/` | nysiris-shop: versioned signed listings, atomic stock-reserving orders, seller status transitions, participant-only order threads, raw signed reviews (`SHOP_POW_BITS`, `SHOP_RATE_PER_DAY`) | Store/route tests + `web/src/adapters/driving/shop/` Shop tab |
 | `services/nysiris-cli/` | `nysiris` CLI + nym-sdk transport adapter: `host echo`/`host files`, `address`, `fetch`, `petname`, `doctor` | 9 parser tests + `./build.sh services` |
 | `services/gateway/` | `nym-node` entry-gateway config, systemd, Nym operator bonding notes (outside the app) | Templates + operator steps |
-| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, portal favourites, nysiris-social timeline, leak guard, runtime enforcement | 268 `node --test` tests + `npm run build` |
+| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, portal favourites, nysiris-social timeline, nysiris-shop marketplace, leak guard, runtime enforcement | `node --test` suite + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
 | `desktop/launcher/` | std-only Linux launcher: loopback static server + Chromium app window | 6 tests |
 | `desktop/debian/` | `.deb` packaging (control, postinst, `.desktop`, icon) | Built + inspected; `./build.sh desktop` |
@@ -455,7 +460,7 @@ What is still in this repository (and why):
 | Still here | Why |
 |---|---|
 | `crates/sphinx-core` | reference Sphinx implementation + test vectors, never production crypto |
-| `crates/social-format`, `services/social` | the social wire format and its provider are still service-side; `nysiris-social-protocol` is planned in core |
+| `crates/social-format`, `services/social`, `crates/shop-format`, `services/shop` | the social and shop wire formats and their providers are still service-side; protocol crates are planned in core |
 | `crates/nym-hidden-service`, `crates/provider-runtime`, `crates/nysiris-sdk` | hosting abstractions consume service crates that have not been extracted yet (`nysiris-service` is planned) |
 | `web/src/mixnet/`, `web/src/application/dm.ts` | the browser client is TypeScript and uses `@nymproject/*`; consuming the Rust chat crates from the PWA needs a wasm build first |
 
@@ -579,12 +584,13 @@ crates/portal-replication/  sync core: heads, want-lists, verified atomic apply 
 crates/portal-reputation/   PoW + local reputation + rate limits (workspace)
 crates/provider-runtime/   shared hidden-service runtime (workspace)
 crates/social-format/      byte-exact social wire format (workspace)
+crates/shop-format/        byte-exact shop wire format (workspace)
 docs/                    architecture, addressing/routing, hosting, client, security, desktop, hidden-services, roadmap
-services/                echo-provider, hybrid-bridge, portal-provider, social, acceptance, nysiris-cli (standalone) + gateway ops
+services/                echo-provider, hybrid-bridge, portal-provider, social, shop, acceptance, nysiris-cli (standalone) + gateway ops
 web/                     React PWA client (TypeScript)
   src/domain/              pure rules/types (no React, no fetch, no storage)
   src/application/        use-cases / orchestration over the ports
-  src/adapters/driving/   React components + UI hooks (shell / portal / social / shared)
+  src/adapters/driving/   React components + UI hooks (shell / portal / social / shop / shared)
   src/adapters/driven/    keystore, network, blob + portal-sync I/O
   src/shared/             cross-cutting UI helpers
 android/                 Android packaging manifest + guidance

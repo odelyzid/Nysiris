@@ -12,7 +12,7 @@ cmd_acceptance() {
   fi
 
   log "building acceptance harness (nym-sdk; first build is slow)"
-  if ! (cd "$dir" && cargo build --release); then
+  if ! (cd "$dir" && cargo build --locked --release); then
     warn "could not build nym-sdk. See services/acceptance/README.md for install options"
     warn "(prebuilt binaries, cargo, or build from source)"
     [[ "$STRICT" == 1 ]] && die "acceptance build failed"
@@ -20,7 +20,7 @@ cmd_acceptance() {
   fi
 
   log "running live-network acceptance test"
-  if ! (cd "$dir" && cargo run --release); then
+  if ! (cd "$dir" && cargo run --locked --release); then
     warn "acceptance run failed (network/toolchain?). See services/acceptance/README.md"
     [[ "$STRICT" == 1 ]] && die "acceptance failed"
     return 0

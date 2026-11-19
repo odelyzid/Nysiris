@@ -35,7 +35,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("client address: {}", client.nym_address());
 
     let started = std::time::Instant::now();
-    client.send_plain_message(recipient, message.clone()).await?;
+    client
+        .send_plain_message(recipient, message.clone())
+        .await?;
     println!("sent in {:?}: {message:?}", started.elapsed());
 
     let reply = tokio::time::timeout(Duration::from_secs(120), async {

@@ -146,6 +146,7 @@ nysiris/
 ├── crates/
 │   ├── sphinx-core/               reference Sphinx (builds, tested, not for prod)
 │   ├── social-format/             signed social wire format
+│   ├── shop-format/               signed marketplace wire format
 │   ├── nym-hidden-service/        hidden-service abstraction (URIs, envelopes, dispatch)
 │   ├── provider-runtime/          shared provider request loop + guards
 │   ├── nysiris-sdk/               hosting SDK (HostConfig, serve, StaticFiles)

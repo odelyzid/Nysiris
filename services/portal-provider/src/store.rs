@@ -89,7 +89,11 @@ impl Store {
                     sig_arr.copy_from_slice(&sig);
                     // Re-verify on read: stored bytes are never trusted blindly.
                     Object::parse_untrusted(&kind, &author_arr, &payload, &sig_arr).map_err(|_| {
-                        rusqlite::Error::InvalidColumnType(0, "stored".into(), rusqlite::types::Type::Blob)
+                        rusqlite::Error::InvalidColumnType(
+                            0,
+                            "stored".into(),
+                            rusqlite::types::Type::Blob,
+                        )
                     })
                 },
             )
@@ -127,7 +131,9 @@ impl Store {
     pub fn load_log(&self, author: &[u8; 32]) -> Result<Log, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT author,seq,obj_id,sig FROM log_entries WHERE author=? ORDER BY seq ASC")
+            .prepare(
+                "SELECT author,seq,obj_id,sig FROM log_entries WHERE author=? ORDER BY seq ASC",
+            )
             .map_err(|e| e.to_string())?;
         let mut log = Log::new();
         let rows = stmt
@@ -151,7 +157,8 @@ impl Store {
             .map_err(|e| e.to_string())?;
         for entry in rows {
             let entry = entry.map_err(|e| e.to_string())?;
-            log.append(entry).map_err(|e| format!("stored log corrupt: {e}"))?;
+            log.append(entry)
+                .map_err(|e| format!("stored log corrupt: {e}"))?;
         }
         Ok(log)
     }

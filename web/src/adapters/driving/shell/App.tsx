@@ -96,6 +96,7 @@ import {
 import { BrowserChrome } from './BrowserChrome';
 import { startForeground, stopForeground } from '../../../adapters/driven/foreground.mjs';
 import { Social } from '../social/Social';
+import { Shop } from '../shop/Shop';
 import { verifyInvite } from '../../../domain/identity';
 import { loadTrust, saveTrust, withVerdict, defaultTrustStorage, type Verdict } from '../../../application/trustStore';
 import { Panel } from '../shared/Panel';
@@ -2984,6 +2985,12 @@ export function App() {
               {socialService && (
                 <Social key={socialService} service={socialService} trustMap={trustMap} onVerdict={onVerdict} />
               )}
+            </main>
+          )}
+
+          {view === 'shop' && (
+            <main>
+              <Shop />
             </main>
           )}
 

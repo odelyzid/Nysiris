@@ -300,7 +300,9 @@ services:
     expose: ["80"]
 
   bridge:
-    build: ./bridge
+    build:
+      context: ../..
+      dockerfile: services/hybrid-bridge/Dockerfile
     environment:
       SP_DATA_DIR: /data
       BACKEND_URL: http://app:80

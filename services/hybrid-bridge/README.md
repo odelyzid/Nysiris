@@ -20,6 +20,11 @@ mixnet clients  ──▶ hybrid-bridge (nym) ────┘
 The bridge is a normal Nym client embedded in a small HTTP forwarder — it is
 *not* an exit gateway and carries no outproxy liability.
 
+The Docker build context is the repository root: it copies the locked manifest
+and every local path dependency (`bridge-guard`, `nym-hidden-service`,
+`portal-reputation`, `provider-runtime`) and builds with `cargo build --locked`,
+so images use the same audited dependency versions as native builds.
+
 ## B-private: mixnet-only (no clearnet at all)
 
 ```sh

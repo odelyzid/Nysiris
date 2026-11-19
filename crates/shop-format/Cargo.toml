@@ -1,0 +1,15 @@
+[package]
+name = "shop-format"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Byte-exact marketplace wire grammar for nysiris-shop (docs/16-shop.md): signed listings, orders, status transitions, messages, reviews, and PoW payload preimages."
+
+# Pure grammar crate: no nym-sdk, no runtime deps beyond ed25519/hex,
+# so `cargo test` here is fast and the layout can be reused by the browser.
+
+[dependencies]
+ed25519-dalek = "3"
+hex = "0.4"

@@ -381,7 +381,7 @@ redirect allow-listed hosts into a mixnet-aware page/worker.
 
 | File | Responsibility |
 |---|---|
-| `web/src/adapters/driving/shell/App.tsx` | View switching (Home / Messages / Portal / Settings), URI-bar binding, panel composition |
+| `web/src/adapters/driving/shell/App.tsx` | View switching (Home / Messages / Portal / Shop / Settings), URI-bar binding, panel composition |
 | `web/src/application/views.ts` | Primary-view registry + persisted active view / Advanced visibility / onboarding flag |
 | `web/src/adapters/driving/shell/AppNav.tsx` | Primary navigation + discreet protection pill |
 | `web/src/adapters/driving/shared/StatusPill.tsx` | Protected / Connecting… / Not protected / Something-went-wrong pill with friendly details |

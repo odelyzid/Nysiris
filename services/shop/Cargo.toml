@@ -1,0 +1,25 @@
+[package]
+name = "nysiris-shop"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Signed, metadata-minimal marketplace hidden service (docs/16-shop.md)."
+
+# Standalone: excluded from the root workspace (heavy nym-sdk toolchain).
+[dependencies]
+nym-sdk = "1.21"
+nym-bin-common = { version = "1.22.0", features = ["basic_tracing"] }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+base64 = "0.22"
+hex = "0.4"
+ed25519-dalek = "3"
+rand = "0.8"
+portal-reputation = { path = "../../crates/portal-reputation" }
+provider-runtime = { path = "../../crates/provider-runtime" }
+# rusqlite 0.32 uses libsqlite3-sys 0.30, the same line nym-sdk pulls in via
+# sqlx — only one crate may link the native sqlite3 library, so the versions
+# must unify. Do NOT upgrade past 0.32 without checking sqlx's sys version.
+rusqlite = { version = "0.32", features = ["bundled"] }
+nym-hidden-service = { path = "../../crates/nym-hidden-service" }
+shop-format = { path = "../../crates/shop-format" }

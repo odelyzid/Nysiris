@@ -13,6 +13,7 @@
 //! instead of `(pow_bits, Mutex<RateLimiter>)`. Err strings are the exact
 //! body text previous versions returned (400 / 429).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use portal_reputation::pow::{self, Proof};
@@ -91,26 +92,49 @@ impl PowGuard {
 /// exhaustion: over budget → reject, never queue.
 pub struct RateGuard {
     limiter: Mutex<RateLimiter>,
+    last_prune: AtomicU64,
 }
 
 impl RateGuard {
     pub fn new(policy: RatePolicy) -> Self {
         Self {
             limiter: Mutex::new(RateLimiter::new(policy)),
+            last_prune: AtomicU64::new(today()),
         }
     }
 
     /// Spend one write for `bucket` on today's budget. `Err` is the 429 body.
+    /// Stale day buckets are pruned at most once per UTC day so the map stays
+    /// bounded on long-running providers.
     pub fn check(&self, bucket: &str) -> Result<(), &'static str> {
+        let day = today();
+        if self.last_prune.load(Ordering::Relaxed) != day {
+            let mut limiter = self
+                .limiter
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            limiter.prune(day);
+            self.last_prune.store(day, Ordering::Relaxed);
+        }
         let mut limiter = self
             .limiter
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if limiter.try_spend(bucket, today()) {
+        if limiter.try_spend(bucket, day) {
             Ok(())
         } else {
             Err("rate budget exhausted for today")
         }
+    }
+
+    /// Refund a write that was rejected downstream, so replaying a validly
+    /// signed payload cannot lock the signer out for the day.
+    pub fn refund(&self, bucket: &str) {
+        let mut limiter = self
+            .limiter
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        limiter.refund(bucket, today());
     }
 
     /// Writes left for `bucket` today (for diagnostics / descriptor reports).

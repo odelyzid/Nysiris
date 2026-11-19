@@ -72,7 +72,10 @@ export async function verifyPow(authorBytes, payloadHash, proof) {
  * Yields to the event loop every 4096 hashes so the UI stays alive.
  */
 export async function provePow(authorBytes, payloadHash, bits, options = {}) {
-  const { start = Math.floor(Math.random() * 2 ** 32), maxAttempts = 5_000_000 } = options;
+  // Expected work is 2^bits hashes; allow ~4x expected with a hard ceiling so
+  // the UI does not spin forever. Callers can still override for tests.
+  const defaultAttempts = Math.min(100_000_000, 2 ** (bits + 2));
+  const { start = Math.floor(Math.random() * 2 ** 32), maxAttempts = defaultAttempts } = options;
   if (authorBytes?.length !== 32 || payloadHash?.length !== 32) return null;
   if (!Number.isInteger(bits) || bits <= 0 || bits > MAX_POW_BITS) return null;
   if (!(maxAttempts > 0)) return null;

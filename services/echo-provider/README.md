@@ -60,6 +60,9 @@ Verified: browser sends `"hello from the browser"` → provider logs
 
 ## Docker
 
+The image copies `Cargo.lock` and builds with `cargo build --locked`, so it uses
+the same audited dependency versions as a native build.
+
 ```sh
 docker build -t echo-provider .
 docker run --rm -v "$PWD/sp-storage:/data" -e SP_DATA_DIR=/data echo-provider

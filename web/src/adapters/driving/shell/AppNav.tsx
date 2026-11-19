@@ -3,8 +3,8 @@ import { VIEW_ORDER, VIEW_META, type ViewId } from '../../../application/views';
 import { StatusPill } from '../shared/StatusPill';
 
 /**
- * Primary navigation: Home / Messages / Portal / Settings + the
- * discreet protection pill. Mobile-friendly top bar; the main area
+ * Primary navigation: Home / Messages / Portal / Shop / Service / Settings +
+ * the discreet protection pill. Mobile-friendly top bar; the main area
  * below stays focused on one view at a time.
  */
 export function AppNav({
