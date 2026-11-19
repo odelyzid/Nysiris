@@ -23,12 +23,12 @@ const LISTING_ID = 'ab'.repeat(16);
 const ORDER_LISTING = 'cd'.repeat(16);
 const ORDER_ID = 'ef'.repeat(16);
 
-test('seller key matches the Rust vector', { skip: !shop }, () => {
+test('seller key matches the Rust vector', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
   const pub = hex.bytesToHex(ed.ed25519.getPublicKey(hex.hexToBytes(PRIV)));
   assert.equal(pub, SELLER);
 });
 
-test('listing signature matches the Rust cross-implementation vector', { skip: !shop }, () => {
+test('listing signature matches the Rust cross-implementation vector', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
   const sig = shop.signListing(
     PRIV,
     SELLER,
@@ -62,7 +62,7 @@ test('listing signature matches the Rust cross-implementation vector', { skip: !
   );
 });
 
-test('order signature matches the Rust vector and binds every field', { skip: !shop }, () => {
+test('order signature matches the Rust vector and binds every field', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
   const sig = shop.signOrder(PRIV, SELLER, DAY, ORDER_LISTING, ORDER_ID, 3, 1234, 7, 'please pack well');
   assert.equal(
     sig,
@@ -78,7 +78,7 @@ test('order signature matches the Rust vector and binds every field', { skip: !s
   assert.equal(shop.verifyOrderSignature(SELLER, DAY, ORDER_LISTING, 'ee'.repeat(16), 3, 1234, 7, 'please pack well', sig), false);
 });
 
-test('review signature matches the Rust vector and binds rating/seller/body', { skip: !shop }, () => {
+test('review signature matches the Rust vector and binds rating/seller/body', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
   const reviewed = '11'.repeat(32);
   const sig = shop.signReview(PRIV, SELLER, DAY, ORDER_ID, reviewed, 5, 'exactly as described');
   assert.equal(
@@ -95,7 +95,7 @@ test('review signature matches the Rust vector and binds rating/seller/body', { 
   );
 });
 
-test('order-status signature and transition chain are verifiable', { skip: !shop }, () => {
+test('order-status signature and transition chain are verifiable', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
   const sellerSig = shop.signOrderStatus(PRIV, SELLER, DAY, ORDER_ID, 1, 'accepted');
   assert.equal(
     sellerSig,
@@ -130,7 +130,7 @@ test('order-status signature and transition chain are verifiable', { skip: !shop
   assert.equal(shop.verifyStatusChain(ORDER_ID, BUYER, SELLER, 0, []), true);
 });
 
-test('orders-read proof matches the Rust vector and cannot be replayed', { skip: !shop }, () => {
+test('orders-read proof matches the Rust vector and cannot be replayed', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
   const sig = shop.signOrdersRead(PRIV, SELLER, DAY);
   assert.equal(
     sig,
@@ -141,7 +141,7 @@ test('orders-read proof matches the Rust vector and cannot be replayed', { skip:
   assert.equal(shop.verifyOrdersReadSignature('43'.repeat(32), DAY, sig), false);
 });
 
-test('PoW preimages are exact byte layouts', { skip: !shop }, () => {
+test('PoW preimages are exact byte layouts', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
   const u64 = (n) => {
     const b = new Uint8Array(8);
     new DataView(b.buffer).setBigUint64(0, BigInt(n));
@@ -187,7 +187,7 @@ test('PoW preimages are exact byte layouts', { skip: !shop }, () => {
   );
 });
 
-test('order state machine is role-scoped', { skip: !shop }, () => {
+test('order state machine is role-scoped', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
   const { reserved, accepted, fulfilled, declined, cancelled } = shop.ORDER_STATUS;
   assert.equal(shop.orderStatusName(reserved), 'reserved');
   assert.equal(shop.orderStatusName(99), 'unknown');
@@ -204,7 +204,7 @@ test('order state machine is role-scoped', { skip: !shop }, () => {
   assert.equal(shop.canTransition('seller', cancelled, accepted), false);
 });
 
-test('local review aggregation ignores invalid ratings', { skip: !shop }, () => {
+test('local review aggregation ignores invalid ratings', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
   assert.deepEqual(shop.summarizeRatings([5, 4, 0, 6, 3]), { count: 3, sum: 12, averageX100: 400 });
   assert.deepEqual(shop.summarizeRatings([]), { count: 0, sum: 0, averageX100: 0 });
   assert.equal(shop.isValidRating(1), true);
@@ -213,7 +213,7 @@ test('local review aggregation ignores invalid ratings', { skip: !shop }, () => 
   assert.equal(shop.isValidRating(6), false);
 });
 
-test('display and input helpers stay exact', { skip: !shop }, () => {
+test('display and input helpers stay exact', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
   assert.equal(shop.formatMinor(1234, 'USD'), '12.34 USD');
   assert.equal(shop.formatMinor(5, 'USD'), '0.05 USD');
   assert.equal(shop.formatMinor(1234, 'JPY'), '1234 JPY');

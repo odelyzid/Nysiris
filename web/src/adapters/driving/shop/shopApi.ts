@@ -2,7 +2,7 @@
  * Thin typed JSON client over `fetchNym` for the shop provider. Every call is
  * one request/one SURB reply; `fetchNym` already serializes them.
  */
-import { fetchNym } from '../../../mixnet/fetchNym';
+import { fetchNym, fetchNymParallel } from '../../../mixnet/fetchNym';
 
 const JSON_HEADERS = { 'content-type': 'application/json' } as const;
 
@@ -34,6 +34,24 @@ export async function getJson<T>(service: string, path: string): Promise<T> {
   if (!service) throw new Error('no shop service selected');
   const res = await fetchNym(service, { method: 'GET', path });
   return decode<T>(res.status, res.body, res.error, path);
+}
+
+/**
+ * Several independent reads in one burst, matched by echoed correlation tags.
+ * A shop provider built on `nym_hidden_service::dispatch` echoes tags; older
+ * ones transparently fall back to serial requests inside `fetchNymParallel`.
+ * Results follow the order of `paths`.
+ */
+export async function getJsonParallel<T>(service: string, paths: string[]): Promise<T[]> {
+  if (!service) throw new Error('no shop service selected');
+  if (paths.length === 0) return [];
+  const responses = await fetchNymParallel(
+    service,
+    paths.map((path) => ({ method: 'GET', path })),
+  );
+  return responses.map((res, i) =>
+    decode<T>(res.status, res.body, res.error, paths[i]),
+  );
 }
 
 export async function postJson<T>(service: string, path: string, payload: unknown): Promise<T> {

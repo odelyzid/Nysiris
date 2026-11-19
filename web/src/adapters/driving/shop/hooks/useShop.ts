@@ -58,7 +58,7 @@ import type {
   ReviewsResponse,
   ThreadPage,
 } from '../model';
-import { getJson, postJson } from '../shopApi';
+import { getJson, getJsonParallel, postJson } from '../shopApi';
 import { useShopIdentity } from './useShopIdentity';
 import { useShopPow, type ShopPowFor } from './useShopPow';
 
@@ -135,12 +135,18 @@ export function useShop() {
   const { powFor } = useShopPow();
 
   const serviceRef = useRef(service);
+  const busyRef = useRef(false);
+  const refreshingRef = useRef(false);
   const browseOffsetRef = useRef<number | null>(null);
   const listingCacheRef = useRef<Record<string, Listing>>({});
 
   useEffect(() => {
     serviceRef.current = service;
   }, [service]);
+
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
 
   const rememberListings = useCallback((items: Listing[]) => {
     if (items.length === 0) return;
@@ -256,7 +262,7 @@ export function useShop() {
   }, [append]);
 
   const loadBrowsePage = useCallback(
-    async (reset: boolean, query: string) => {
+    async (reset: boolean, query: string, preserve = false) => {
       if (!service) return;
       const requested = service;
       const offset = reset ? 0 : (browseOffsetRef.current ?? 0);
@@ -271,6 +277,12 @@ export function useShop() {
         }
         rememberListings(valid);
         setBrowse((prev) => {
+          if (preserve) {
+            // A silent refresh keeps rows the user already paged in, but puts
+            // the freshly fetched first page first so edits become visible.
+            const seen = new Set(valid.map((l) => l.id));
+            return [...valid, ...prev.filter((l) => !seen.has(l.id))];
+          }
           if (reset) return valid;
           const seen = new Set(prev.map((l) => l.id));
           return [...prev, ...valid.filter((l) => !seen.has(l.id))];
@@ -350,14 +362,21 @@ export function useShop() {
         setOrders(valid);
 
         // Resolve listing titles for orders not already in the catalog cache.
-        for (const order of valid) {
-          if (listingCacheRef.current[order.listing]) continue;
+        // One tagged burst instead of one awaited round trip per order.
+        const missing = [...new Set(valid.map((o) => o.listing))].filter(
+          (id) => !listingCacheRef.current[id],
+        );
+        if (missing.length > 0) {
           try {
-            const listing = await getJson<Listing>(requested, `/listing/${order.listing}`);
+            const listings = await getJsonParallel<Listing>(
+              requested,
+              missing.map((id) => `/listing/${id}`),
+            );
             if (serviceRef.current !== requested) return;
-            if (listingIsValid(listing)) rememberListings([listing]);
+            rememberListings(listings.filter(listingIsValid));
           } catch {
-            // A deleted or unavailable listing still leaves a readable order.
+            // A deleted or unavailable listing still leaves a readable order;
+            // `fetchNymParallel` also retries serially on untagged providers.
           }
         }
       } catch (err) {
@@ -801,6 +820,25 @@ export function useShop() {
   useEffect(() => {
     if (tab === 'orders' && service && identity) void loadOrdersFor(identity);
   }, [tab, service, identity, loadOrdersFor]);
+
+  // Gentle background refresh: only the open tab, only while visible, never
+  // overlapping a user action or another refresh. Mixnet round trips are
+  // deliberate and expensive, so this is deliberately slow.
+  useEffect(() => {
+    if (!service) return;
+    const timer = window.setInterval(() => {
+      if (document.hidden || busyRef.current || refreshingRef.current) return;
+      refreshingRef.current = true;
+      const jobs: Promise<unknown>[] = [];
+      if (tab === 'browse') jobs.push(loadBrowsePage(true, browseQuery, true));
+      if (tab === 'sell' && identity) jobs.push(loadMyListingsFor(identity.pubHex));
+      if (tab === 'orders' && identity) jobs.push(loadOrdersFor(identity));
+      void Promise.allSettled(jobs).finally(() => {
+        refreshingRef.current = false;
+      });
+    }, 120_000);
+    return () => window.clearInterval(timer);
+  }, [service, tab, browseQuery, identity, loadBrowsePage, loadMyListingsFor, loadOrdersFor]);
 
   return {
     log,
