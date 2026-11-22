@@ -26,8 +26,7 @@
 
 use rusqlite::{params, Connection, OptionalExtension};
 use shop_format::limits::{
-    DEFAULT_MESSAGES_PAGE, MAX_DESCRIPTION_CHARS, MAX_LISTINGS_PAGE, MAX_MESSAGES_PAGE,
-    MAX_MESSAGE_BYTES, MAX_NOTE_BYTES, MAX_ORDER_MESSAGES, MAX_REVIEW_BYTES, MAX_TITLE_CHARS,
+    MAX_DESCRIPTION_CHARS, MAX_LISTINGS_PAGE, MAX_MESSAGES_PAGE, MAX_MESSAGE_BYTES, MAX_NOTE_BYTES, MAX_ORDER_MESSAGES, MAX_REVIEW_BYTES, MAX_TITLE_CHARS,
 };
 use shop_format::status::{ActorRole, OrderStatus};
 use std::collections::HashMap;
@@ -630,6 +629,9 @@ impl Store {
     }
 
     /// Signed transition chain in application order, for client verification.
+    /// Production reads use the batched assembly; this single-order form is
+    /// kept for tests that assert the chain in isolation.
+    #[cfg(test)]
     pub fn status_events_for(&self, order: &[u8; 16]) -> Result<Vec<StatusEvent>, String> {
         let mut stmt = self
             .conn
@@ -1059,6 +1061,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shop_format::limits::DEFAULT_MESSAGES_PAGE;
 
     fn write_listing(s: &Store, id: [u8; 16], seller: [u8; 32], version: u64, stock: u32) {
         s.upsert_listing(
