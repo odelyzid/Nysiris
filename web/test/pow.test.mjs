@@ -9,7 +9,9 @@ const AUTHOR = new Uint8Array(32).fill(3);
 
 test('proves fast and verifies in one hash', async () => {
   const hash = await payloadHashBytes(new TextEncoder().encode('hello portal'));
-  const proof = await provePow(AUTHOR, hash, 8);
+  // Fixed start/budget: proving is random in production, but tests must not
+  // fail when the bounded search happens to exhaust without a proof.
+  const proof = await provePow(AUTHOR, hash, 8, { start: 0, maxAttempts: 100_000 });
   assert.ok(proof && proof.bits === 8);
   assert.equal(await verifyPow(AUTHOR, hash, proof), true);
 });
@@ -18,19 +20,22 @@ test('proofs bind author and payload', async () => {
   const hash = await payloadHashBytes(new TextEncoder().encode('hello portal'));
   const otherHash = await payloadHashBytes(new TextEncoder().encode('other'));
   const otherAuthor = new Uint8Array(32).fill(4);
-  // A proof for one input can, by chance, also satisfy another. Keep proving
-  // until we get one that actually discriminates, so the test cannot flake.
-  let proof;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    proof = await provePow(AUTHOR, hash, 12);
-    assert.ok(proof);
+  // A proof for one input can, by chance, also satisfy another, and a bounded
+  // search can exhaust without finding any proof. Use fixed, disjoint nonce
+  // ranges and simply retry until one discriminates: deterministic and flake-free.
+  let proof = null;
+  for (let attempt = 0; attempt < 20 && !proof; attempt += 1) {
+    const candidate = await provePow(AUTHOR, hash, 12, {
+      start: attempt * 100_000,
+      maxAttempts: 100_000,
+    });
     if (
-      !(await verifyPow(otherAuthor, hash, proof)) &&
-      !(await verifyPow(AUTHOR, otherHash, proof))
+      candidate &&
+      !(await verifyPow(otherAuthor, hash, candidate)) &&
+      !(await verifyPow(AUTHOR, otherHash, candidate))
     ) {
-      break;
+      proof = candidate;
     }
-    proof = null;
   }
   assert.ok(proof, 'could not find a discriminating proof');
   assert.equal(await verifyPow(AUTHOR, hash, proof), true);
