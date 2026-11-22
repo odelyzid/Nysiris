@@ -96,7 +96,6 @@ import {
 import { BrowserChrome } from './BrowserChrome';
 import { startForeground, stopForeground } from '../../../adapters/driven/foreground.mjs';
 import { Social } from '../social/Social';
-import { Shop } from '../shop/Shop';
 import { verifyInvite } from '../../../domain/identity';
 import { loadTrust, saveTrust, withVerdict, defaultTrustStorage, type Verdict } from '../../../application/trustStore';
 import { Panel } from '../shared/Panel';
@@ -303,6 +302,9 @@ export function App() {
   // Primary navigation (persisted). Technical panels keep their own
   // persistence underneath, inside Settings → Advanced.
   const [view, setView] = useState<ViewId>(() => loadActiveView(defaultViewStorage()));
+  // A portal workspace is opened explicitly from the roster. Plain address-bar
+  // navigation never binds one, so visiting a site cannot create a workspace.
+  const [portalScope, setPortalScope] = useState('');
   const [advanced, setAdvanced] = useState(() => loadAdvancedVisible(defaultViewStorage()));
   const [onboarded, setOnboarded] = useState(() => loadOnboarded(defaultViewStorage()));
 
@@ -331,8 +333,9 @@ export function App() {
   const [tabs, setTabs] = useState<BrowserTab[]>(initialBrowser.tabs);
   const [activeTabId, setActiveTabId] = useState(initialBrowser.activeId);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null;
-  // The Social section binds to the active tab only; clearnet tabs never do.
-  const socialService = activeTab?.service ?? '';
+  // Social and the portal workspace bind only to a portal opened from the
+  // roster. A plain browser tab (nym:// or clearnet) never binds either.
+  const socialService = portalScope;
   // Recently opened portals for the desktop roster, newest first.
   const [recentPortals, setRecentPortals] = useState<string[]>(() => loadRecentPortals(defaultViewStorage()));
   // Favourited portals: pinned above the recents in the roster, persisted.
@@ -1249,7 +1252,7 @@ export function App() {
   }, []);
 
   const goTo = useCallback(
-    async (raw: string) => {
+    async (raw: string, keepPortal = false) => {
       if (!raw.trim()) return;
       let target: NavigationTarget;
       try {
@@ -1262,7 +1265,10 @@ export function App() {
       const tabId = activeTab?.id ?? tabs[0]?.id;
       if (!tabId) return;
       const { token, signal } = beginNavigation(tabId);
-      onSelectView('portal');
+      // Address-bar navigation is a plain site load. Only links followed
+      // inside an open portal keep its workspace/community binding.
+      if (!keepPortal) setPortalScope('');
+      onSelectView('browser');
       await loadInto(target, tabId, { push: true, token, signal });
     },
     [activeTab?.id, append, beginNavigation, loadInto, navigationPetnames, onSelectView, tabs],
@@ -1534,7 +1540,7 @@ export function App() {
   useEffect(() => {
     const url = activeTab?.url;
     const kind = activeTab?.content?.kind;
-    if (view !== 'portal' || !url || (kind !== 'text' && kind !== 'json')) return;
+    if (view !== 'browser' || !url || (kind !== 'text' && kind !== 'json')) return;
     const saved = loadScrollPositions(defaultStorage())[url] ?? 0;
     const id = requestAnimationFrame(() => window.scrollTo(0, saved));
     let timer = 0;
@@ -1612,9 +1618,9 @@ export function App() {
   }, [activeTab, append]);
 
   /**
-   * Open a portal workspace in its own tab. Existing tabs for the same service
-   * are selected (and their history preserved); otherwise a blank tab or a new
-   * tab is used. Cross-portal links therefore do not destroy the current portal.
+   * Open a portal workspace: an explicit action from the roster (or a link
+   * inside another portal). Plain address-bar navigation never calls this.
+   * Existing tabs for the same service are selected and their history kept.
    */
   const openPortalWorkspace = useCallback(
     async (raw: string) => {
@@ -1632,7 +1638,8 @@ export function App() {
           (target.kind === 'nym' && (tab.address === address || tab.service === address)) ||
           (target.kind === 'clearnet' && tab.address === address),
       );
-      onSelectView('portal');
+      setPortalScope(address);
+      onSelectView('browser');
 
       if (existing) {
         setActiveTabId(existing.id);
@@ -1661,8 +1668,8 @@ export function App() {
       const result = addBlankTab(tabs, newTabId);
       if (result.tabs.length === tabs.length) {
         // Tab limit reached: reuse the active tab rather than silently dropping
-        // the navigation.
-        void goTo(raw);
+        // the navigation, keeping the portal binding.
+        void goTo(raw, true);
         return;
       }
       setTabs(result.tabs);
@@ -1679,7 +1686,9 @@ export function App() {
       const tab = tabs.find((candidate) => candidate.id === id);
       setActiveTabId(id);
       setNavigationError(null);
-      onSelectView('portal');
+      // Keep the workspace only when the newly selected tab is that portal.
+      setPortalScope((current) => (current && tab?.service === current ? current : ''));
+      onSelectView('browser');
       if (!tab) return;
       setUri(tab.url);
       // Restored tabs have no body yet: load the document on first selection.
@@ -1695,7 +1704,8 @@ export function App() {
     setActiveTabId(result.tab.id);
     setUri(created ? '' : result.tab.url);
     setNavigationError(null);
-    onSelectView('portal');
+    setPortalScope('');
+    onSelectView('browser');
   }, [onSelectView, tabs]);
 
   const onCloseTab = useCallback(
@@ -1979,7 +1989,7 @@ export function App() {
     if (bootRestoredRef.current) return;
     bootRestoredRef.current = true;
     if (initialDeepLink) {
-      onSelectView('portal');
+      onSelectView('browser');
       void goTo(initialDeepLink);
       return;
     }
@@ -1996,7 +2006,7 @@ export function App() {
     () =>
       subscribeDeepLinks((link) => {
         append(`opening OS link ${link.slice(0, 96)}`);
-        onSelectView('portal');
+        onSelectView('browser');
         void goToRef.current(link);
       }),
     [append, onSelectView],
@@ -2034,7 +2044,7 @@ export function App() {
     (address: string) => {
       setUri(address);
       void openPortalWorkspace(address);
-      onSelectView('portal');
+      onSelectView('browser');
     },
     [onSelectView, openPortalWorkspace],
   );
@@ -2138,8 +2148,8 @@ export function App() {
       seen.add(clean);
       rows.push({
         address: clean,
-        current: clean === socialService,
-        active: clean === socialService && view === 'portal',
+        current: clean === (activeTab?.service ?? ''),
+        active: clean === socialService && view === 'browser',
         starred,
       });
     };
@@ -2147,7 +2157,7 @@ export function App() {
     for (const address of recentPortals) push(address, false);
     if (socialService) push(socialService, isFavoritePortal(favorites, socialService));
     return rows;
-  }, [favorites, recentPortals, socialService, view]);
+  }, [activeTab?.service, favorites, recentPortals, socialService, view]);
 
   // Star/unstar the bound portal. Persisted; the roster re-sorts on its own.
   const onToggleFavorite = useCallback(
@@ -2212,7 +2222,7 @@ export function App() {
     (link: string) => {
       setUri(link);
       void goTo(link);
-      onSelectView('portal');
+      onSelectView('browser');
     },
     [goTo, onSelectView],
   );
@@ -2300,7 +2310,7 @@ export function App() {
         permissionsOpen={permissionsOpen}
         onPermissionsToggle={() => {
           setPermissionsOpen((open) => !open);
-          onSelectView('portal');
+          onSelectView('browser');
         }}
         offline={!online}
         swControlled={swControlled}
@@ -2359,7 +2369,7 @@ export function App() {
                       className="fly-btn fly-btn-primary"
                       onClick={() => {
                         onDismissOnboarding();
-                        onSelectView('portal');
+                        onSelectView('browser');
                       }}
                     >
                       Get started
@@ -2481,7 +2491,7 @@ export function App() {
                     <button className="fly-btn" onClick={() => onSelectView('messages')}>
                       Go to Messages
                     </button>
-                    <button className="fly-btn" onClick={() => onSelectView('portal')}>
+                    <button className="fly-btn" onClick={() => onSelectView('browser')}>
                       Go to Portal
                     </button>
                   </div>
@@ -2582,18 +2592,22 @@ export function App() {
             </main>
           )}
 
-          {view === 'portal' && (
+          {view === 'browser' && (
             <main>
               <div className="fly-view-head">
-                <h2>Portal</h2>
-                <span className="fly-meta">A private site or community over the mixnet.</span>
+                <h2>{socialService ? 'Portal' : 'Browser'}</h2>
+                <span className="fly-meta">
+                  {socialService
+                    ? 'Community tools for this portal.'
+                    : 'Private pages and links over the mixnet.'}
+                </span>
               </div>
               <section
                 className="fly-card"
                 aria-label="Open a private link"
                 style={activeTab?.url ? { display: 'none' } : undefined}
               >
-                <p>Open a private site or community. The address bar below is bound to what you see.</p>
+                <p>Paste a nym:// address or https:// URL. Open a portal from the roster for community tools.</p>
                 <div className="fly-row">
                   <input
                     className="fly-input"
@@ -2944,7 +2958,7 @@ export function App() {
 
               {activeTab?.loading && (
                 <p className="fly-muted" role="status">
-                  Loading {activeTab.kind === 'clearnet' ? 'web page' : 'portal'}…
+                  Loading {activeTab.kind === 'clearnet' ? 'web page' : 'page'}…
                 </p>
               )}
 
@@ -2975,7 +2989,9 @@ export function App() {
                     } catch {
                       // Fall through to the normal resolver's error surface.
                     }
-                    void goTo(href);
+                    // Same-portal links stay in the workspace; only the
+                    // address bar or a cross-portal link changes the binding.
+                    void goTo(href, true);
                   }}
                   onOpenWorkspace={(next) => void openPortalWorkspace(next)}
                   onStatus={append}
@@ -2985,12 +3001,6 @@ export function App() {
               {socialService && (
                 <Social key={socialService} service={socialService} trustMap={trustMap} onVerdict={onVerdict} />
               )}
-            </main>
-          )}
-
-          {view === 'shop' && (
-            <main>
-              <Shop />
             </main>
           )}
 

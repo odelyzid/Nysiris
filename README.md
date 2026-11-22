@@ -399,10 +399,10 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | `services/hybrid-bridge/` | Nym↔HTTP bridge + Caddy + Docker Compose, using `bridge-guard` | `docker compose config` + guard tests |
 | `services/social/` | nysiris-social: signed-post microblog + E2E DM dead-drop (SQLite, `HiddenService`); encrypted attachments (content-addressed blobs, chunked + parallel upload); PoW + rate-limit hooks (`SOCIAL_POW_BITS`, `SOCIAL_RATE_PER_DAY`); signed dead-drop reads | 17 tests + `web/src/adapters/driving/social/` timeline UI |
 | `services/portal-provider/` | Portal object/log store; PoW + rate-limit hooks (`PORTAL_POW_BITS`, `PORTAL_RATE_PER_DAY`) | 5 tests |
-| `services/shop/` | nysiris-shop: versioned signed listings, atomic stock-reserving orders, seller status transitions, participant-only order threads, raw signed reviews (`SHOP_POW_BITS`, `SHOP_RATE_PER_DAY`) | Store/route tests + `web/src/adapters/driving/shop/` Shop tab |
+| `services/shop/` | nysiris-shop: versioned signed listings, atomic stock-reserving orders, seller status transitions, participant-only order threads, raw signed reviews (`SHOP_POW_BITS`, `SHOP_RATE_PER_DAY`) | Store/route tests + `crates/shop-format` vectors; reachable by Nym address in the address bar |
 | `services/nysiris-cli/` | `nysiris` CLI + nym-sdk transport adapter: `host echo`/`host files`, `address`, `fetch`, `petname`, `doctor` | 9 parser tests + `./build.sh services` |
 | `services/gateway/` | `nym-node` entry-gateway config, systemd, Nym operator bonding notes (outside the app) | Templates + operator steps |
-| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, portal favourites, nysiris-social timeline, nysiris-shop marketplace, leak guard, runtime enforcement | `node --test` suite + `npm run build` |
+| `web/` | React PWA: tunnel, `mixFetch`, Nym-address messaging, `fetchNym`, portal favourites/workspaces, nysiris-social timeline, leak guard, runtime enforcement | `node --test` suite + `npm run build` |
 | `android/` | TWA/Capacitor guidance, manifest, network security config | Templates |
 | `desktop/launcher/` | std-only Linux launcher: loopback static server + Chromium app window | 6 tests |
 | `desktop/debian/` | `.deb` packaging (control, postinst, `.desktop`, icon) | Built + inspected; `./build.sh desktop` |
@@ -608,7 +608,7 @@ extension/               MV3 desktop scaffold
 |---|---|
 | ![Home tab](docs/images/tab-home.png) | ![Messages tab](docs/images/tab-messages.png) |
 
-![Portal tab with the community timeline](docs/images/tab-portal.png)
+![Browser surface with the community timeline](docs/images/tab-portal.png)
 
 ### Portal workspace and browser tools
 

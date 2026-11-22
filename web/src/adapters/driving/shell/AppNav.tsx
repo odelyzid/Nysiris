@@ -1,11 +1,11 @@
 import type { TunnelStateView } from '../../../mixnet/tunnel';
-import { VIEW_ORDER, VIEW_META, type ViewId } from '../../../application/views';
+import { NAV_VIEW_ORDER, VIEW_META, type ViewId } from '../../../application/views';
 import { StatusPill } from '../shared/StatusPill';
 
 /**
- * Primary navigation: Home / Messages / Portal / Shop / Service / Settings +
- * the discreet protection pill. Mobile-friendly top bar; the main area
- * below stays focused on one view at a time.
+ * Primary navigation: Home / Messages / Service / Settings + the discreet
+ * protection pill. Pages open from the address bar and portals from the
+ * roster, so neither gets a redundant top tab.
  */
 export function AppNav({
   active,
@@ -24,7 +24,7 @@ export function AppNav({
 }) {
   return (
     <nav aria-label="Primary" className="fly-nav">
-      {VIEW_ORDER.map((id) => (
+      {NAV_VIEW_ORDER.map((id) => (
         <button
           key={id}
           className="fly-nav-btn"

@@ -65,6 +65,38 @@ test('normalises bare addresses and derives the transport recipient', () => {
   assert.equal(findWorkspace([emptyWorkspace('nym://abc.def@gw')], 'abc.def@gw')?.scope, 'nym://abc.def@gw');
 });
 
+test('one workspace per address: paths and duplicate links do not stack', () => {
+  assert.equal(normalisePortalScope('abc.def@gw/wiki'), 'nym://abc.def@gw');
+  assert.equal(normalisePortalScope('nym://abc.def@gw/wiki'), 'nym://abc.def@gw');
+  assert.equal(normalisePortalScope('NYM://abc.def@gw/post/1'), 'nym://abc.def@gw');
+
+  let list = [];
+  for (const scope of ['abc.def@gw', 'nym://abc.def@gw/wiki', 'nym://abc.def@gw/post/1']) {
+    list = upsertWorkspace(list, emptyWorkspace(scope));
+  }
+  assert.equal(list.length, 1);
+  assert.equal(list[0].scope, 'nym://abc.def@gw');
+});
+
+test('legacy path-variant workspaces collapse to one per address', () => {
+  const storage = memoryStorage();
+  storage.setItem(
+    'fly.portal.workspaces.v1',
+    JSON.stringify({
+      version: 1,
+      activeId: '',
+      workspaces: [
+        { scope: 'abc.def@gw', title: 'first' },
+        { scope: 'nym://abc.def@gw/wiki', title: 'wiki' },
+        { scope: 'nym://abc.def@gw/post/1', title: 'post' },
+      ],
+    }),
+  );
+  const loaded = loadPortalWorkspaces(storage);
+  assert.equal(loaded.workspaces.length, 1);
+  assert.equal(loaded.workspaces[0].scope, 'nym://abc.def@gw');
+});
+
 test('drops malformed scopes and sections', () => {
   const storage = memoryStorage();
   storage.setItem(

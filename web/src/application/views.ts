@@ -6,24 +6,31 @@
  * via `defaultViewStorage()`.
  *
  * This sits *above* the legacy windowed panels (`panels.ts`): views are the
- * everyday IA (Home / Messages / Portal / Shop / Service / Settings); the old
+ * everyday IA (Home / Messages / Browser / Service / Settings); the old
  * technical panels live inside Settings → Advanced and keep their own
- * persistence.
+ * persistence. Portals are opened from the roster, not a top tab; the Shop
+ * service is reached by pasting its Nym address into the address bar.
  */
 import { defaultStorage } from '../lib/storage.ts';
 
-export type ViewId = 'home' | 'messages' | 'portal' | 'shop' | 'service' | 'settings';
+export type ViewId = 'home' | 'messages' | 'browser' | 'service' | 'settings';
 
 export const VIEW_META: Record<ViewId, { title: string; blurb: string }> = {
   home: { title: 'Home', blurb: 'Status and getting started' },
   messages: { title: 'Messages', blurb: 'Private conversations' },
-  portal: { title: 'Portal', blurb: 'Private sites and community' },
-  shop: { title: 'Shop', blurb: 'Signed marketplace with private orders' },
+  browser: { title: 'Browser', blurb: 'Private pages and links' },
   service: { title: 'Service', blurb: 'Run your own portal over the mixnet' },
   settings: { title: 'Settings', blurb: 'Your app and advanced tools' },
 };
 
-export const VIEW_ORDER: ViewId[] = ['home', 'messages', 'portal', 'shop', 'service', 'settings'];
+export const VIEW_ORDER: ViewId[] = ['home', 'messages', 'browser', 'service', 'settings'];
+
+/**
+ * Buttons shown in the primary navigation. Browser is deliberately absent:
+ * pages open from the address bar/tab strip, and portals from the roster, so
+ * neither needs a redundant top tab.
+ */
+export const NAV_VIEW_ORDER: ViewId[] = ['home', 'messages', 'service', 'settings'];
 
 export interface ViewStorage {
   getItem(key: string): string | null;
@@ -38,15 +45,25 @@ function isViewId(value: unknown): value is ViewId {
   return typeof value === 'string' && value in VIEW_META;
 }
 
+/** Old views that no longer have a top tab. Keeps saved sessions useful. */
+function normaliseLegacyView(value: unknown): ViewId | null {
+  if (!isViewId(value)) {
+    if (value === 'portal') return 'browser';
+    if (value === 'shop') return 'home';
+    return null;
+  }
+  return value;
+}
+
 /** Which view was active last time. Falls back to `home`. */
 export function loadActiveView(storage?: ViewStorage | null): ViewId {
   try {
     const raw = storage?.getItem(VIEW_KEY);
-    if (isViewId(raw)) return raw;
+    const direct = normaliseLegacyView(raw);
+    if (direct) return direct;
     if (!raw) return 'home';
     const parsed: unknown = JSON.parse(raw);
-    if (isViewId(parsed)) return parsed;
-    return 'home';
+    return normaliseLegacyView(parsed) ?? 'home';
   } catch {
     return 'home';
   }

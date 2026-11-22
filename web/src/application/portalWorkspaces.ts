@@ -44,14 +44,20 @@ export function emptyWorkspace(scope: string, title = ''): PortalWorkspace {
   };
 }
 
-/** Canonical scope: `nym://address`, or an http(s) origin/url as supplied. */
+/**
+ * Canonical scope: one workspace per service address, never per page path.
+ * A link to `address/wiki` and a link to `address` bind the same workspace;
+ * otherwise following links would stack duplicate workspaces for one portal.
+ */
 export function normalisePortalScope(input: string): string {
   const value = String(input ?? '').trim();
   if (!value) return '';
-  if (/^nym:\/\//i.test(value)) return value;
-  if (/^(https?:\/\/)/i.test(value)) return value;
   // Bare Nym address (`id.enc@gw`) from the existing tab/service model.
-  if (/^[^\s/@]+\.[^\s/@]+@[^\s/]+(?:\/.*)?$/.test(value)) return `nym://${value}`;
+  const bare = /^([^\s/@]+\.[^\s/@]+@[^\s/]+)(?:\/.*)?$/.exec(value);
+  if (bare) return `nym://${bare[1]}`;
+  const nym = /^nym:\/\/([^\s/?#]+)(?:[/?#].*)?$/i.exec(value);
+  if (nym) return `nym://${nym[1]}`;
+  if (/^(https?:\/\/)/i.test(value)) return value;
   return value;
 }
 

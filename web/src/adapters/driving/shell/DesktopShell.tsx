@@ -9,7 +9,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import type { TunnelStateView } from '../../../mixnet/tunnel';
-import { VIEW_META, VIEW_ORDER, type ViewId } from '../../../application/views';
+import { NAV_VIEW_ORDER, VIEW_META, type ViewId } from '../../../application/views';
 import { StatusPill } from '../shared/StatusPill';
 import { copyText, displayLabel, petnameFor, shortenAddress } from '../../../shared/share';
 import { STANDING_META } from '../../../domain/trust';
@@ -44,7 +44,7 @@ export function TopBar({
     <div className="fly-topbar" role="banner">
       <span className="fly-wordmark">nysiris</span>
       <nav aria-label="Primary" className="fly-topbar-nav">
-        {VIEW_ORDER.map((id) => (
+        {NAV_VIEW_ORDER.map((id) => (
           <button
             key={id}
             className="fly-nav-btn"
@@ -263,8 +263,10 @@ export function ContextPanel({
     <aside className="fly-context" aria-label="Details">
       <div className="fly-context-head">
         <h3>
-          {view === 'portal'
-            ? 'Portal'
+          {view === 'browser'
+            ? portalBound
+              ? 'Portal'
+              : 'Browser'
             : view === 'service'
               ? 'Service'
               : view === 'messages'
@@ -278,7 +280,7 @@ export function ContextPanel({
         </button>
       </div>
       <dl className="fly-info">
-        {view === 'portal' && (
+        {view === 'browser' && (
           <>
             <InfoRow label="Service">
               {portalService ? (
@@ -288,7 +290,7 @@ export function ContextPanel({
                   <CopyButton text={portalService} />
                 </>
               ) : (
-                'No portal open — paste a private link above.'
+                'No site open — paste an address above.'
               )}
             </InfoRow>
             <InfoRow label="Community">

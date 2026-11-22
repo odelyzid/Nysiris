@@ -2,7 +2,9 @@
 
 > A marketplace hidden service built on `08-hidden-services.md`:
 > `services/shop/` (Rust provider), `crates/shop-format/` (wire grammar),
-> and the PWA Shop tab (`web/src/adapters/driving/shop/`).
+> and `web/src/domain/shop.ts` (byte-exact wire mirror kept for spec checks).
+> There is no bundled Shop tab: paste the provider's Nym address into the PWA's
+> address bar to use the service like any other private site.
 > No accounts, no carts, no payment processing, no published scores.
 
 ---
@@ -237,7 +239,8 @@ SP_DATA_DIR=./sp-storage SHOP_DB=./shop.sqlite cargo run --release
 ```
 
 The provider prints its Nym address and writes `nym-address.txt`. Paste that
-into the PWA's **Shop** tab. No inbound port is opened; replies go over SURBs.
+into the PWA's address bar (or the CLI's `fetch` command). No inbound port is
+opened; replies go over SURBs.
 
 ## 16.9 Files and tests
 
@@ -245,8 +248,7 @@ into the PWA's **Shop** tab. No inbound port is opened; replies go over SURBs.
 |---|---|
 | `crates/shop-format/` | Wire grammar: signatures, state machine, PoW preimages, review arithmetic, limits |
 | `services/shop/` | Nym provider: `service.rs` routes, `store.rs` SQLite, `main.rs` transport |
-| `web/src/domain/shop.ts` | Byte-exact client mirror and local verification |
-| `web/src/adapters/driving/shop/` | PWA Shop tab: browse, sell, orders, threads, reviews |
+| `web/src/domain/shop.ts` | Byte-exact wire mirror and local verification (spec/reference, not bundled UI) |
 | `web/test/shop.test.mjs` | Cross-implementation vectors, preimage layouts, state rules |
 | `scripts/check-constants.mjs` | Fails if Rust and web domains/limits drift |
 

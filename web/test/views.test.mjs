@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  NAV_VIEW_ORDER,
   VIEW_META,
   VIEW_ORDER,
   defaultViewStorage,
@@ -22,12 +23,17 @@ function fakeStorage(initial = {}) {
   };
 }
 
-test('registry covers the six everyday views', () => {
-  assert.deepEqual([...VIEW_ORDER].sort(), ['home', 'messages', 'portal', 'service', 'settings', 'shop']);
+test('registry covers the five everyday views', () => {
+  assert.deepEqual([...VIEW_ORDER].sort(), ['browser', 'home', 'messages', 'service', 'settings']);
   for (const id of VIEW_ORDER) {
     assert.ok(VIEW_META[id].title.length > 0);
     assert.ok(VIEW_META[id].blurb.length > 0);
   }
+});
+
+test('top navigation omits browser and removed views', () => {
+  assert.deepEqual(NAV_VIEW_ORDER, ['home', 'messages', 'service', 'settings']);
+  for (const id of NAV_VIEW_ORDER) assert.ok(VIEW_ORDER.includes(id));
 });
 
 test('defaults: home view, advanced hidden, onboarding not done', () => {
@@ -39,8 +45,14 @@ test('defaults: home view, advanced hidden, onboarding not done', () => {
 
 test('round-trips the active view', () => {
   const storage = fakeStorage();
-  saveActiveView('portal', storage);
-  assert.equal(loadActiveView(storage), 'portal');
+  saveActiveView('browser', storage);
+  assert.equal(loadActiveView(storage), 'browser');
+});
+
+test('old portal/shop sessions migrate to browser/home', () => {
+  assert.equal(loadActiveView(fakeStorage({ 'fly.view.active': 'portal' })), 'browser');
+  assert.equal(loadActiveView(fakeStorage({ 'fly.view.active': 'shop' })), 'home');
+  assert.equal(loadActiveView(fakeStorage({ 'fly.view.active': '"portal"' })), 'browser');
 });
 
 test('unknown or malformed view falls back to home', () => {

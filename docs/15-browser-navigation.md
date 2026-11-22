@@ -5,8 +5,9 @@ per-portal replicas/identity/trust, post/profile/wiki authoring, background
 replication while the app is open, offline media/attachment caching, workspace
 navigation, conflict recovery, and legacy-replica migration.
 
-This document is the implementation plan for turning the Portal view into a
-real browser document model. It complements the browser-capability audit and
+This document is the implementation plan for turning the Browser surface into a
+real browser document model. Portals are an explicit workspace opened from the
+roster on top of it. It complements the browser-capability audit and
 the remaining phases in [`06-roadmap.md`](06-roadmap.md).
 
 The target is **not** an arbitrary-Web browser yet. Phase 1 gives Nysiris a
