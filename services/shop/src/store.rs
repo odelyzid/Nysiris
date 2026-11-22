@@ -24,12 +24,21 @@
 //! file), WAL mode. Filesystem permissions (0600) + volume encryption cover
 //! data at rest; see `docs/09-social.md` §9.1 for the same reasoning.
 
+use escrow_format::message::{decode, parse_header, verify_message, Decoded};
+use escrow_format::state::{EscrowState, Stage};
+use escrow_format::terms::atomic_from_shop_terms;
 use rusqlite::{params, Connection, OptionalExtension};
 use shop_format::limits::{
-    MAX_DESCRIPTION_CHARS, MAX_LISTINGS_PAGE, MAX_MESSAGES_PAGE, MAX_MESSAGE_BYTES, MAX_NOTE_BYTES, MAX_ORDER_MESSAGES, MAX_REVIEW_BYTES, MAX_TITLE_CHARS,
+    MAX_DESCRIPTION_CHARS, MAX_LISTINGS_PAGE, MAX_MESSAGES_PAGE, MAX_MESSAGE_BYTES, MAX_NOTE_BYTES,
+    MAX_ORDER_MESSAGES, MAX_REVIEW_BYTES, MAX_TITLE_CHARS,
 };
 use shop_format::status::{ActorRole, OrderStatus};
 use std::collections::HashMap;
+
+fn sig_key(value: &str) -> Result<[u8; 32], String> {
+    let raw = hex::decode(value).map_err(|_| "invalid stored key".to_string())?;
+    raw.try_into().map_err(|_| "invalid stored key".to_string())
+}
 
 pub struct Listing {
     pub id_hex: String,
@@ -108,6 +117,37 @@ pub struct Review {
     pub body: String,
     pub day: u64,
     pub sig_hex: String,
+}
+
+type EscrowParties = ([u8; 32], [u8; 32], [u8; 32]);
+
+/// One signed escrow session bound to a signed shop order (doc 17). The stage
+/// is a client-replayable convenience; the envelope log is authoritative.
+pub struct EscrowSession {
+    pub order_hex: String,
+    pub nonce_hex: String,
+    pub buyer_hex: String,
+    pub seller_hex: String,
+    pub arbiter_hex: String,
+    pub amount: u64,
+    pub stage: String,
+    pub day: u64,
+}
+
+/// One signed escrow envelope. The provider stores the opaque bytes exactly as
+/// received so clients can re-verify signatures and replay the state machine.
+pub struct EscrowEvent {
+    pub domain: String,
+    pub actor_hex: String,
+    pub day: u64,
+    pub seq: u64,
+    pub envelope_hex: String,
+}
+
+/// A signed order plus the listing currency needed to open an XMR escrow.
+pub struct OrderContext {
+    pub order: Order,
+    pub currency: String,
 }
 
 pub struct Store {
@@ -222,7 +262,33 @@ impl Store {
                    sig        BLOB NOT NULL,
                    created    INTEGER NOT NULL
                  );
-                 CREATE INDEX IF NOT EXISTS idx_reviews_seller ON reviews(seller);",
+                 CREATE INDEX IF NOT EXISTS idx_reviews_seller ON reviews(seller);
+                  CREATE TABLE IF NOT EXISTS escrow_sessions(
+                    order_id BLOB PRIMARY KEY,
+                    nonce    BLOB NOT NULL,
+                    buyer    BLOB NOT NULL,
+                    seller   BLOB NOT NULL,
+                    arbiter  BLOB NOT NULL,
+                    amount   INTEGER NOT NULL,
+                    stage    TEXT NOT NULL,
+                    day      INTEGER NOT NULL,
+                    created  INTEGER NOT NULL
+                  );
+                  CREATE INDEX IF NOT EXISTS idx_escrow_buyer ON escrow_sessions(buyer);
+                  CREATE INDEX IF NOT EXISTS idx_escrow_seller ON escrow_sessions(seller);
+                  CREATE INDEX IF NOT EXISTS idx_escrow_arbiter ON escrow_sessions(arbiter);
+                  CREATE TABLE IF NOT EXISTS escrow_events(
+                    seq        INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id   BLOB NOT NULL,
+                    actor      BLOB NOT NULL,
+                    actor_seq  INTEGER NOT NULL,
+                    domain     TEXT NOT NULL,
+                    day        INTEGER NOT NULL,
+                    envelope   BLOB NOT NULL,
+                    created    INTEGER NOT NULL,
+                    UNIQUE(order_id, actor, actor_seq)
+                  );
+                  CREATE INDEX IF NOT EXISTS idx_escrow_events_order ON escrow_events(order_id);",
             )
             .map_err(|e| e.to_string())?;
         // Databases created before order terms were frozen need the two new
@@ -1041,6 +1107,335 @@ impl Store {
                 |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, i64>(1)? as u64)),
             )
             .map_err(|e| e.to_string())
+    }
+
+    // ---- escrow (doc 17) ----
+    //
+    // The provider is a relay for signed envelopes, not a wallet. It stores the
+    // exact bytes, replays them through `escrow-format` before accepting a new
+    // one, and never sees a seed, spend key, or wallet file. The shop order is
+    // the authority for roles and frozen terms.
+
+    fn escrow_session_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<EscrowSession> {
+        let order: Vec<u8> = row.get(0)?;
+        let nonce: Vec<u8> = row.get(1)?;
+        let buyer: Vec<u8> = row.get(2)?;
+        let seller: Vec<u8> = row.get(3)?;
+        let arbiter: Vec<u8> = row.get(4)?;
+        Ok(EscrowSession {
+            order_hex: hex::encode(order),
+            nonce_hex: hex::encode(nonce),
+            buyer_hex: hex::encode(buyer),
+            seller_hex: hex::encode(seller),
+            arbiter_hex: hex::encode(arbiter),
+            amount: row.get::<_, i64>(5)? as u64,
+            stage: row.get(6)?,
+            day: row.get::<_, i64>(7)? as u64,
+        })
+    }
+
+    fn escrow_event_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<EscrowEvent> {
+        let actor: Vec<u8> = row.get(1)?;
+        let envelope: Vec<u8> = row.get(5)?;
+        Ok(EscrowEvent {
+            domain: row.get(2)?,
+            actor_hex: hex::encode(actor),
+            day: row.get::<_, i64>(3)? as u64,
+            seq: row.get::<_, i64>(4)? as u64,
+            envelope_hex: hex::encode(envelope),
+        })
+    }
+
+    /// The signed order and its listing currency, needed to check that an
+    /// escrow `open` matches the terms the buyer actually signed (doc 16).
+    pub fn order_context(&self, id: &[u8; 16]) -> Result<Option<OrderContext>, String> {
+        self.conn
+            .query_row(
+                "SELECT o.id,o.listing_id,o.buyer,o.seller,o.qty,o.note,o.status,o.day,
+                        o.sig,o.price,o.version,l.currency
+                 FROM orders o JOIN listings l ON l.id=o.listing_id WHERE o.id=?",
+                params![id.as_slice()],
+                |row| {
+                    Ok(OrderContext {
+                        order: Self::order_from_row(row)?,
+                        currency: row.get(11)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
+    fn insert_escrow_event(
+        tx: &rusqlite::Transaction<'_>,
+        order: &[u8; 16],
+        envelope: &[u8],
+    ) -> Result<(), String> {
+        let header = parse_header(envelope)?;
+        let domain = std::str::from_utf8(header.domain.name())
+            .map_err(|_| "escrow domain is not UTF-8".to_string())?
+            .to_string();
+        tx.execute(
+            "INSERT INTO escrow_events(order_id,actor,actor_seq,domain,day,envelope,created)
+             VALUES(?,?,?,?,?,?,?)",
+            params![
+                order.as_slice(),
+                &header.actor[..],
+                header.seq as i64,
+                domain,
+                header.day as i64,
+                envelope,
+                Self::now_unix() as i64
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Open a session from a buyer-signed envelope. Roles and amount come from
+    /// the stored signed order, not from the request: a client cannot open an
+    /// escrow for an order it did not sign or with different terms.
+    pub fn open_escrow(
+        &self,
+        order_id: &[u8; 16],
+        envelope: &[u8],
+        now_day: u64,
+    ) -> Result<EscrowSession, String> {
+        if envelope.len() > escrow_format::limits::MAX_ENVELOPE_BYTES {
+            return Err("escrow envelope too large".into());
+        }
+        let env = verify_message(envelope)?;
+        let decoded = decode(&env)?;
+        let (nonce, seller, arbiter, amount, currency) = match decoded {
+            Decoded::Open {
+                order,
+                nonce,
+                seller,
+                arbiter,
+                amount,
+                currency,
+            } => {
+                if &order != order_id {
+                    return Err("open envelope names a different order".into());
+                }
+                (nonce, seller, arbiter, amount, currency)
+            }
+            _ => return Err("expected an open envelope".into()),
+        };
+        if &currency != b"XMR" {
+            return Err("escrow envelopes must name XMR".into());
+        }
+        let context = self
+            .order_context(order_id)?
+            .ok_or_else(|| "no such order".to_string())?;
+        if &context.currency != "XMR" {
+            return Err("escrow is only defined for XMR listings".into());
+        }
+        // Only a live reservation may enter escrow. A cancelled, declined, or
+        // already fulfilled order must not gain a fresh signed payment track.
+        if !matches!(
+            OrderStatus::from_code(context.order.status),
+            Some(OrderStatus::Reserved) | Some(OrderStatus::Accepted)
+        ) {
+            return Err("order is not reserved or accepted".into());
+        }
+        let buyer = sig_key(&context.order.buyer_hex)?;
+        let order_seller = sig_key(&context.order.seller_hex)?;
+        if env.actor != buyer {
+            return Err("only the order's buyer can open escrow".into());
+        }
+        if seller != order_seller {
+            return Err("escrow seller does not match the signed order".into());
+        }
+        if arbiter == buyer || arbiter == seller {
+            return Err("arbiter must be distinct from buyer and seller".into());
+        }
+        let expected = atomic_from_shop_terms(context.order.price, context.order.qty)?;
+        if amount != expected {
+            return Err("escrow amount does not match the signed order terms".into());
+        }
+
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let existing: Option<Vec<u8>> = tx
+            .query_row(
+                "SELECT order_id FROM escrow_sessions WHERE order_id=?",
+                params![order_id.as_slice()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if existing.is_some() {
+            return Err("escrow already opened for this order".into());
+        }
+        let mut state = EscrowState::new();
+        state.apply(envelope, now_day)?;
+        tx.execute(
+            "INSERT INTO escrow_sessions(order_id,nonce,buyer,seller,arbiter,amount,stage,day,created)
+             VALUES(?,?,?,?,?,?,?,?,?)",
+            params![
+                order_id.as_slice(),
+                &nonce[..],
+                &buyer[..],
+                &seller[..],
+                &arbiter[..],
+                amount as i64,
+                state.stage.as_str(),
+                env.day as i64,
+                Self::now_unix() as i64
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Self::insert_escrow_event(&tx, order_id, envelope)?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(EscrowSession {
+            order_hex: hex::encode(order_id),
+            nonce_hex: hex::encode(nonce),
+            buyer_hex: hex::encode(buyer),
+            seller_hex: hex::encode(seller),
+            arbiter_hex: hex::encode(arbiter),
+            amount,
+            stage: state.stage.as_str().into(),
+            day: env.day,
+        })
+    }
+
+    /// Accept one new signed envelope. The whole stored log is replayed first,
+    /// so a client cannot skip a stage, reuse a sequence, switch sessions, or
+    /// smuggle in a message signed by an unrelated key.
+    pub fn append_escrow_event(
+        &self,
+        order_id: &[u8; 16],
+        envelope: &[u8],
+        now_day: u64,
+    ) -> Result<EscrowSession, String> {
+        if envelope.len() > escrow_format::limits::MAX_ENVELOPE_BYTES {
+            return Err("escrow envelope too large".into());
+        }
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let (nonce, stage): (Vec<u8>, String) = tx
+            .query_row(
+                "SELECT nonce,stage FROM escrow_sessions WHERE order_id=?",
+                params![order_id.as_slice()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "no escrow session for this order".to_string())?;
+        if stage == Stage::Released.as_str() || stage == Stage::Cancelled.as_str() {
+            return Err("escrow session is closed".into());
+        }
+        let mut stmt = tx
+            .prepare("SELECT envelope FROM escrow_events WHERE order_id=? ORDER BY seq ASC")
+            .map_err(|e| e.to_string())?;
+        let prior = stmt
+            .query_map(params![order_id.as_slice()], |row| row.get::<_, Vec<u8>>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())?;
+        drop(stmt);
+        let mut state = EscrowState::new();
+        for raw in &prior {
+            state.apply_replay(raw)?;
+        }
+        if state.order != *order_id || state.nonce.as_slice() != nonce.as_slice() {
+            return Err("corrupt escrow log: session identity changed".into());
+        }
+        state.apply(envelope, now_day)?;
+        Self::insert_escrow_event(&tx, order_id, envelope)?;
+        tx.execute(
+            "UPDATE escrow_sessions SET stage=? WHERE order_id=?",
+            params![state.stage.as_str(), order_id.as_slice()],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(EscrowSession {
+            order_hex: hex::encode(order_id),
+            nonce_hex: hex::encode(nonce),
+            buyer_hex: hex::encode(state.buyer),
+            seller_hex: hex::encode(state.seller),
+            arbiter_hex: hex::encode(state.arbiter),
+            amount: state.amount,
+            stage: state.stage.as_str().into(),
+            day: state.open_day,
+        })
+    }
+
+    pub fn escrow_session(&self, order_id: &[u8; 16]) -> Result<Option<EscrowSession>, String> {
+        self.conn
+            .query_row(
+                "SELECT order_id,nonce,buyer,seller,arbiter,amount,stage,day FROM escrow_sessions
+                 WHERE order_id=?",
+                params![order_id.as_slice()],
+                Self::escrow_session_from_row,
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn escrow_parties(&self, order_id: &[u8; 16]) -> Result<Option<EscrowParties>, String> {
+        self.conn
+            .query_row(
+                "SELECT buyer,seller,arbiter FROM escrow_sessions WHERE order_id=?",
+                params![order_id.as_slice()],
+                |row| {
+                    let buyer: Vec<u8> = row.get(0)?;
+                    let seller: Vec<u8> = row.get(1)?;
+                    let arbiter: Vec<u8> = row.get(2)?;
+                    Ok((buyer, seller, arbiter))
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .map(|(b, s, a)| {
+                let key = |raw: Vec<u8>| -> Result<[u8; 32], String> {
+                    raw.try_into().map_err(|_| "corrupt escrow key".into())
+                };
+                Ok((key(b)?, key(s)?, key(a)?))
+            })
+            .transpose()
+    }
+
+    /// Signed envelopes in acceptance order, so a client can re-verify every
+    /// signature and replay the state machine without trusting our stage field.
+    pub fn escrow_events(&self, order_id: &[u8; 16]) -> Result<Vec<EscrowEvent>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT order_id,actor,domain,day,actor_seq,envelope FROM escrow_events
+                 WHERE order_id=? ORDER BY seq ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![order_id.as_slice()], Self::escrow_event_from_row)
+            .map_err(|e| e.to_string())?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())?;
+        Ok(rows)
+    }
+
+    pub fn escrow_sessions_for(&self, key: &[u8; 32]) -> Result<Vec<EscrowSession>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT order_id,nonce,buyer,seller,arbiter,amount,stage,day FROM escrow_sessions
+                 WHERE buyer=? OR seller=? OR arbiter=? ORDER BY created DESC, order_id ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(
+                params![&key[..], &key[..], &key[..]],
+                Self::escrow_session_from_row,
+            )
+            .map_err(|e| e.to_string())?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())?;
+        Ok(rows)
     }
 
     pub fn counts(&self) -> Result<(u64, u64), String> {

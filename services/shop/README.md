@@ -31,6 +31,10 @@ POST /order/<hex32>/message                {author,day,body,sig}
 GET  /order/<hex32>/messages?for=&day=&sig=&offset=&limit=  (paged thread)
 POST /review                               {author,day,order,seller,rating,body,sig}
 GET  /reviews/<hex64>?offset=&limit=
+POST /escrow/open                          {order,envelope}   (buyer-signed)
+POST /escrow/event                         {order,envelope}   (one signed envelope)
+GET  /escrow?for=<hex64>&day=&sig=<hex128>  (participant's sessions)
+GET  /escrow/<hex32>?for=&day=&sig=<hex128> (session + signed envelope log)
 ```
 
 Every write is ed25519-signed over a domain-separated message and verified
@@ -46,6 +50,16 @@ Order threads are capped at 500 signed messages; `/orders` embeds the latest
 20 and `GET /order/<id>/messages` walks older pages with the same signed proof
 of possession. The provider processes no payments; settlement is between the
 parties.
+
+## Escrow relay (stagenet reference)
+
+For XMR listings, the optional escrow track in
+[`docs/17-monero-escrow.md`](../../docs/17-monero-escrow.md) uses the shop as a
+**signed-message relay only**. `POST /escrow/open` is bound to the signed order
+(buyer, seller, and `amount = price × qty` in piconeros); `POST /escrow/event`
+replays the whole signed log before accepting each new envelope. Reads require
+proof of possession and are limited to the three named participants. The
+service holds no wallet, seed, spend key, or funds, and has no mainnet mode.
 
 ## Order states
 

@@ -18,6 +18,10 @@
 //! GET  /order/<hex32>/messages?for=&day=&sig=&offset=&limit= -> paged thread
 //! POST /review                          -> {ok}
 //! GET  /reviews/<hex64>?offset=&limit=  -> {reviews:[...], summary}
+//! POST /escrow/open                     -> {ok, session} (buyer-signed, order-bound)
+//! POST /escrow/event                    -> {ok, session} (one signed envelope)
+//! GET  /escrow?for=<hex64>&day=&sig=    -> {sessions:[...]} (participants only)
+//! GET  /escrow/<hex32>?for=&day=&sig=   -> {session, events:[...]} (participants only)
 //! ```
 //!
 //! Orders are private: `GET /orders` needs a signature from the buyer or
@@ -28,12 +32,15 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use escrow_format::message::{decode, verify_message, Decoded, Domain};
 use nym_hidden_service::{HiddenService, Request, Response};
 use provider_runtime::route::{json_body, parse_query};
 use provider_runtime::Router;
 use shop_format::{limits, pow, review, sig, status::OrderStatus};
 
-use crate::store::{MessagePage, Order, OrderMessage, Review, StatusEvent, Store};
+use crate::store::{
+    EscrowEvent, EscrowSession, MessagePage, Order, OrderMessage, Review, StatusEvent, Store,
+};
 
 pub struct ShopService {
     store: Mutex<Store>,
@@ -94,6 +101,10 @@ fn descriptor_json(pow_bits: u32) -> serde_json::Value {
             "GET /order/<hex32>/messages?for=<hex64>&day=<n>&sig=<hex128>&offset=<n>&limit=<n>",
             "POST /review",
             "GET /reviews/<hex64>?offset=<n>&limit=<n>",
+            "POST /escrow/open",
+            "POST /escrow/event",
+            "GET /escrow?for=<hex64>&day=<n>&sig=<hex128>",
+            "GET /escrow/<hex32>?for=<hex64>&day=<n>&sig=<hex128>",
         ],
     })
 }
@@ -129,10 +140,18 @@ padding:.1em .35em;border-radius:.3em}li{margin:.25em 0}</style></head><body>\
 <li><code>POST /review</code> — one buyer-signed review per fulfilled order</li>\
 <li><code>GET /reviews/&lt;seller&gt;?offset=&lt;n&gt;&amp;limit=&lt;n&gt;</code> — raw signed reviews; clients aggregate locally</li>\
 </ul>\
+<h2>Escrow relay (stagenet reference)</h2>\
+<ul>\
+<li><code>POST /escrow/open</code> — buyer-signed envelope bound to a signed XMR order</li>\
+<li><code>POST /escrow/event</code> — one signed setup/funding/payout/dispute envelope; replayed before acceptance</li>\
+<li><code>GET /escrow?for=&lt;key&gt;&amp;day=&lt;n&gt;&amp;sig=…</code> — sessions for a participant</li>\
+<li><code>GET /escrow/&lt;order&gt;?for=&lt;key&gt;&amp;day=&lt;n&gt;&amp;sig=…</code> — signed envelope log for replay</li>\
+</ul>\
 <p>No accounts, no carts, no payment processing, no trusted server score. \
 Review responses include a convenience aggregate, but clients re-verify every \
-signed row and recompute reputation themselves. Prices are integer minor units; \
-shipping details never belong on this service.</p>\
+signed row and recompute reputation themselves. The escrow relay stores signed \
+envelopes for external wallets; it has no keys and never holds funds. Prices are \
+integer minor units; shipping details never belong on this service.</p>\
 </body></html>";
 
 fn listing_json(l: &crate::store::Listing) -> serde_json::Value {
@@ -187,6 +206,21 @@ fn order_json(
     })
 }
 
+fn escrow_session_json(s: &EscrowSession) -> serde_json::Value {
+    serde_json::json!({
+        "order": s.order_hex, "nonce": s.nonce_hex,
+        "buyer": s.buyer_hex, "seller": s.seller_hex, "arbiter": s.arbiter_hex,
+        "amount": s.amount, "currency": "XMR", "stage": s.stage, "day": s.day,
+    })
+}
+
+fn escrow_event_json(e: &EscrowEvent) -> serde_json::Value {
+    serde_json::json!({
+        "domain": e.domain, "actor": e.actor_hex, "day": e.day,
+        "seq": e.seq, "envelope": e.envelope_hex,
+    })
+}
+
 // ---- request field helpers ----
 
 fn field_str<'a>(v: &'a serde_json::Value, key: &str) -> &'a str {
@@ -211,19 +245,57 @@ fn field_sig(v: &serde_json::Value) -> Result<ed25519_dalek::Signature, Response
         .ok_or_else(|| Response::error(400, "missing sig"))
 }
 
+fn path_id16(s: &str, label: &str) -> Result<[u8; 16], Response> {
+    let bytes =
+        hex::decode(s.trim()).map_err(|_| Response::error(400, format!("{label} must be hex")))?;
+    if bytes.len() != 16 {
+        return Err(Response::error(
+            400,
+            format!("{label} must be a 16-byte id"),
+        ));
+    }
+    let mut out = [0u8; 16];
+    out.copy_from_slice(&bytes);
+    Ok(out)
+}
+
 fn field_id16(v: &serde_json::Value, key: &str) -> Result<[u8; 16], Response> {
     let s = v
         .get(key)
         .and_then(|x| x.as_str())
         .ok_or_else(|| Response::error(400, format!("missing {key}")))?;
-    let bytes =
-        hex::decode(s.trim()).map_err(|_| Response::error(400, format!("{key} must be hex")))?;
-    if bytes.len() != 16 {
-        return Err(Response::error(400, format!("{key} must be a 16-byte id")));
+    path_id16(s, key)
+}
+
+fn decoded_order(d: &Decoded) -> [u8; 16] {
+    match d {
+        Decoded::Open { order, .. }
+        | Decoded::Join { order, .. }
+        | Decoded::Commit { order, .. }
+        | Decoded::Funded { order, .. }
+        | Decoded::Release { order, .. }
+        | Decoded::Approve { order, .. }
+        | Decoded::Dispute { order, .. }
+        | Decoded::Resolve { order, .. }
+        | Decoded::Cancel { order, .. }
+        | Decoded::Submitted { order, .. } => *order,
     }
-    let mut out = [0u8; 16];
-    out.copy_from_slice(&bytes);
-    Ok(out)
+}
+
+fn field_envelope(v: &serde_json::Value, key: &str) -> Result<Vec<u8>, Response> {
+    let s = v
+        .get(key)
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| Response::error(400, format!("missing {key}")))?;
+    let raw =
+        hex::decode(s.trim()).map_err(|_| Response::error(400, format!("{key} must be hex")))?;
+    if raw.is_empty() || raw.len() > escrow_format::limits::MAX_ENVELOPE_BYTES {
+        return Err(Response::error(
+            400,
+            "escrow envelope has an invalid length",
+        ));
+    }
+    Ok(raw)
 }
 
 /// A missing or wrongly typed number is a client error, never a silent zero
@@ -1046,6 +1118,173 @@ impl HiddenService for ShopService {
                     Err(e) => Response::error(500, e),
                 }
             }
+            ("POST", "/escrow/open") => {
+                let v: serde_json::Value = match serde_json::from_slice(&body) {
+                    Ok(v) => v,
+                    Err(_) => return Response::error(400, "escrow open body must be JSON"),
+                };
+                let order = match field_id16(&v, "order") {
+                    Ok(id) => id,
+                    Err(e) => return e,
+                };
+                let envelope = match field_envelope(&v, "envelope") {
+                    Ok(raw) => raw,
+                    Err(e) => return e,
+                };
+                let env = match verify_message(&envelope) {
+                    Ok(env) => env,
+                    Err(e) => return Response::error(400, e),
+                };
+                let decoded = match decode(&env) {
+                    Ok(d) => d,
+                    Err(e) => return Response::error(400, e),
+                };
+                if env.domain != Domain::Open {
+                    return Response::error(400, "the open route requires an open envelope");
+                }
+                if decoded_order(&decoded) != order {
+                    return Response::error(400, "envelope names a different order");
+                }
+                if let Err(e) = fresh_day(env.day) {
+                    return e;
+                }
+                // The PoW binds the exact signed bytes; the rate key is the
+                // verified signer, never an unauthenticated request field.
+                if let Err(e) = self.gate(&env.actor, &envelope, &v) {
+                    return e;
+                }
+                let store = match self.lock() {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let result = store.open_escrow(&order, &envelope, sig::current_day());
+                if result.is_err() {
+                    self.router.rate.refund(&hex::encode(env.actor));
+                }
+                match result {
+                    Ok(session) => Response::ok(
+                        200,
+                        "application/json",
+                        &json_body(&serde_json::json!({
+                            "ok": true, "session": escrow_session_json(&session),
+                        })),
+                    ),
+                    Err(e) => Response::error(400, e),
+                }
+            }
+            ("POST", "/escrow/event") => {
+                let v: serde_json::Value = match serde_json::from_slice(&body) {
+                    Ok(v) => v,
+                    Err(_) => return Response::error(400, "escrow event body must be JSON"),
+                };
+                let order = match field_id16(&v, "order") {
+                    Ok(id) => id,
+                    Err(e) => return e,
+                };
+                let envelope = match field_envelope(&v, "envelope") {
+                    Ok(raw) => raw,
+                    Err(e) => return e,
+                };
+                let env = match verify_message(&envelope) {
+                    Ok(env) => env,
+                    Err(e) => return Response::error(400, e),
+                };
+                if env.domain == Domain::Open {
+                    return Response::error(400, "use /escrow/open to start a session");
+                }
+                let decoded = match decode(&env) {
+                    Ok(d) => d,
+                    Err(e) => return Response::error(400, e),
+                };
+                if decoded_order(&decoded) != order {
+                    return Response::error(400, "envelope names a different order");
+                }
+                if let Err(e) = fresh_day(env.day) {
+                    return e;
+                }
+                if let Err(e) = self.gate(&env.actor, &envelope, &v) {
+                    return e;
+                }
+                let store = match self.lock() {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let result = store.append_escrow_event(&order, &envelope, sig::current_day());
+                if result.is_err() {
+                    self.router.rate.refund(&hex::encode(env.actor));
+                }
+                match result {
+                    Ok(session) => Response::ok(
+                        200,
+                        "application/json",
+                        &json_body(&serde_json::json!({
+                            "ok": true, "session": escrow_session_json(&session),
+                        })),
+                    ),
+                    Err(e) => Response::error(400, e),
+                }
+            }
+            ("GET", "/escrow") => {
+                let who = match signed_read(&query) {
+                    Ok(k) => k,
+                    Err(e) => return e,
+                };
+                let store = match self.lock() {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                match store.escrow_sessions_for(&who) {
+                    Ok(sessions) => Response::ok(
+                        200,
+                        "application/json",
+                        &json_body(&serde_json::json!({
+                            "sessions": sessions.iter().map(escrow_session_json).collect::<Vec<_>>(),
+                        })),
+                    ),
+                    Err(e) => Response::error(500, e),
+                }
+            }
+            ("GET", p) if p.starts_with("/escrow/") => {
+                let who = match signed_read(&query) {
+                    Ok(k) => k,
+                    Err(e) => return e,
+                };
+                let order = match path_id16(&p["/escrow/".len()..], "order") {
+                    Ok(id) => id,
+                    Err(e) => return e,
+                };
+                let store = match self.lock() {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let parties = match store.escrow_parties(&order) {
+                    Ok(v) => v,
+                    Err(e) => return Response::error(500, e),
+                };
+                let allowed = parties
+                    .map(|(buyer, seller, arbiter)| who == buyer || who == seller || who == arbiter)
+                    .unwrap_or(false);
+                if !allowed {
+                    return not_found("escrow session");
+                }
+                let session = match store.escrow_session(&order) {
+                    Ok(Some(s)) => s,
+                    Ok(None) => return not_found("escrow session"),
+                    Err(e) => return Response::error(500, e),
+                };
+                let events = match store.escrow_events(&order) {
+                    Ok(v) => v,
+                    Err(e) => return Response::error(500, e),
+                };
+                Response::ok(
+                    200,
+                    "application/json",
+                    &json_body(&serde_json::json!({
+                        "session": escrow_session_json(&session),
+                        "events": events.iter().map(escrow_event_json).collect::<Vec<_>>(),
+                    })),
+                )
+            }
             _ => Response::error(404, "unknown route"),
         }
     }
@@ -1055,6 +1294,10 @@ impl HiddenService for ShopService {
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
+    use escrow_format::message::{
+        approve_message, commit_message, digest, funded_message, join_message, open_message,
+        release_message, sign_message, submitted_message,
+    };
     use nym_hidden_service::dispatch;
     use std::collections::HashMap;
 
@@ -1093,9 +1336,23 @@ mod tests {
         title: &str,
         description: &str,
     ) -> serde_json::Value {
+        listing_currency(sk, id, version, price, stock, title, description, "USD")
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn listing_currency(
+        sk: &SigningKey,
+        id: [u8; 16],
+        version: u64,
+        price: u64,
+        stock: u32,
+        title: &str,
+        description: &str,
+        currency: &str,
+    ) -> serde_json::Value {
         let seller = sk.verifying_key().to_bytes();
         let day = sig::current_day();
-        let currency = b"USD";
+        let code: [u8; 3] = currency.as_bytes().try_into().unwrap();
         let msg = sig::listing_message(
             &seller,
             day,
@@ -1103,13 +1360,13 @@ mod tests {
             version,
             price,
             stock,
-            currency,
+            &code,
             title,
             description,
         );
         serde_json::json!({
             "seller": hex::encode(seller), "day": day, "id": hex::encode(id),
-            "version": version, "price": price, "stock": stock, "currency": "USD",
+            "version": version, "price": price, "stock": stock, "currency": currency,
             "title": title, "description": description,
             "sig": hex::encode(sk.sign(&msg).to_bytes()),
         })
@@ -1201,6 +1458,363 @@ mod tests {
         )
     }
 
+    fn escrow_open(
+        buyer: &SigningKey,
+        seller: &SigningKey,
+        arbiter: &SigningKey,
+        order: [u8; 16],
+        nonce: [u8; 16],
+        amount: u64,
+    ) -> serde_json::Value {
+        let unsigned = open_message(
+            &buyer.verifying_key().to_bytes(),
+            sig::current_day(),
+            0,
+            &order,
+            &nonce,
+            &seller.verifying_key().to_bytes(),
+            &arbiter.verifying_key().to_bytes(),
+            amount,
+            b"XMR",
+        )
+        .unwrap();
+        serde_json::json!({
+            "order": hex::encode(order),
+            "envelope": hex::encode(sign_message(unsigned, buyer)),
+        })
+    }
+
+    fn escrow_event(signer: &SigningKey, order: [u8; 16], unsigned: Vec<u8>) -> serde_json::Value {
+        serde_json::json!({
+            "order": hex::encode(order),
+            "envelope": hex::encode(sign_message(unsigned, signer)),
+        })
+    }
+
+    fn escrow_path(sk: &SigningKey, order: Option<[u8; 16]>) -> String {
+        let who = sk.verifying_key().to_bytes();
+        let day = sig::current_day();
+        let signature = sk.sign(&sig::orders_read_message(&who, day));
+        let tail = format!(
+            "for={}&day={}&sig={}",
+            hex::encode(who),
+            day,
+            hex::encode(signature.to_bytes())
+        );
+        match order {
+            Some(id) => format!("/escrow/{}?{tail}", hex::encode(id)),
+            None => format!("/escrow?{tail}"),
+        }
+    }
+
+    #[test]
+    fn escrow_relay_binds_signed_shop_terms_and_replays_the_log() {
+        let svc = test_service();
+        let seller = SigningKey::from_bytes(&[31u8; 32]);
+        let buyer = SigningKey::from_bytes(&[32u8; 32]);
+        let arbiter = SigningKey::from_bytes(&[33u8; 32]);
+        let outsider = SigningKey::from_bytes(&[34u8; 32]);
+        let listing_id = [0x51; 16];
+        let order_id = [0x52; 16];
+        let nonce = [0x53; 16];
+        let price = 1_000_000_000_000u64; // one XMR in piconeros
+        let qty = 2u32;
+        let amount = price * u64::from(qty);
+        let day = sig::current_day();
+
+        assert_eq!(
+            post(
+                &svc,
+                "/listing",
+                &listing_currency(&seller, listing_id, 1, price, 3, "Ore", "XMR item", "XMR")
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            post(
+                &svc,
+                "/order",
+                &order(&buyer, order_id, listing_id, qty, price, "escrow")
+            )
+            .status,
+            200
+        );
+
+        // The relay derives roles and amount from the signed order, not from
+        // request fields: every attempted substitution is refused.
+        assert_eq!(
+            post(
+                &svc,
+                "/escrow/open",
+                &escrow_open(&buyer, &seller, &arbiter, order_id, nonce, amount - 1)
+            )
+            .status,
+            400
+        );
+        assert_eq!(
+            post(
+                &svc,
+                "/escrow/open",
+                &escrow_open(&buyer, &outsider, &arbiter, order_id, nonce, amount)
+            )
+            .status,
+            400
+        );
+        assert_eq!(
+            post(
+                &svc,
+                "/escrow/open",
+                &escrow_open(&outsider, &seller, &arbiter, order_id, nonce, amount)
+            )
+            .status,
+            400
+        );
+
+        let open = escrow_open(&buyer, &seller, &arbiter, order_id, nonce, amount);
+        let rep = post(&svc, "/escrow/open", &open);
+        assert_eq!(rep.status, 200);
+        let session = &body(&rep)["session"];
+        assert_eq!(session["stage"], "proposed");
+        assert_eq!(session["amount"], amount);
+        assert_eq!(session["currency"], "XMR");
+        assert_eq!(post(&svc, "/escrow/open", &open).status, 400);
+
+        // All three joins, then the final (round 3) commit with one shared
+        // escrow address and transcript hash.
+        let joins = [
+            escrow_event(
+                &seller,
+                order_id,
+                join_message(
+                    &seller.verifying_key().to_bytes(),
+                    day,
+                    0,
+                    &order_id,
+                    &nonce,
+                    1,
+                    b"multisig-seller",
+                )
+                .unwrap(),
+            ),
+            escrow_event(
+                &arbiter,
+                order_id,
+                join_message(
+                    &arbiter.verifying_key().to_bytes(),
+                    day,
+                    0,
+                    &order_id,
+                    &nonce,
+                    2,
+                    b"multisig-arbiter",
+                )
+                .unwrap(),
+            ),
+            escrow_event(
+                &buyer,
+                order_id,
+                join_message(
+                    &buyer.verifying_key().to_bytes(),
+                    day,
+                    1,
+                    &order_id,
+                    &nonce,
+                    0,
+                    b"multisig-buyer",
+                )
+                .unwrap(),
+            ),
+        ];
+        for event in &joins {
+            assert_eq!(post(&svc, "/escrow/event", event).status, 200);
+        }
+        let address = b"5StagenetEscrowAddress";
+        let transcript_hash = escrow_format::setup_transcript_hash(&order_id, &nonce, address);
+        let commits = [(&seller, 1u64), (&arbiter, 1u64), (&buyer, 2u64)];
+        for (key, seq) in commits {
+            let event = escrow_event(
+                key,
+                order_id,
+                commit_message(
+                    &key.verifying_key().to_bytes(),
+                    day,
+                    seq,
+                    &order_id,
+                    &nonce,
+                    3,
+                    address,
+                    &transcript_hash,
+                )
+                .unwrap(),
+            );
+            assert_eq!(post(&svc, "/escrow/event", &event).status, 200);
+        }
+        assert_eq!(
+            body(&get(&svc, &escrow_path(&buyer, Some(order_id))))["session"]["stage"],
+            "setup"
+        );
+
+        // Only the buyer may post funding, and it must match frozen terms.
+        let bad_funding = escrow_event(
+            &arbiter,
+            order_id,
+            funded_message(
+                &arbiter.verifying_key().to_bytes(),
+                day,
+                0,
+                &order_id,
+                &nonce,
+                &[0x62; 32],
+                amount,
+                b"fake-proof",
+            )
+            .unwrap(),
+        );
+        assert_eq!(post(&svc, "/escrow/event", &bad_funding).status, 400);
+        let funded = escrow_event(
+            &buyer,
+            order_id,
+            funded_message(
+                &buyer.verifying_key().to_bytes(),
+                day,
+                3,
+                &order_id,
+                &nonce,
+                &[0x62; 32],
+                amount,
+                b"stagenet-tx-proof",
+            )
+            .unwrap(),
+        );
+        assert_eq!(post(&svc, "/escrow/event", &funded).status, 200);
+
+        let payout = b"5SellerStagenetPayout";
+        let inputs_hash = [0x63; 32];
+        let txset_hash = [0x64; 32];
+        let unsigned_release = release_message(
+            &seller.verifying_key().to_bytes(),
+            day,
+            2,
+            &order_id,
+            &nonce,
+            payout,
+            amount,
+            &inputs_hash,
+            &txset_hash,
+        )
+        .unwrap();
+        let signed_release = sign_message(unsigned_release, &seller);
+        assert_eq!(
+            post(
+                &svc,
+                "/escrow/event",
+                &serde_json::json!({
+                    "order": hex::encode(order_id),
+                    "envelope": hex::encode(&signed_release),
+                })
+            )
+            .status,
+            200
+        );
+        let approve = escrow_event(
+            &buyer,
+            order_id,
+            approve_message(
+                &buyer.verifying_key().to_bytes(),
+                day,
+                4,
+                &order_id,
+                &nonce,
+                &digest(&signed_release),
+                0,
+            )
+            .unwrap(),
+        );
+        assert_eq!(post(&svc, "/escrow/event", &approve).status, 200);
+        let submitted = escrow_event(
+            &seller,
+            order_id,
+            submitted_message(
+                &seller.verifying_key().to_bytes(),
+                day,
+                3,
+                &order_id,
+                &nonce,
+                &[0x65; 32],
+                0,
+            )
+            .unwrap(),
+        );
+        assert_eq!(post(&svc, "/escrow/event", &submitted).status, 200);
+
+        let rep = get(&svc, &escrow_path(&buyer, Some(order_id)));
+        assert_eq!(rep.status, 200);
+        let b = body(&rep);
+        assert_eq!(b["session"]["stage"], "released");
+        assert_eq!(b["events"].as_array().unwrap().len(), 11);
+        assert_eq!(b["events"][0]["domain"], "fly-escrow-v1/open");
+        assert_eq!(post(&svc, "/escrow/event", &submitted).status, 400);
+        assert_eq!(
+            get(&svc, &escrow_path(&outsider, Some(order_id))).status,
+            404
+        );
+        let rep = get(&svc, &escrow_path(&arbiter, None));
+        assert_eq!(rep.status, 200);
+        assert_eq!(body(&rep)["sessions"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn escrow_open_refuses_a_closed_order() {
+        let svc = test_service();
+        let seller = SigningKey::from_bytes(&[41u8; 32]);
+        let buyer = SigningKey::from_bytes(&[42u8; 32]);
+        let arbiter = SigningKey::from_bytes(&[43u8; 32]);
+        let listing_id = [0x57; 16];
+        let order_id = [0x58; 16];
+        let nonce = [0x59; 16];
+        let price = 1_000_000_000_000u64;
+        let amount = price;
+
+        assert_eq!(
+            post(
+                &svc,
+                "/listing",
+                &listing_currency(&seller, listing_id, 1, price, 2, "Ore", "XMR item", "XMR")
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            post(
+                &svc,
+                "/order",
+                &order(&buyer, order_id, listing_id, 1, price, "closed")
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            post(
+                &svc,
+                &format!("/order/{}/status", hex::encode(order_id)),
+                &status_update(&buyer, order_id, 4, "changed mind")
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            post(
+                &svc,
+                "/escrow/open",
+                &escrow_open(&buyer, &seller, &arbiter, order_id, nonce, amount)
+            )
+            .status,
+            400
+        );
+        assert_eq!(get(&svc, &escrow_path(&buyer, Some(order_id))).status, 404);
+    }
+
     #[test]
     fn root_describes_the_service() {
         let svc = test_service();
@@ -1217,6 +1831,8 @@ mod tests {
         assert!(text.contains("<h2>Browse &amp; sell</h2>"));
         assert!(text.contains("<h2>Orders</h2>"));
         assert!(text.contains("<h2>Reputation</h2>"));
+        assert!(text.contains("<h2>Escrow relay (stagenet reference)</h2>"));
+        assert!(text.contains("/escrow/event"));
         assert!(text.contains("POST /order"));
         assert!(text.contains("POST /review"));
         assert!(text.contains("Prices are integer minor units (100 = 1 major unit)"));

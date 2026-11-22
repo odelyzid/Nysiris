@@ -180,6 +180,10 @@ crypto or DeFi product, and it has no financial features:
 * No yield or farming, and no in-app earn/rewards program.
 * No token-gated UI, tiers, or paid unlocks.
 * No crypto price, chart, or portfolio features.
+* No built-in wallet, payment request, invoice, or settlement. The
+  [`stagenet-only Monero escrow reference`](docs/17-monero-escrow.md) adds a
+  signed-message relay to the shop service and an external-wallet harness; it
+  is not a mainnet feature and never gives Nysiris custody of funds.
 
 Nothing in the app asks for a wallet connection, a seed phrase, a token balance,
 or a payment. The cryptography here is for private communication — routing,
@@ -330,6 +334,8 @@ Prefer a rendered site? These docs are mirrored to the
     model, unified `nym://` + `http(s)` navigation, and the browser-shell phases.
 13. [`docs/06-roadmap.md`](docs/06-roadmap.md) — phased plan with acceptance
     criteria.
+14. [`docs/17-monero-escrow.md`](docs/17-monero-escrow.md) — stagenet-only
+    Monero escrow wire grammar and external-wallet reference (not a product).
 
 ## Build & verify
 

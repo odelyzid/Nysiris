@@ -23,3 +23,7 @@ provider-runtime = { path = "../../crates/provider-runtime" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 nym-hidden-service = { path = "../../crates/nym-hidden-service" }
 shop-format = { path = "../../crates/shop-format" }
+# Escrow wire grammar and state machine (docs/17). The service only relays
+# signed envelopes and cross-checks them against the signed shop order; it has
+# no wallet, RPC client, or key material.
+escrow-format = { path = "../../crates/escrow-format" }

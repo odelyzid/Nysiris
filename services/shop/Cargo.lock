@@ -1918,6 +1918,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "escrow-format"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek 3.0.0",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "etcetera"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5396,6 +5404,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 3.0.0",
+ "escrow-format",
  "hex",
  "nym-bin-common",
  "nym-hidden-service",

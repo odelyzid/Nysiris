@@ -148,7 +148,10 @@ proof proves work, never honesty.
   from `reserved` and reject an order whose reported state is not the chain's
   end state.
 * Fulfilment consumes the reservation permanently. Orders are not refunded by
-  the protocol — settlement and refunds happen between the parties.
+  the protocol — settlement and refunds happen between the parties. An
+  **optional, stagenet-only** 2-of-3 Monero escrow track is specified in
+  [`17-monero-escrow.md`](17-monero-escrow.md). The shop relays the signed
+  envelopes for it, but is not a payment feature and never holds funds or keys.
 * A seller changes their maximum stock by publishing a **strictly newer
   version**; that re-signs the listing and resets availability against the
   order history. A lower version is refused, so an old listing cannot roll

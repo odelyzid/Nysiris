@@ -1,0 +1,15 @@
+[package]
+name = "escrow-format"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Byte-exact Monero escrow wire grammar and state machine for nysiris-shop (docs/17-monero-escrow.md); stagenet reference, no wallet code."
+
+# Pure format crate: no Monero or mixnet dependencies, so the wire layout can
+# be mirrored in the browser and tested without a daemon.
+
+[dependencies]
+ed25519-dalek = "3"
+sha2 = "0.10"
