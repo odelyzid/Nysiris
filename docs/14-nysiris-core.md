@@ -1,13 +1,15 @@
 # 14. Nysiris-Core: extracted protocol & transport
 
-> **Status: partial extraction, published base.** The native chat protocol and
-> the Nym transport seam live in
+> **Status: partial extraction, shared DM wire contract.** The native chat
+> protocol and the Nym transport seam live in
 > [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core),
-> vendored here as the `core/` submodule (pinned `v0.1.3`) and published on
-> crates.io as `0.1.3` for anyone to build on. The browser client, the social
-> provider, the hosting abstractions and the reference Sphinx implementation are
-> still in this repository. This page records what moved, what did not, how to
-> consume it, and the rules that keep the two repositories from drifting.
+> vendored here as the `core/` submodule (pinned `v0.2.0`, commit `990fdff`) and
+> published on crates.io through the `0.1.x` line. `0.2.0` is the breaking
+> release whose DM bytes match this browser client exactly. The browser client,
+> the social provider, the hosting abstractions and the reference Sphinx
+> implementation are still in this repository. This page records what moved,
+> what did not, how to consume it, and the rules that keep the two repositories
+> from drifting.
 
 ---
 
@@ -58,10 +60,12 @@ The submodule is **not** a member of this Cargo workspace. Reasons:
   check` must stay fast and offline.
 * The crates version and publish independently (crates.io versions are
   immutable, so a release is cut by tagging the workspace version; `0.1.2` was
-  the first published set, and `0.1.3` adds per-crate READMEs and complete
-  rustdoc).
-* CI here validates the extraction as a consumer would — by building the
-  submodule against its own lockfile, not by merging dependency graphs.
+  the first published set, `0.1.3` adds per-crate READMEs and complete rustdoc,
+  `0.1.4` hardens sealed storage and inbound sender checks, and `0.2.0` aligns
+  the DM wire format here).
+* CI here validates the extraction as a consumer would — by checking out the
+  pinned submodule, verifying the shared vectors have not drifted, and building
+  it against its own lockfile, not by merging dependency graphs.
 
 ---
 
@@ -81,9 +85,15 @@ The protocol therefore has two implementations at the moment of writing:
 * **`web/src/application/dm.ts` + `web/src/mixnet/` (TypeScript)** — the
   browser client.
 
-They must stay byte-compatible: the DM construction and envelope fields below
-are the contract, and a change on one side needs a change (and a test vector)
-on the other.
+They are byte-compatible as of `v0.2.0`: the DM construction and envelope fields
+below are the contract, and a change on one side needs a change on the other.
+The contract is pinned by a single fixture,
+`core/crates/nysiris-core/tests/fixtures/dm-v2.json`, copied verbatim to
+`web/test/fixtures/nysiris-core-dm-v2.json`. The core crate verifies it in its
+own test suite; this repository's `core-submodule` CI job checks out the pinned
+revision, runs that suite, and refuses a byte-level drift between the two
+copies. `web/test/coreConformance.test.mjs` independently re-derives every
+vector with the browser's noble-backed crypto.
 
 ---
 
@@ -93,20 +103,25 @@ Do not change these without versioning the domain and updating both
 implementations:
 
 * **Identity**: ed25519 keypair; the public key converts to X25519 for DH.
-* **Sealed DM**: ephemeral X25519 → `BLAKE2b-256` KDF (`nysiris-chat-v1/dm`) →
-  `XChaCha20-Poly1305`; `SealedDm { v, epub, nonce, ciphertext }` is hex on the
-  wire.
-* **Inner envelope**: signed and bound to `from`, `to`, `ts`, `msgId`, and the
-  body — the recipient can attribute a DM even though the provider cannot read
-  it.
+* **Sealed DM**: ephemeral X25519 → `BLAKE2b-256` KDF (`fly-social-v1/dm`) →
+  `XChaCha20-Poly1305`; the wire envelope is exactly
+  `{epubHex, nonceHex, ciphertextB64}` — lowercase hex keys/nonce, padded base64
+  ciphertext, no `v` field and no AEAD associated data.
+* **Inner envelope**: JSON `{v, from, ts, msgId, bodyB64, atts?, sig}`, signed
+  over `fly-social-v1/dm-inner || from(32) || ts_be64 || msgId(16) || body ||
+  canonical_atts`. Version 2 adds attachment refs; a version 1 envelope with no
+  attachments verifies identically. There is no `to` field: recipient binding
+  comes from the sealed box, so the recipient can still attribute the DM while
+  the provider cannot read it.
 * **History**: each record is a sealed blob; the hashed conversation filename
   is bound as AEAD associated data, so records cannot be replayed into another
   conversation.
 * **Rooms**: a random capability key is shared in a signed invite; the sender
   seals once and fans out to at most 16 members. There is no relay roster;
   removing a member means a new room key.
-* **Domains** are `nysiris-chat-v1/*`. Do **not** reuse the social
-  `fly-social-v1/*` domains or copy provider routes.
+* **Domains**: DMs deliberately share the browser's `fly-social-v1/dm` and
+  `fly-social-v1/dm-inner` domains — that is the point of the alignment. Rooms
+  keep the NCC-local `nysiris-chat-v1/*` domains. Never copy provider routes.
 * **Transport** is a trait: `send(recipient, payload)`. The core never opens a
   socket; `nysiris-transport-nym` does, via `nym-sdk`.
 
@@ -122,7 +137,7 @@ Initialise (the `--recurse-submodules` clone in the README does this for you):
 
 ```bash
 git submodule update --init --recursive
-git submodule status          # c110501... — tagged v0.1.3
+git submodule status          # 990fdff... — tagged v0.2.0
 ```
 
 Verify the extracted workspace (always `--locked`: the lockfile is what makes
@@ -147,9 +162,14 @@ git add core .gitmodules      # .gitmodules only if the URL/branch changed
 git commit -m "core: bump nysiris-core to vX.Y.Z"
 ```
 
-Then run the consumer smoke test: build NCC and the Nysiris services against the
-new tag. That is a CI/test relationship across repositories — never a Cargo
-path dependency from this workspace.
+Then run the consumer smoke test: build NCC against the new tag and let this
+repository's CI prove the pinned submodule still builds and still produces the
+shared DM vectors. If the DM bytes changed, regenerate the fixture in the core
+repository with
+`cargo run -p nysiris-core --example dm_vectors > crates/nysiris-core/tests/fixtures/dm-v2.json`
+and copy it verbatim to `web/test/fixtures/nysiris-core-dm-v2.json` in the same
+change; a byte-level mismatch fails CI. This is a CI/test relationship across
+repositories — never a Cargo path dependency from this workspace.
 
 Releases are cut in the core repository by bumping
 `[workspace.package].version`, committing that bump, and tagging that same
@@ -173,27 +193,28 @@ configured. Never move or re-tag an existing version.
 
 ## 14.6 Building on the core
 
-Nysiris-Core is not app-private. The five crates are published on crates.io as
-`0.1.3` and can be used by any Rust project — a native client, a bot, a relay, a
-bridge, or a mixnet-backed **microservice** — without depending on this
-repository or inheriting its UI and release cadence.
+Nysiris-Core is not app-private. The five crates are published on crates.io
+through the `0.1.x` line, with `0.2.0` as the DM-compatible breaking release, and
+can be used by any Rust project — a native client, a bot, a relay, a bridge, or
+a mixnet-backed **microservice** — without depending on this repository or
+inheriting its UI and release cadence.
 
 ```toml
 [dependencies]
-nysiris-core = "0.1.3"
-nysiris-chat-core = "0.1.3"
-nysiris-chat-history = "0.1.3"
+nysiris-core = "0.2"
+nysiris-chat-core = "0.2"
+nysiris-chat-history = "0.2"
 
 [dependencies.nysiris-transport-nym]
-version = "0.1.3"
+version = "0.2"
 features = ["nym"]          # real nym-sdk adapter
 
 [dev-dependencies]
-nysiris-testkit = "0.1.3"
+nysiris-testkit = "0.2"
 ```
 
-For unreleased work, depend on the tag instead of the registry:
-`nysiris-core = { git = "https://github.com/TribeWarez/nysiris-core", tag = "v0.1.3" }`.
+To pin source exactly, depend on the tag instead of the registry:
+`nysiris-core = { git = "https://github.com/TribeWarez/nysiris-core", tag = "v0.2.0" }`.
 
 What makes it reusable:
 
@@ -203,11 +224,12 @@ What makes it reusable:
 * `History` is encrypted flat files — no SQLite and no plaintext at rest.
 * `Transport` is a two-method trait (`name`, `send`), so a host can supply its
   own delivery: Nym, a local queue, a test mock.
-* Domains stay `nysiris-chat-v1/*`; consumers must not reuse the social
-  `fly-social-v1/*` domains.
-* Wire compatibility with the browser client is a contract: changing the DM
-  envelope, history binding or room format requires versioning the domain and
-  updating both implementations.
+* DM domains are `fly-social-v1/dm` and `fly-social-v1/dm-inner`, shared with
+  the browser; only rooms use `nysiris-chat-v1/*`.
+* Wire compatibility with the browser client is a contract enforced by the
+  shared fixture and cross-repository CI: changing the DM envelope, history
+  binding or room format requires versioning the domain and updating both
+  implementations.
 
 Consumers pin a tag or crates.io version and verify in their own CI. Do not copy
 the crates into a host repository — fix them upstream and cut a release.
@@ -219,15 +241,21 @@ the crates into a host repository — fix them upstream and cut a release.
 Done:
 
 - [x] Chat identity, contacts, message types, sealed DM crypto.
-- [x] Signed inner envelope bound to `from`/`to`/`ts`/`msgId`/body.
+- [x] Signed inner envelope bound to `from`/`ts`/`msgId`/body/attachments,
+      byte-exact with the browser (`fly-social-v1/dm-inner` v2).
 - [x] Encrypted flat-file history (no SQLite, no plaintext at rest).
 - [x] `Transport` trait + in-memory testkit.
 - [x] `nym-sdk` transport adapter (`NymTransport`), verified on mainnet with two
       native daemons (DM and room delivery).
-- [x] Standalone repository, tag `v0.1.3`, Apache-2.0, security policy.
-- [x] Submodule at `core/` in this repository, pinned `v0.1.3`.
-- [x] Published on crates.io in dependency order as `0.1.3` (all five crates;
-      GitHub release created, docs.rs at 100% item coverage).
+- [x] Standalone repository, tag `v0.2.0`, Apache-2.0, security policy.
+- [x] Submodule at `core/` in this repository, pinned `v0.2.0` (`990fdff`).
+- [x] Shared DM vector fixture, generated in core and mirrored byte-for-byte in
+      `web/test/fixtures/nysiris-core-dm-v2.json`.
+- [x] Cross-repo CI: the `core-submodule` job checks out the pinned revision,
+      verifies the vectors match, and runs core fmt/clippy/tests; the web suite
+      re-derives the vectors with browser crypto.
+- [x] Published on crates.io in dependency order as `0.1.3`/`0.1.4` (all five
+      crates; GitHub releases created, docs.rs at 100% item coverage).
 
 Next:
 
@@ -235,7 +263,8 @@ Next:
       `services/*` can consume the same protocol instead of local copies.
 - [ ] wasm build of `nysiris-core` (Nym-free parts only) to share the envelope
       and history formats with the browser client.
-- [ ] Cross-repo CI: build Nysiris + NCC against the changed core revision.
+- [ ] NCC pin bump to `v0.2.0` and an NCC-side wire test (NCC is a separate
+      repository).
 - [ ] Retire duplicated DM framing in `web/src/application/dm.ts` once the wasm
       binding exists.
 

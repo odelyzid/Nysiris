@@ -37,8 +37,9 @@ mixnet hides **who talks to whom and when** from network observers. Formerly
 >   the fast `./build.sh check` loop.
 > * The protocol/transport layer is being extracted into
 >   [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core) and
->   is vendored as the `core/` submodule (pinned `v0.1.3`); the five crates are
->   published on crates.io as `0.1.3` — see
+>   is vendored as the `core/` submodule (pinned `v0.2.0`); the five crates are
+>   published on crates.io through the `0.1.x` line, with `0.2.0` the
+>   breaking release whose DM bytes match this client — see
 >   [Build on Nysiris-Core](#build-on-nysiris-core).
 
 ## One protocol, two projects
@@ -52,11 +53,11 @@ carrying the app:
 | Scope | browser PWA, Android/desktop shells, service providers, `nysiris` CLI, reference Sphinx | chat identity, sealed DMs, encrypted history, rooms, `Transport` trait, `nym-sdk` adapter |
 | For | private mixnet browsing + self-hosting | your own mixnet app, bot, relay or microservice |
 | Build | `./build.sh check` · `web` · `services` | `cd core && cargo test --workspace --locked` |
-| Version | `VERSION` (app releases) | independent tags; `core/` pins `v0.1.3` |
+| Version | `VERSION` (app releases) | independent tags; `core/` pins `v0.2.0` |
 
-Both sides implement the same wire contract (DM envelope, history binding, room
-keys), but the dependency only ever points one way: **Nysiris-Core must not
-depend on this repository.**
+Both sides implement the same DM wire contract, pinned by shared vectors;
+history storage and capability-key rooms are native-client-only. The dependency
+only ever points one way: **Nysiris-Core must not depend on this repository.**
 
 Two reference consumers ship today: this app and
 **[NCC](https://github.com/TribeWarez/ncc)** (`Nysiris Chat Commander`, PySide6 +
@@ -106,7 +107,7 @@ Working against unreleased changes? Depend on the tag (or the `core/` submodule
 vendored here):
 
 ```toml
-nysiris-core = { git = "https://github.com/TribeWarez/nysiris-core", tag = "v0.1.3" }
+nysiris-core = { git = "https://github.com/TribeWarez/nysiris-core", tag = "v0.2.0" }
 ```
 
 A minimal engine — send a sealed DM and let the transport deliver it:
@@ -386,7 +387,7 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 | Path | What | Verification |
 |---|---|---|
 | `crates/sphinx-core/` | Reference Sphinx: header/blinding/filler/MAC/Lioness/SURB/address | `cargo test -p sphinx-core` |
-| `core/` (submodule) | Extracted protocol/transport workspace: chat identity, sealed DMs, encrypted history, rooms, `Transport` trait, `nym-sdk` adapter (pinned `v0.1.3`, published as `0.1.3`) | `cd core && cargo test --workspace --locked` |
+| `core/` (submodule) | Extracted protocol/transport workspace: chat identity, sealed DMs, encrypted history, rooms, `Transport` trait, `nym-sdk` adapter (pinned `v0.2.0`, DM wire-compatible with this client) | `cd core && cargo test --workspace --locked` |
 | `crates/sphinx-core/src/enforcement.rs` | Route policy, SURB single-use/expiry, reply budget, exit rotation, cover-traffic guardrail | 12 tests |
 | `crates/bridge-guard/` | Open-proxy guards for the mixnet↔HTTP bridge | 8 tests |
 | `crates/nym-hidden-service/` | Hidden-service abstraction: URIs, envelopes, dispatch, petnames, chunking | 13 tests |
@@ -422,9 +423,10 @@ the docs. It runs offline (no `npm install`). CI runs it on every push/PR.
 The protocol and transport layer is being extracted from this repository into
 [`TribeWarez/nysiris-core`](https://github.com/TribeWarez/nysiris-core): a
 standalone Rust workspace that depends on neither this repository nor any
-client. It is vendored here as the **`core/` submodule**, pinned to `v0.1.3`,
+client. It is vendored here as the **`core/` submodule**, pinned to `v0.2.0`,
 so the extracted code is reviewable from one checkout while the builds stay
-decoupled.
+decoupled. A shared vector fixture plus the `core-submodule` CI job prove the
+native and browser DM implementations still produce the same bytes.
 
 | Crate | Responsibility |
 |---|---|

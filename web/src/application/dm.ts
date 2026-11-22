@@ -62,15 +62,32 @@ export interface SealedDm {
 }
 
 export function sealDm(recipientEdPubHex: string, plaintext: Uint8Array): SealedDm {
+  return sealDmWith(
+    recipientEdPubHex,
+    plaintext,
+    bytesToHex(x25519.utils.randomSecretKey()),
+    bytesToHex(randomBytes(24)),
+  );
+}
+
+/**
+ * Deterministic sealing for the shared `nysiris-core` conformance vectors.
+ * Production code must use `sealDm` so the ephemeral key and nonce are fresh.
+ */
+export function sealDmWith(
+  recipientEdPubHex: string,
+  plaintext: Uint8Array,
+  ephemeralPrivHex: string,
+  nonceHex: string,
+): SealedDm {
   const recipientMont = ed25519.utils.toMontgomery(hexToBytes(recipientEdPubHex));
-  const eph = x25519.utils.randomSecretKey();
-  const epub = x25519.getPublicKey(eph);
+  const eph = hexToBytes(ephemeralPrivHex);
+  const nonce = hexToBytes(nonceHex);
   const shared = x25519.getSharedSecret(eph, recipientMont);
   const key = kdf(shared);
-  const nonce = randomBytes(24);
   const ct = xchacha20poly1305(key, nonce).encrypt(plaintext);
   return {
-    epubHex: bytesToHex(epub),
+    epubHex: bytesToHex(x25519.getPublicKey(eph)),
     nonceHex: bytesToHex(nonce),
     ciphertextB64: b64encode(ct),
   };
@@ -131,11 +148,25 @@ export interface PackedDm {
  * confidential end-to-end.
  */
 export function packDmInner(senderPrivHex: string, body: Uint8Array, atts: AttachmentRef[] = []): PackedDm {
+  return packDmInnerAt(senderPrivHex, body, atts, bytesToHex(randomBytes(16)), Date.now());
+}
+
+/**
+ * Deterministic packing for the shared `nysiris-core` conformance vectors.
+ * Production code must use `packDmInner` so ids and timestamps are fresh.
+ */
+export function packDmInnerAt(
+  senderPrivHex: string,
+  body: Uint8Array,
+  atts: AttachmentRef[],
+  msgIdHex: string,
+  ts: number,
+): PackedDm {
   const priv = hexToBytes(senderPrivHex.trim().toLowerCase());
   if (priv.length !== 32) throw new Error('sender private key must be 32 bytes hex');
+  if (hexToBytes(msgIdHex).length !== 16) throw new Error('message id must be 16 bytes hex');
   const from = bytesToHex(ed25519.getPublicKey(priv));
-  const msgId = bytesToHex(randomBytes(16));
-  const ts = Date.now();
+  const msgId = msgIdHex.toLowerCase();
   const sig = bytesToHex(ed25519.sign(innerSignBytes(from, ts, msgId, body, atts), priv));
   const json = JSON.stringify({
     v: DM_INNER_VERSION,

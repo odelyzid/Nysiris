@@ -13,7 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The `core/` submodule is documented and checked from here.
+          # The pinned `core/` submodule is tested by the core-submodule job
+          # below; this job builds this repository only.
           submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
@@ -45,6 +46,31 @@ jobs:
         run: |
           (cd web && npm ci --no-audit --no-fund)
           node --test $(find web/test -name '*.test.mjs')
+
+  core-submodule:
+    name: Pinned nysiris-core submodule (wire conformance)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Verify the checked-out submodule is the pinned commit
+        run: |
+          test -f core/Cargo.toml
+          pinned="$(git ls-tree HEAD core | awk '{print $3}')"
+          actual="$(git -C core rev-parse HEAD)"
+          test "$pinned" = "$actual"
+          git submodule status core
+      - name: Shared DM vectors have not drifted
+        run: cmp core/crates/nysiris-core/tests/fixtures/dm-v2.json web/test/fixtures/nysiris-core-dm-v2.json
+      - name: Core format + clippy + tests
+        run: |
+          cargo fmt --all --manifest-path core/Cargo.toml -- --check
+          cargo clippy --workspace --all-targets --locked --manifest-path core/Cargo.toml -- -D warnings
+          cargo test --workspace --locked --manifest-path core/Cargo.toml
 
   web-build:
     name: Browser build (best effort)
