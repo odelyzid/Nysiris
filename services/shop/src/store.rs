@@ -26,10 +26,11 @@
 
 use rusqlite::{params, Connection, OptionalExtension};
 use shop_format::limits::{
-    MAX_DESCRIPTION_CHARS, MAX_LISTINGS_PAGE, MAX_MESSAGES_PAGE, MAX_MESSAGE_BYTES,
-    MAX_NOTE_BYTES, MAX_ORDER_MESSAGES, MAX_REVIEW_BYTES, MAX_TITLE_CHARS,
+    DEFAULT_MESSAGES_PAGE, MAX_DESCRIPTION_CHARS, MAX_LISTINGS_PAGE, MAX_MESSAGES_PAGE,
+    MAX_MESSAGE_BYTES, MAX_NOTE_BYTES, MAX_ORDER_MESSAGES, MAX_REVIEW_BYTES, MAX_TITLE_CHARS,
 };
 use shop_format::status::{ActorRole, OrderStatus};
+use std::collections::HashMap;
 
 pub struct Listing {
     pub id_hex: String,
@@ -78,6 +79,15 @@ pub struct MessagePage {
     pub messages: Vec<OrderMessage>,
     pub total: usize,
     pub next_offset: Option<usize>,
+}
+
+/// One order plus the signed rows needed to render it in a single `/orders`
+/// response. Assembled with one query per table, not one query per order.
+pub struct OrderDetail {
+    pub order: Order,
+    pub messages: MessagePage,
+    pub review: Option<Review>,
+    pub events: Vec<StatusEvent>,
 }
 
 /// One signed state transition. Stored so clients can replay the chain from
@@ -438,8 +448,8 @@ impl Store {
             .conn
             .unchecked_transaction()
             .map_err(|e| e.to_string())?;
-        let (seller, stock, active, listed_price, listed_version): (Vec<u8>, i64, i64, i64, i64) = tx
-            .query_row(
+        let (seller, stock, active, listed_price, listed_version): (Vec<u8>, i64, i64, i64, i64) =
+            tx.query_row(
                 "SELECT seller,stock,active,price,version FROM listings WHERE id=?",
                 params![listing.as_slice()],
                 |row| {
@@ -647,6 +657,135 @@ impl Store {
         Ok(rows)
     }
 
+    /// `/orders` assembly in a fixed number of queries: one for the orders,
+    /// one for the latest message page of every thread, one for their reviews,
+    /// one for every signed transition. `message_limit` is clamped to the wire
+    /// page cap so a caller cannot turn this into an unbounded table dump.
+    pub fn orders_with_details_for(
+        &self,
+        key: &[u8; 32],
+        message_limit: usize,
+    ) -> Result<Vec<OrderDetail>, String> {
+        let orders = self.orders_for(key)?;
+        if orders.is_empty() {
+            return Ok(Vec::new());
+        }
+        let page = message_limit.clamp(1, MAX_MESSAGES_PAGE);
+
+        // ROW_NUMBER over each thread keeps only the newest `page` rows. The
+        // window total lets us report a cursor without a COUNT query per order.
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT order_id,author,day,body,sig,total FROM (
+                   SELECT order_id,seq,author,day,body,sig,
+                          COUNT(*) OVER (PARTITION BY order_id) AS total,
+                          ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY seq DESC) AS rn
+                   FROM order_messages
+                 ) WHERE rn <= ? ORDER BY order_id,seq ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut pages: HashMap<Vec<u8>, (usize, Vec<OrderMessage>)> = HashMap::new();
+        let mut rows = stmt
+            .query_map(params![page as i64], |row| {
+                let order_id: Vec<u8> = row.get(0)?;
+                let author: Vec<u8> = row.get(1)?;
+                let sig: Vec<u8> = row.get(4)?;
+                Ok((
+                    order_id,
+                    row.get::<_, i64>(5)? as usize,
+                    OrderMessage {
+                        author_hex: hex::encode(author),
+                        day: row.get::<_, i64>(2)? as u64,
+                        body: row.get(3)?,
+                        sig_hex: hex::encode(sig),
+                    },
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in &mut rows {
+            let (id, total, message) = row.map_err(|e| e.to_string())?;
+            pages
+                .entry(id)
+                .or_insert((total, Vec::new()))
+                .1
+                .push(message);
+        }
+
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT order_id,seller,author,rating,body,day,sig FROM reviews
+                 WHERE order_id IN (SELECT id FROM orders WHERE buyer=? OR seller=?)",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut reviews: HashMap<Vec<u8>, Review> = HashMap::new();
+        let mut rows = stmt
+            .query_map(params![key.as_slice(), key.as_slice()], |row| {
+                let id: Vec<u8> = row.get(0)?;
+                Ok((id, Self::review_from_row(row)?))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in &mut rows {
+            let (id, review) = row.map_err(|e| e.to_string())?;
+            reviews.insert(id, review);
+        }
+
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT order_id,from_code,status,actor,day,note,sig FROM order_status_events
+                 WHERE order_id IN (SELECT id FROM orders WHERE buyer=? OR seller=?)
+                 ORDER BY order_id,seq ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut events: HashMap<Vec<u8>, Vec<StatusEvent>> = HashMap::new();
+        let mut rows = stmt
+            .query_map(params![key.as_slice(), key.as_slice()], |row| {
+                let id: Vec<u8> = row.get(0)?;
+                let actor: Vec<u8> = row.get(3)?;
+                let sig: Vec<u8> = row.get(6)?;
+                Ok((
+                    id,
+                    StatusEvent {
+                        from_code: row.get::<_, i64>(1)? as u8,
+                        status_code: row.get::<_, i64>(2)? as u8,
+                        actor_hex: hex::encode(actor),
+                        day: row.get::<_, i64>(4)? as u64,
+                        note: row.get(5)?,
+                        sig_hex: hex::encode(sig),
+                    },
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in &mut rows {
+            let (id, event) = row.map_err(|e| e.to_string())?;
+            events.entry(id).or_default().push(event);
+        }
+
+        let mut details = Vec::with_capacity(orders.len());
+        for order in orders {
+            let id = hex::decode(&order.id_hex).map_err(|_| "corrupt order id".to_string())?;
+            let (total, messages) = pages.remove(&id).unwrap_or((0, Vec::new()));
+            let next_offset = if messages.len() < total {
+                Some(messages.len())
+            } else {
+                None
+            };
+            details.push(OrderDetail {
+                order,
+                messages: MessagePage {
+                    messages,
+                    total,
+                    next_offset,
+                },
+                review: reviews.remove(&id),
+                events: events.remove(&id).unwrap_or_default(),
+            });
+        }
+        Ok(details)
+    }
+
     /// Every order where `key` is the buyer or the seller, newest first.
     pub fn orders_for(&self, key: &[u8; 32]) -> Result<Vec<Order>, String> {
         let mut stmt = self
@@ -742,19 +881,16 @@ impl Store {
             )
             .map_err(|e| e.to_string())?;
         let mut rows = stmt
-            .query_map(
-                params![order.as_slice(), limit, offset],
-                |row| {
-                    let author: Vec<u8> = row.get(0)?;
-                    let sig: Vec<u8> = row.get(3)?;
-                    Ok(OrderMessage {
-                        author_hex: hex::encode(author),
-                        day: row.get::<_, i64>(1)? as u64,
-                        body: row.get(2)?,
-                        sig_hex: hex::encode(sig),
-                    })
-                },
-            )
+            .query_map(params![order.as_slice(), limit, offset], |row| {
+                let author: Vec<u8> = row.get(0)?;
+                let sig: Vec<u8> = row.get(3)?;
+                Ok(OrderMessage {
+                    author_hex: hex::encode(author),
+                    day: row.get::<_, i64>(1)? as u64,
+                    body: row.get(2)?,
+                    sig_hex: hex::encode(sig),
+                })
+            })
             .map_err(|e| e.to_string())?;
         let mut messages = Vec::with_capacity(limit as usize);
         for row in &mut rows {
@@ -851,17 +987,6 @@ impl Store {
         .map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(())
-    }
-
-    pub fn review_for_order(&self, order: &[u8; 16]) -> Result<Option<Review>, String> {
-        self.conn
-            .query_row(
-                "SELECT order_id,seller,author,rating,body,day,sig FROM reviews WHERE order_id=?",
-                params![order.as_slice()],
-                Self::review_from_row,
-            )
-            .optional()
-            .map_err(|e| e.to_string())
     }
 
     fn review_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Review> {
@@ -1005,7 +1130,10 @@ mod tests {
                 &listing,
                 &[2u8; 32],
                 20_400,
-                1, 1_00, 1, "hi",
+                1,
+                1_00,
+                1,
+                "hi",
                 &[6u8; 64]
             )
             .is_err());
@@ -1039,8 +1167,10 @@ mod tests {
             )
             .is_err());
 
-        s.insert_order(&[7u8; 16], &listing, &buyer, 20_400, 3, 1_00, 1, "hi", &[6u8; 64])
-            .unwrap();
+        s.insert_order(
+            &[7u8; 16], &listing, &buyer, 20_400, 3, 1_00, 1, "hi", &[6u8; 64],
+        )
+        .unwrap();
         let after_order = s.get_listing(&listing).unwrap().unwrap();
         // The signed stock never changes; only derived availability does.
         assert_eq!((after_order.stock, after_order.available), (5, 2));
@@ -1066,8 +1196,10 @@ mod tests {
         assert_eq!((after_cancel.stock, after_cancel.available), (5, 5));
 
         // Accepted then fulfilled consumes it.
-        s.insert_order(&[9u8; 16], &listing, &buyer, 20_400, 2, 1_00, 1, "hi", &[6u8; 64])
-            .unwrap();
+        s.insert_order(
+            &[9u8; 16], &listing, &buyer, 20_400, 2, 1_00, 1, "hi", &[6u8; 64],
+        )
+        .unwrap();
         s.update_order_status(
             &[9u8; 16],
             &[2u8; 32],
@@ -1120,8 +1252,10 @@ mod tests {
         let buyer = [4u8; 32];
         let seller = [2u8; 32];
         write_listing(&s, [1u8; 16], seller, 1, 5);
-        s.insert_order(&order, &[1u8; 16], &buyer, 20_400, 1, 1_00, 1, "hi", &[6u8; 64])
-            .unwrap();
+        s.insert_order(
+            &order, &[1u8; 16], &buyer, 20_400, 1, 1_00, 1, "hi", &[6u8; 64],
+        )
+        .unwrap();
         assert!(s.status_events_for(&order).unwrap().is_empty());
 
         s.update_order_status(
@@ -1172,8 +1306,10 @@ mod tests {
         let buyer = [4u8; 32];
         let seller = [2u8; 32];
         write_listing(&s, listing, seller, 1, 5);
-        s.insert_order(&[7u8; 16], &listing, &buyer, 20_400, 1, 1_00, 1, "hi", &[6u8; 64])
-            .unwrap();
+        s.insert_order(
+            &[7u8; 16], &listing, &buyer, 20_400, 1, 1_00, 1, "hi", &[6u8; 64],
+        )
+        .unwrap();
         assert_eq!(s.orders_for(&buyer).unwrap().len(), 1);
         assert_eq!(s.orders_for(&seller).unwrap().len(), 1);
         assert!(s.orders_for(&[5u8; 32]).unwrap().is_empty());
@@ -1185,14 +1321,8 @@ mod tests {
         let order = [7u8; 16];
         let author = [2u8; 32];
         for i in 0..MAX_ORDER_MESSAGES {
-            s.insert_order_message(
-                &order,
-                &author,
-                20_400,
-                &format!("message {i}"),
-                &[6u8; 64],
-            )
-            .unwrap();
+            s.insert_order_message(&order, &author, 20_400, &format!("message {i}"), &[6u8; 64])
+                .unwrap();
         }
         assert_eq!(
             s.insert_order_message(&order, &author, 20_400, "one too many", &[6u8; 64])
@@ -1215,12 +1345,60 @@ mod tests {
         // Callers cannot bypass the page cap with a huge limit, and an offset
         // past the end is an empty page rather than an error.
         assert_eq!(
-            s.messages_for(&order, 0, usize::MAX).unwrap().messages.len(),
+            s.messages_for(&order, 0, usize::MAX)
+                .unwrap()
+                .messages
+                .len(),
             MAX_MESSAGES_PAGE
         );
         let past = s.messages_for(&order, usize::MAX, 10).unwrap();
         assert!(past.messages.is_empty());
         assert!(past.next_offset.is_none());
+    }
+
+    #[test]
+    fn orders_with_details_matches_per_order_reads() {
+        let s = Store::open_in_memory().unwrap();
+        let listing = [1u8; 16];
+        let order = [7u8; 16];
+        let buyer = [4u8; 32];
+        let seller = [2u8; 32];
+        write_listing(&s, listing, seller, 1, 5);
+        s.insert_order(
+            &order, &listing, &buyer, 20_400, 1, 1_00, 1, "hi", &[6u8; 64],
+        )
+        .unwrap();
+        for text in ["hello", "when?", "soon"] {
+            s.insert_order_message(&order, &buyer, 20_400, text, &[5u8; 64])
+                .unwrap();
+        }
+        for next in [OrderStatus::Accepted, OrderStatus::Fulfilled] {
+            s.update_order_status(&order, &seller, next, 20_400, "", &[5u8; 64])
+                .unwrap();
+        }
+        s.insert_review(&order, &buyer, &seller, 5, "great", 20_400, &[3u8; 64])
+            .unwrap();
+
+        let details = s
+            .orders_with_details_for(&buyer, DEFAULT_MESSAGES_PAGE)
+            .unwrap();
+        assert_eq!(details.len(), 1);
+        let detail = &details[0];
+        assert_eq!(detail.order.id_hex, hex::encode(order));
+        assert_eq!(detail.messages.messages.len(), 3);
+        assert_eq!(detail.messages.total, 3);
+        assert!(detail.messages.next_offset.is_none());
+        assert_eq!(detail.review.as_ref().unwrap().body, "great");
+        assert_eq!(detail.events.len(), 2);
+
+        // The seller sees the same assembly, and a page cap of two leaves a
+        // cursor without changing the reported thread length.
+        let seller_view = s.orders_with_details_for(&seller, 2).unwrap();
+        assert_eq!(seller_view.len(), 1);
+        assert_eq!(seller_view[0].messages.messages.len(), 2);
+        assert_eq!(seller_view[0].messages.total, 3);
+        assert_eq!(seller_view[0].messages.next_offset, Some(2));
+        assert!(s.orders_with_details_for(&[9u8; 32], 2).unwrap().is_empty());
     }
 
     #[test]
@@ -1230,8 +1408,10 @@ mod tests {
         let buyer = [4u8; 32];
         let seller = [2u8; 32];
         write_listing(&s, listing, seller, 1, 5);
-        s.insert_order(&[7u8; 16], &listing, &buyer, 20_400, 1, 1_00, 1, "hi", &[6u8; 64])
-            .unwrap();
+        s.insert_order(
+            &[7u8; 16], &listing, &buyer, 20_400, 1, 1_00, 1, "hi", &[6u8; 64],
+        )
+        .unwrap();
 
         // Not fulfilled yet.
         assert!(s

@@ -226,15 +226,22 @@ fn field_id16(v: &serde_json::Value, key: &str) -> Result<[u8; 16], Response> {
     Ok(out)
 }
 
-fn field_u64(v: &serde_json::Value, key: &str) -> u64 {
-    v.get(key).and_then(|x| x.as_u64()).unwrap_or(0)
-}
-
-fn field_u32(v: &serde_json::Value, key: &str) -> u32 {
+/// A missing or wrongly typed number is a client error, never a silent zero
+/// that later surfaces as a misleading "value must be positive" rejection.
+fn required_u64(v: &serde_json::Value, key: &str) -> Result<u64, Response> {
     v.get(key)
         .and_then(|x| x.as_u64())
-        .and_then(|n| u32::try_from(n).ok())
-        .unwrap_or(0)
+        .ok_or_else(|| Response::error(400, format!("{key} must be an unsigned integer")))
+}
+
+fn required_u32(v: &serde_json::Value, key: &str) -> Result<u32, Response> {
+    let n = required_u64(v, key)?;
+    u32::try_from(n).map_err(|_| Response::error(400, format!("{key} is out of range")))
+}
+
+fn required_u8(v: &serde_json::Value, key: &str) -> Result<u8, Response> {
+    let n = required_u64(v, key)?;
+    u8::try_from(n).map_err(|_| Response::error(400, format!("{key} is out of range")))
 }
 
 fn fresh_day(day: u64) -> Result<(), Response> {
@@ -337,7 +344,16 @@ impl HiddenService for ShopService {
                     .map(|a| a.contains("text/html"))
                     .unwrap_or(false);
                 if wants_html {
-                    Response::ok(200, "text/html", DESCRIPTOR_HTML.as_bytes())
+                    // The scale is a wire constant mirrored in the browser;
+                    // show its actual value instead of a vague "minor units".
+                    let html = DESCRIPTOR_HTML.replace(
+                        "Prices are integer minor units;",
+                        &format!(
+                            "Prices are integer minor units ({} = 1 major unit);",
+                            limits::PRICE_MINOR_UNITS
+                        ),
+                    );
+                    Response::ok(200, "text/html", html.as_bytes())
                 } else {
                     Response::ok(
                         200,
@@ -436,16 +452,30 @@ impl HiddenService for ShopService {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let day = field_u64(&v, "day");
+                let day = match required_u64(&v, "day") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
                 if let Err(e) = fresh_day(day) {
                     return e;
                 }
-                let version = field_u64(&v, "version");
+                let version = match required_u64(&v, "version") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
                 if version == 0 {
                     return Response::error(400, "version must be positive");
                 }
-                let price = field_u64(&v, "price");
-                let stock = field_u32(&v, "stock");
+                // Zero is a legitimate price (a free listing); only a missing
+                // or malformed field is rejected here.
+                let price = match required_u64(&v, "price") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
+                let stock = match required_u32(&v, "stock") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
                 if stock > limits::MAX_STOCK {
                     return Response::error(400, "stock too large");
                 }
@@ -543,7 +573,10 @@ impl HiddenService for ShopService {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let day = field_u64(&v, "day");
+                let day = match required_u64(&v, "day") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
                 if let Err(e) = fresh_day(day) {
                     return e;
                 }
@@ -594,20 +627,36 @@ impl HiddenService for ShopService {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let day = field_u64(&v, "day");
+                let day = match required_u64(&v, "day") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
                 if let Err(e) = fresh_day(day) {
                     return e;
                 }
-                let qty = field_u32(&v, "qty");
+                let qty = match required_u32(&v, "qty") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
                 if qty == 0 || qty > limits::MAX_ORDER_QTY {
-                    return Response::error(400, "qty must be 1..=1000");
+                    return Response::error(
+                        400,
+                        format!("qty must be 1..={}", limits::MAX_ORDER_QTY),
+                    );
                 }
                 // Terms are signed and frozen; the store refuses a mismatch
-                // with the current listing row.
-                let price = field_u64(&v, "price");
-                let version = field_u64(&v, "version");
-                if price == 0 || version == 0 {
-                    return Response::error(400, "price and version are required");
+                // with the current listing row. A free listing has price 0, so
+                // only a missing/malformed field is rejected here.
+                let price = match required_u64(&v, "price") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
+                let version = match required_u64(&v, "version") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
+                if version == 0 {
+                    return Response::error(400, "version must be positive");
                 }
                 let note = field_str(&v, "note");
                 if let Err(e) = check_text(note, "note", None, Some(limits::MAX_NOTE_BYTES)) {
@@ -667,32 +716,15 @@ impl HiddenService for ShopService {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let orders = match store.orders_for(&who) {
-                    Ok(o) => o,
-                    Err(e) => return Response::error(500, e),
-                };
-                let mut items = Vec::with_capacity(orders.len());
-                for order in &orders {
-                    let id_bytes = match hex::decode(&order.id_hex) {
-                        Ok(b) if b.len() == 16 => b,
-                        _ => return Response::error(500, "corrupt order id"),
-                    };
-                    let mut id = [0u8; 16];
-                    id.copy_from_slice(&id_bytes);
-                    let messages = match store.messages_for(&id, 0, limits::DEFAULT_MESSAGES_PAGE) {
-                        Ok(m) => m,
+                let details =
+                    match store.orders_with_details_for(&who, limits::DEFAULT_MESSAGES_PAGE) {
+                        Ok(d) => d,
                         Err(e) => return Response::error(500, e),
                     };
-                    let review = match store.review_for_order(&id) {
-                        Ok(r) => r,
-                        Err(e) => return Response::error(500, e),
-                    };
-                    let events = match store.status_events_for(&id) {
-                        Ok(v) => v,
-                        Err(e) => return Response::error(500, e),
-                    };
-                    items.push(order_json(order, &messages, review.as_ref(), &events));
-                }
+                let items = details
+                    .iter()
+                    .map(|d| order_json(&d.order, &d.messages, d.review.as_ref(), &d.events))
+                    .collect::<Vec<_>>();
                 Response::ok(
                     200,
                     "application/json",
@@ -700,13 +732,12 @@ impl HiddenService for ShopService {
                 )
             }
             ("GET", p) if p.starts_with("/order/") && p.ends_with("/messages") => {
-                let id = match id_from_hex(
-                    &p["/order/".len()..p.len() - "/messages".len()],
-                    "order id",
-                ) {
-                    Ok(id) => id,
-                    Err(e) => return e,
-                };
+                let id =
+                    match id_from_hex(&p["/order/".len()..p.len() - "/messages".len()], "order id")
+                    {
+                        Ok(id) => id,
+                        Err(e) => return e,
+                    };
                 let who = match signed_read(&query) {
                     Ok(k) => k,
                     Err(e) => return e,
@@ -725,7 +756,9 @@ impl HiddenService for ShopService {
                 };
                 match store.order_parties(&id) {
                     Ok(Some((buyer, seller))) if who == buyer || who == seller => {}
-                    Ok(Some(_)) => return Response::error(403, "only the parties may read this thread"),
+                    Ok(Some(_)) => {
+                        return Response::error(403, "only the parties may read this thread")
+                    }
                     Ok(None) => return not_found("order"),
                     Err(e) => return Response::error(500, e),
                 }
@@ -761,14 +794,25 @@ impl HiddenService for ShopService {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let day = field_u64(&v, "day");
+                let day = match required_u64(&v, "day") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
                 if let Err(e) = fresh_day(day) {
                     return e;
                 }
-                let code = v.get("status").and_then(|s| s.as_u64()).unwrap_or(0);
-                let next = match u8::try_from(code).ok().and_then(OrderStatus::from_code) {
-                    Some(s) => s,
-                    None => return Response::error(400, "status must be 1..=4"),
+                let code = match required_u8(&v, "status") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
+                let next = match OrderStatus::from_code(code) {
+                    Some(s) if s != OrderStatus::Reserved => s,
+                    _ => {
+                        return Response::error(
+                            400,
+                            "status must be accepted, declined, cancelled, or fulfilled",
+                        )
+                    }
                 };
                 let note = field_str(&v, "note");
                 if let Err(e) = check_text(note, "note", None, Some(limits::MAX_NOTE_BYTES)) {
@@ -829,7 +873,10 @@ impl HiddenService for ShopService {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let day = field_u64(&v, "day");
+                let day = match required_u64(&v, "day") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
                 if let Err(e) = fresh_day(day) {
                     return e;
                 }
@@ -896,12 +943,17 @@ impl HiddenService for ShopService {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let day = field_u64(&v, "day");
+                let day = match required_u64(&v, "day") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
                 if let Err(e) = fresh_day(day) {
                     return e;
                 }
-                let rating = v.get("rating").and_then(|r| r.as_u64()).unwrap_or(0);
-                let rating = u8::try_from(rating).unwrap_or(0);
+                let rating = match required_u8(&v, "rating") {
+                    Ok(n) => n,
+                    Err(e) => return e,
+                };
                 if !review::rating_is_valid(rating) {
                     return Response::error(400, "rating must be 1..=5");
                 }
@@ -1167,6 +1219,7 @@ mod tests {
         assert!(text.contains("<h2>Reputation</h2>"));
         assert!(text.contains("POST /order"));
         assert!(text.contains("POST /review"));
+        assert!(text.contains("Prices are integer minor units (100 = 1 major unit)"));
     }
 
     #[test]
@@ -1312,7 +1365,12 @@ mod tests {
         // Oversell refused, availability unchanged. The order is properly
         // signed; only the remaining quantity (2) makes it invalid.
         assert_eq!(
-            post(&svc, "/order", &order(&buyer, [3u8; 16], listing_id, 3, 5_00, "")).status,
+            post(
+                &svc,
+                "/order",
+                &order(&buyer, [3u8; 16], listing_id, 3, 5_00, "")
+            )
+            .status,
             400
         );
 
@@ -1364,7 +1422,12 @@ mod tests {
         // Fresh order fulfilled keeps the units consumed.
         let order2 = [4u8; 16];
         assert_eq!(
-            post(&svc, "/order", &order(&buyer, order2, listing_id, 2, 5_00, "")).status,
+            post(
+                &svc,
+                "/order",
+                &order(&buyer, order2, listing_id, 2, 5_00, "")
+            )
+            .status,
             200
         );
         assert_eq!(
@@ -1415,7 +1478,11 @@ mod tests {
             "/listing",
             &listing(&seller, listing_id, 1, 1_00, 5, "Lamp", "Warm"),
         );
-        post(&svc, "/order", &order(&buyer, order_id, listing_id, 1, 1_00, ""));
+        post(
+            &svc,
+            "/order",
+            &order(&buyer, order_id, listing_id, 1, 1_00, ""),
+        );
 
         // No signature: refused.
         assert_eq!(
@@ -1468,7 +1535,11 @@ mod tests {
             "/listing",
             &listing(&seller, listing_id, 1, 1_00, 5, "Lamp", "Warm"),
         );
-        post(&svc, "/order", &order(&buyer, order_id, listing_id, 1, 1_00, ""));
+        post(
+            &svc,
+            "/order",
+            &order(&buyer, order_id, listing_id, 1, 1_00, ""),
+        );
 
         let path = format!("/order/{}/message", hex::encode(order_id));
         assert_eq!(
@@ -1494,17 +1565,11 @@ mod tests {
 
         // Explicit pages walk backwards from the newest message. A page of
         // one returns the latest row first, then older rows via its cursor.
-        let latest = body(&get(
-            &svc,
-            &messages_path(&buyer, order_id, 0, 1),
-        ));
+        let latest = body(&get(&svc, &messages_path(&buyer, order_id, 0, 1)));
         assert_eq!(latest["total"], 2);
         assert_eq!(latest["next_offset"], 1);
         assert_eq!(latest["messages"][0]["body"], "tomorrow");
-        let older = body(&get(
-            &svc,
-            &messages_path(&seller, order_id, 1, 1),
-        ));
+        let older = body(&get(&svc, &messages_path(&seller, order_id, 1, 1)));
         assert_eq!(older["total"], 2);
         assert!(older["next_offset"].is_null());
         assert_eq!(older["messages"][0]["body"], "when do you ship?");
@@ -1526,7 +1591,11 @@ mod tests {
             "/listing",
             &listing(&seller, listing_id, 1, 1_00, 5, "Lamp", "Warm"),
         );
-        post(&svc, "/order", &order(&buyer, order_id, listing_id, 1, 1_00, ""));
+        post(
+            &svc,
+            "/order",
+            &order(&buyer, order_id, listing_id, 1, 1_00, ""),
+        );
 
         // Not fulfilled yet.
         assert_eq!(
@@ -1678,5 +1747,44 @@ mod tests {
         stale["day"] = serde_json::json!(old_day);
         stale["sig"] = serde_json::json!(hex::encode(sk.sign(&msg).to_bytes()));
         assert_eq!(post(&svc, "/listing", &stale).status, 400);
+    }
+
+    #[test]
+    fn missing_numbers_fail_loudly_and_free_listings_are_orderable() {
+        let svc = test_service();
+        let seller = SigningKey::from_bytes(&[2u8; 32]);
+        let buyer = SigningKey::from_bytes(&[4u8; 32]);
+        let listing_id = [1u8; 16];
+        let free = listing(&seller, listing_id, 1, 0, 3, "Sample", "Free");
+        assert_eq!(post(&svc, "/listing", &free).status, 200);
+
+        let mut no_price = free.clone();
+        no_price.as_object_mut().unwrap().remove("price");
+        let rep = post(&svc, "/listing", &no_price);
+        assert_eq!(rep.status, 400);
+        assert_eq!(
+            rep.error.as_deref(),
+            Some("price must be an unsigned integer")
+        );
+
+        // A zero price is a real free listing, not a missing field.
+        assert_eq!(
+            post(
+                &svc,
+                "/order",
+                &order(&buyer, [7u8; 16], listing_id, 1, 0, "free")
+            )
+            .status,
+            200
+        );
+
+        let mut no_qty = order(&buyer, [8u8; 16], listing_id, 1, 0, "free");
+        no_qty.as_object_mut().unwrap().remove("qty");
+        let rep = post(&svc, "/order", &no_qty);
+        assert_eq!(rep.status, 400);
+        assert_eq!(
+            rep.error.as_deref(),
+            Some("qty must be an unsigned integer")
+        );
     }
 }

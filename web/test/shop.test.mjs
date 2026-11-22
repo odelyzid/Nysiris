@@ -214,6 +214,8 @@ test('local review aggregation ignores invalid ratings', { skip: shop ? false : 
 });
 
 test('display and input helpers stay exact', { skip: shop ? false : 'node_modules missing (@noble crypto); run npm ci in web/' }, () => {
+  assert.equal(shop.PRICE_MINOR_UNITS, 100);
+  assert.equal(shop.formatMinor(shop.PRICE_MINOR_UNITS, 'USD'), '1.00 USD');
   assert.equal(shop.formatMinor(1234, 'USD'), '12.34 USD');
   assert.equal(shop.formatMinor(5, 'USD'), '0.05 USD');
   assert.equal(shop.formatMinor(1234, 'JPY'), '1234 JPY');

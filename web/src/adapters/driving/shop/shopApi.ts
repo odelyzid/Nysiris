@@ -6,22 +6,24 @@ import { fetchNym, fetchNymParallel } from '../../../mixnet/fetchNym';
 
 const JSON_HEADERS = { 'content-type': 'application/json' } as const;
 
-function errorText(body: Uint8Array): string {
+function errorText(status: number, body: Uint8Array): string {
   const text = new TextDecoder().decode(body).trim();
-  if (!text) return '';
+  if (!text) return `HTTP ${status}`;
   try {
     const parsed = JSON.parse(text) as { error?: unknown };
-    if (typeof parsed.error === 'string') return parsed.error;
+    if (typeof parsed.error === 'string' && parsed.error.trim()) return parsed.error;
   } catch {
-    // Plain-text error body.
+    // Plain-text error body from a provider that predates JSON errors.
   }
-  return text.slice(0, 300);
+  // Never pass an unlabelled JSON blob off as the provider's error message.
+  const clipped = text.slice(0, 300);
+  return `${clipped}${text.length > clipped.length ? '…' : ''}`;
 }
 
 function decode<T>(status: number, body: Uint8Array, transportError: string | null, route: string): T {
   if (transportError) throw new Error(transportError);
   if (status < 200 || status >= 300) {
-    throw new Error(`${route}: ${errorText(body) || `HTTP ${status}`}`);
+    throw new Error(`${route}: ${errorText(status, body)}`);
   }
   try {
     return JSON.parse(new TextDecoder().decode(body)) as T;

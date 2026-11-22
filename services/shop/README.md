@@ -34,7 +34,10 @@ GET  /reviews/<hex64>?offset=&limit=
 ```
 
 Every write is ed25519-signed over a domain-separated message and verified
-before storage; unsigned or stale-day (±2d) writes get 400s. State transitions
+before storage; unsigned or stale-day (±2d) writes get 400s. Missing or
+malformed signed numbers (`day`, `version`, `price`, `stock`, `qty`, `status`,
+`rating`) are rejected by name instead of defaulting to zero; price `0` is a
+valid free listing. State transitions
 are stored with their signed proof and replayed by clients, so the provider
 cannot report a status nobody signed. Prices are integer minor units (cents),
 never floats. An order signs the listing's `price`/`version` at reservation; a

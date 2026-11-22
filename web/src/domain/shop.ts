@@ -600,12 +600,13 @@ export function summarizeRatings(ratings: Iterable<number>): ReviewSummary {
 
 const ZERO_DECIMAL_CURRENCIES = new Set(['JPY', 'KRW', 'VND', 'CLP', 'ISK']);
 
-/** Render integer minor units without floats; defaults to two decimals (cents). */
+/** Render integer minor units without floats; scale comes from the wire constant. */
 export function formatMinor(price: number, currency: string): string {
   if (!Number.isSafeInteger(price) || price < 0) return `? ${currency}`;
-  const digits = ZERO_DECIMAL_CURRENCIES.has(currency) ? 0 : 2;
+  const zeroDecimal = ZERO_DECIMAL_CURRENCIES.has(currency);
+  const digits = zeroDecimal ? 0 : Math.floor(Math.log10(PRICE_MINOR_UNITS));
   const value = BigInt(price);
-  const scale = 10n ** BigInt(digits);
+  const scale = zeroDecimal ? 1n : BigInt(PRICE_MINOR_UNITS);
   const major = value / scale;
   const minor = value % scale;
   const fraction = digits === 0 ? '' : `.${minor.toString().padStart(digits, '0')}`;

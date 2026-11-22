@@ -195,8 +195,11 @@ GET  /reviews/<hex64>?offset=&limit=         raw signed reviews
 ```
 
 Reads are plain GETs; writes are JSON with `sig` and, when required, `pow`.
-Unsigned, stale-day, wrong-party, and out-of-bounds writes are rejected before
-storage. Listing objects carry the signed `stock` **and** derived `available`;
+Every signed numeric field must be present with the right type: a missing
+`price`, `qty`, `status`, or `rating` is rejected as such rather than becoming
+a silent zero that later surfaces as a misleading range error. Price `0` is a
+valid free listing. Unsigned, stale-day, wrong-party, and out-of-bounds writes
+are rejected before storage. Listing objects carry the signed `stock` **and** derived `available`;
 clients must verify signatures over `stock` and order against `available`.
 Soft-deleted listings stay resolvable for past orders but disappear from
 browse and refuse new orders. Order objects carry `status_events`, the signed
@@ -204,7 +207,10 @@ transition chain; clients replay it (`verifyStatusChain`) and reject any state
 the parties did not sign. They also carry the signed price/version snapshot
 plus the latest 20 thread messages and a cursor for older pages; a thread is
 capped at 500 signed messages. The paginated thread read uses the same signed
-proof of possession as `/orders` and refuses non-participants.
+proof of possession as `/orders` and refuses non-participants. The provider
+assembles all of an identity's order details with one query per table rather
+than one query per order, and caps each embedded message preview at the page
+size.
 
 ## 16.7 Privacy rules for buyers and sellers
 
